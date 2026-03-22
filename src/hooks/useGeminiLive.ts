@@ -584,15 +584,15 @@ export const useGeminiLive = ({
       console.log("🚀 Iniciando conexão com Gemini 2.0 Flash native audio preview 12 2025 Live API...");
 
       const sessionPromise = ai.live.connect({
-        // ✅ MODELO GEMINI 2.0 FLASH ATUALIZADO
-        model: "model: "gemini-2.5-flash-native-audio-preview-12-2025",
-        
-        config: {
-          responseModalities: [Modality.AUDIO],
-          systemInstruction: systemInstruction,
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAPPING[voice] || 'Kore' } },
-          },
+  // ✅ MODELO CORRETO PARA LIVE API
+  model: "gemini-2.5-flash-native-audio-preview-12-2025",
+  
+  config: {
+    responseModalities: [Modality.AUDIO],
+    systemInstruction: systemInstruction,
+    speechConfig: {
+      voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAPPING[voice] || 'Kore' } },
+    },
           tools: [
             { functionDeclarations: [
               toggleScreenSharingFunc, changeVoiceFunc, openUrlFunc, interactFunc, 
