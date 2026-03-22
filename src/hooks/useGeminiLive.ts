@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { GoogleGenAI, Modality, Type, FunctionDeclaration } from "@google/genai";
 import { useAppStore, VoiceName, VOICE_MAPPING } from '../store/useAppStore';
-import { saveMemory, findRelevantMemories } from '../utils/memory';
 
 export interface UseGeminiLiveProps {
   onToggleScreenSharing?: (enabled: boolean) => void;
@@ -602,13 +601,7 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
           ctx.drawImage(video, 0, 0);
           const base64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
           sessionRef.current.then((session: any) => {
-            const memories = findRelevantMemories(text);
-
-            const enhancedText = memories.length > 0
-  ? `MEMÓRIA DO USUÁRIO:\n${memories.join("\n")}\n\nUsuário: ${text}`
-  : text;
-
-session.sendRealtimeInput({ text: enhancedText });
+            session.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } });
           });
           if (screenStreamRef.current.active) setTimeout(sendFrame, 1000);
         } catch (e) {
