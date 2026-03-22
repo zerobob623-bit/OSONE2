@@ -43,3 +43,11 @@ export const findRelevantMemories = (query: string, limit = 3) => {
     .slice(0, limit)
     .map(m => m.text);
 };
+    return { ...m, score };
+  });
+
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(m => m.text);
+};
