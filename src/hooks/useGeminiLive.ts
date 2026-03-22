@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { GoogleGenAI, Modality, Type, FunctionDeclaration } from "@google/genai";
 import { useAppStore, VoiceName, VOICE_MAPPING } from '../store/useAppStore';
+import { useSemanticMemory } from '../hooks/useSemanticMemory'; // ← NOVO IMPORT
 
 export interface UseGeminiLiveProps {
   onToggleScreenSharing?: (enabled: boolean) => void;
@@ -28,6 +29,9 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
     setAssistantName,
     apiKey: storedApiKey
   } = useAppStore();
+
+  // NOVO: hook de memória semântica
+  const { retrieveRelevantContext, isLoading: ragLoading } = useSemanticMemory();
 
   const sessionRef = useRef<any>(null);
   const isConnectedRef = useRef(false);
@@ -60,6 +64,10 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
     onMessageRef.current = onMessage;
     onToolCallRef.current = onToolCall;
   }, [onToggleScreenSharing, onChangeVoice, onOpenUrl, onInteract, onMessage, onToolCall]);
+
+  // ────────────────────────────────────────────────────────────────
+  // Funções de ferramenta (exatamente como estavam)
+  // ────────────────────────────────────────────────────────────────
 
   const toggleScreenSharingFunc: FunctionDeclaration = {
     name: "toggle_screen_sharing",
@@ -170,7 +178,6 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
     parameters: { type: Type.OBJECT, properties: {} }
   };
 
-  // New tool declarations
   const showLyricsFunc: FunctionDeclaration = {
     name: "show_lyrics",
     description: "Mostra a letra de uma música na tela linha por linha enquanto canta.",
@@ -261,6 +268,10 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
     }
   };
 
+  // ────────────────────────────────────────────────────────────────
+  // Funções de áudio (exatamente como estavam)
+  // ────────────────────────────────────────────────────────────────
+
   const stopAudio = useCallback((isReconnecting = false) => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
@@ -340,20 +351,51 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
     if (sessionRef.current && isConnectedRef.current) {
       setIsThinking(true);
       sessionRef.current.then((session: any) => {
-        // Send the file as inline data
         session.sendRealtimeInput({
           media: {
             mimeType,
             data: base64Data,
           }
         });
-        // Then send the text prompt
         setTimeout(() => {
           session.sendRealtimeInput({ text: prompt });
         }, 300);
       });
     }
   }, []);
+
+  // ────────────────────────────────────────────────────────────────
+  // Função NOVA: enriquece o system prompt com memória semântica
+  // ────────────────────────────────────────────────────────────────
+
+  const getEnhancedInstruction = useCallback(async (baseInstruction: string) => {
+    if (ragLoading) {
+      console.log('[RAG] Ainda carregando modelo → usando prompt original');
+      return baseInstruction;
+    }
+
+    try {
+      // Query genérica para recuperar contexto relevante de longo prazo
+      const ragContext = await retrieveRelevantContext(
+        "fatos importantes, nome do usuário, preferências, conversas marcantes e resumo da relação com o usuário",
+        [] // ← Se quiser passar memoryDocs aqui, ajuste depois no App.tsx
+      );
+
+      if (ragContext.trim()) {
+        console.log('[RAG] Contexto recuperado e adicionado ao system prompt');
+        return baseInstruction + ragContext;
+      }
+
+      return baseInstruction;
+    } catch (err) {
+      console.error('[RAG] Erro ao enriquecer system prompt:', err);
+      return baseInstruction; // nunca quebra a conexão
+    }
+  }, [retrieveRelevantContext, ragLoading]);
+
+  // ────────────────────────────────────────────────────────────────
+  // Função connect MODIFICADA (única mudança real)
+  // ────────────────────────────────────────────────────────────────
 
   const connect = useCallback(async (systemInstruction: string) => {
     try {
@@ -394,6 +436,9 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
       const url = URL.createObjectURL(blob);
       await audioContextRef.current.audioWorklet.addModule(url);
       
+      // ← AQUI ESTÁ A ÚNICA MUDANÇA REAL: usa prompt enriquecido
+      const enhancedInstruction = await getEnhancedInstruction(systemInstruction);
+
       const sessionPromise = ai.live.connect({
         model: "gemini-2.5-flash-native-audio-preview-12-2025",
         config: {
@@ -401,7 +446,7 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAPPING[voice] || 'Kore' } },
           },
-          systemInstruction: systemInstruction,
+          systemInstruction: enhancedInstruction, // ← prompt com RAG
           tools: [
             { functionDeclarations: [
               toggleScreenSharingFunc, changeVoiceFunc, openUrlFunc, mascotControlFunc,
@@ -462,7 +507,6 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
                 const name = call.name;
                 const args = call.args || {};
 
-                // New tools — delegate to App.tsx via onToolCall
                 const newTools = ['show_lyrics', 'set_mood', 'save_memory', 'add_important_date', 'write_diary', 'search_web', 'update_workspace'];
                 if (newTools.includes(name)) {
                   onToolCallRef.current?.(name, args);
@@ -470,7 +514,6 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
                   continue;
                 }
 
-                // Original tools — same as before
                 if (name === "toggle_screen_sharing") {
                   onToggleScreenSharingRef.current?.(args.enabled as boolean);
                   responses.push({ name, id: call.id, response: { success: true, message: `Compartilhamento de tela ${args.enabled ? 'ativado' : 'desativado'}.` } });
@@ -578,7 +621,7 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
       setIsConnected(false);
       isConnectedRef.current = false;
     }
-  }, [voice, stopAudio, playNextChunk, toBase64]);
+  }, [voice, stopAudio, playNextChunk, toBase64, getEnhancedInstruction]);
 
   const startScreenSharing = useCallback(async () => {
     try {
