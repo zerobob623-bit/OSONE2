@@ -17,19 +17,38 @@ export interface DiaryEntry {
   userId: string;
 }
 
+export interface SemanticFact {
+  concept: string;
+  definition: string;
+  category: string;
+  embedding?: number[];
+}
+
+export interface ConversationSummary {
+  id?: string;
+  summary: string;
+  topics: string[];
+  createdAt: Timestamp;
+  embedding?: number[];
+}
+
 export interface UserMemory {
   userName?: string;
   facts: string[];
   preferences: string[];
   importantDates: ImportantDate[];
   workspace?: string;
+  semanticMemory?: SemanticFact[];
+  summaries?: ConversationSummary[];
 }
 
 export function useUserMemory() {
   const [memory, setMemory] = useState<UserMemory>({
     facts: [],
     preferences: [],
-    importantDates: []
+    importantDates: [],
+    semanticMemory: [],
+    summaries: []
   });
   const [diary, setDiary] = useState<DiaryEntry[]>([]);
   const { userId } = useAppStore();
@@ -38,7 +57,7 @@ export function useUserMemory() {
 
   useEffect(() => {
     if (!userId) {
-      setMemory({ facts: [], preferences: [], importantDates: [] });
+      setMemory({ facts: [], preferences: [], importantDates: [], semanticMemory: [], summaries: [] });
       setDiary([]);
       if (memoryUnsubscribeRef.current) memoryUnsubscribeRef.current();
       if (diaryUnsubscribeRef.current) diaryUnsubscribeRef.current();
@@ -84,7 +103,11 @@ export function useUserMemory() {
     if (!userId) return;
     const path = `users/${userId}/memory/main`;
     try {
-      await setDoc(doc(db, path), { ...memory, ...partial }, { merge: true });
+      // Filter out undefined values to prevent Firestore error
+      const cleanPartial = Object.fromEntries(
+        Object.entries(partial).filter(([_, v]) => v !== undefined)
+      );
+      await setDoc(doc(db, path), { ...memory, ...cleanPartial }, { merge: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);
     }
@@ -107,9 +130,11 @@ export function useUserMemory() {
     if (!userId) return;
     const path = `users/${userId}/memory/main`;
     try {
+      const newDate: any = { label: date.label, date: date.date };
+      if (date.year) newDate.year = date.year;
       await setDoc(doc(db, path), { 
         ...memory, 
-        importantDates: [...(memory.importantDates || []), date] 
+        importantDates: [...(memory.importantDates || []), newDate] 
       }, { merge: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);
@@ -156,6 +181,47 @@ export function useUserMemory() {
     }
   }, [userId, memory]);
 
+  const clearWorkspace = useCallback(async () => {
+    if (!userId) return;
+    const path = `users/${userId}/memory/main`;
+    try {
+      const { workspace, ...rest } = memory;
+      await setDoc(doc(db, path), rest);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  }, [userId, memory]);
+
+  const addSemanticFact = useCallback(async (concept: string, definition: string, category: string, embedding?: number[]) => {
+    if (!userId) return;
+    const path = `users/${userId}/memory/main`;
+    try {
+      const newFact: any = { concept, definition, category };
+      if (embedding) newFact.embedding = embedding;
+      await setDoc(doc(db, path), { 
+        ...memory, 
+        semanticMemory: [...(memory.semanticMemory || []), newFact] 
+      }, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  }, [userId, memory]);
+
+  const addSummary = useCallback(async (summary: string, topics: string[], embedding?: number[]) => {
+    if (!userId) return;
+    const path = `users/${userId}/memory/main`;
+    try {
+      const newSummary: any = { summary, topics, createdAt: Timestamp.now() };
+      if (embedding) newSummary.embedding = embedding;
+      await setDoc(doc(db, path), { 
+        ...memory, 
+        summaries: [...(memory.summaries || []), newSummary] 
+      }, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  }, [userId, memory]);
+
   return {
     memory,
     diary,
@@ -164,6 +230,9 @@ export function useUserMemory() {
     addImportantDate,
     addDiaryEntry,
     updateWorkspace,
+    clearWorkspace,
+    addSemanticFact,
+    addSummary,
     getUpcomingDates
   };
 }
