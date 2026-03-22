@@ -60,6 +60,18 @@
         "workspace": {
           "type": "string",
           "description": "Text or code generated for the user"
+        },
+        "semanticMemory": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "concept": { "type": "string" },
+              "definition": { "type": "string" },
+              "category": { "type": "string" }
+            }
+          },
+          "description": "Structured knowledge and concepts learned about the user or their interests"
         }
       }
     },
