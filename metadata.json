@@ -1,6 +1,6 @@
 {
-  "name": "OZÔNIO",
-  "description": "O primeiro sistema operacional artificialmente inteligente do mundo, inspirado em Samantha.",
+  "name": "OSONE2",
+  "description": "OSONE: O primeiro sistema operacional artificialmente inteligente com memória semântica contextual e integração com Gmail.",
   "requestFramePermissions": [
     "camera",
     "microphone",
