@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { User } from '../firebase';
 
 export type VoiceName = 'Charon' | 'Kore' | 'Puck' | 'Zephyr' | 'Fenrir';
+export type Mood = 'happy' | 'calm' | 'focused' | 'playful' | 'melancholic' | 'angry' | 'singing';
 
 export const VOICE_MAPPING: Record<VoiceName, string> = {
   'Charon': 'Charon',
@@ -55,6 +56,8 @@ interface AppState {
   // Voice and Settings
   voice: VoiceName;
   setVoice: (voice: VoiceName) => void;
+  mood: Mood;
+  setMood: (mood: Mood) => void;
   isSettingsOpen: boolean;
   setIsSettingsOpen: (isOpen: boolean) => void;
   
@@ -78,6 +81,8 @@ interface AppState {
   setIsThinking: (thinking: boolean) => void;
   isScreenSharing: boolean;
   setIsScreenSharing: (sharing: boolean) => void;
+  focusMode: boolean;
+  setFocusMode: (enabled: boolean) => void;
   
   // Mascot
   isMascotVisible: boolean;
@@ -127,6 +132,8 @@ export const useAppStore = create<AppState>()(
       // Voice and Settings
       voice: 'Kore',
       setVoice: (voice) => set({ voice }),
+      mood: 'calm',
+      setMood: (mood) => set({ mood }),
       isSettingsOpen: false,
       setIsSettingsOpen: (isSettingsOpen) => set({ isSettingsOpen }),
       
@@ -152,6 +159,8 @@ export const useAppStore = create<AppState>()(
       setIsThinking: (isThinking) => set({ isThinking }),
       isScreenSharing: false,
       setIsScreenSharing: (isScreenSharing) => set({ isScreenSharing }),
+      focusMode: false,
+      setFocusMode: (focusMode) => set({ focusMode }),
       
       // Mascot
       isMascotVisible: false,
@@ -184,7 +193,7 @@ export const useAppStore = create<AppState>()(
       setUserProfile: (profile) => set((state) => ({ 
         userProfile: { ...state.userProfile, ...profile } 
       })),
-      assistantName: 'Samantha',
+      assistantName: 'OSONE',
       setAssistantName: (assistantName) => set({ assistantName }),
       bootPhase: 0,
       setBootPhase: (bootPhase) => set({ bootPhase }),
@@ -214,10 +223,12 @@ export const useAppStore = create<AppState>()(
           socialLevel: '',
           motherRelationship: ''
         },
-        assistantName: 'Samantha',
+        assistantName: 'OSONE',
+        mood: 'calm',
         isConnected: false,
         isMascotVisible: false,
         isScreenSharing: false,
+        focusMode: false,
         bootPhase: 0
       }),
     }),
@@ -234,7 +245,9 @@ export const useAppStore = create<AppState>()(
         assistantName: state.assistantName,
         isMascotVisible: state.isMascotVisible,
         mascotAppearance: state.mascotAppearance,
-        apiKey: state.apiKey
+        apiKey: state.apiKey,
+        focusMode: state.focusMode,
+        mood: state.mood
       }),
     }
   )
