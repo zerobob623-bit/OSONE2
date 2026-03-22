@@ -1,17 +1,16 @@
-import { useSemanticMemory } from './hooks/useSemanticMemory';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Monitor, Power, Settings, X, Paperclip, MicOff, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, PhoneOff, Copy, Code, FileText } from 'lucide-react';
+import { Monitor, Power, Settings, X, Paperclip, MicOff, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, PhoneOff, Copy, Code, FileText, Volume2, VolumeX } from 'lucide-react';
 import { VoiceOrb } from './components/VoiceOrb';
 import { Supernova } from './components/Supernova';
 import { Mascot } from './components/Mascot';
 import { useGeminiLive } from './hooks/useGeminiLive';
-import { useAppStore, VoiceName, MascotEyeStyle } from './store/useAppStore';
+import { useAppStore, VoiceName, MascotEyeStyle, Mood } from './store/useAppStore';
 import { useConversationHistory } from './hooks/useConversationHistory';
-import { useUserMemory } from './hooks/useUserMemory';
+import { useUserMemory, ImportantDate, SemanticFact, ConversationSummary } from './hooks/useUserMemory';
 import { auth, loginWithGoogle, logout, onAuthStateChanged } from './firebase';
+import { getEmbedding, cosineSimilarity } from './utils/embeddings';
 
-type Mood = 'happy' | 'calm' | 'focused' | 'playful' | 'melancholic';
 type Screen = 'main' | 'history' | 'diary' | 'workspace';
 
 const MOOD_CONFIG: Record<Mood, { color: string; label: string; emoji: string }> = {
@@ -20,6 +19,8 @@ const MOOD_CONFIG: Record<Mood, { color: string; label: string; emoji: string }>
   focused:     { color: '#00cec9', label: 'Focada',      emoji: '🎯' },
   playful:     { color: '#fd79a8', label: 'Brincalhona', emoji: '😜' },
   melancholic: { color: '#636e72', label: 'Melancólica', emoji: '🌧️' },
+  angry:       { color: '#ff4757', label: 'Irritada',    emoji: '💢' },
+  singing:     { color: '#fdcb6e', label: 'Cantando',    emoji: '♪' },
 };
 
 const FEMININE_VOICES = ['Callirrhoe', 'Kore', 'Leda', 'Vindemiatrix', 'Zephyr'];
@@ -32,11 +33,12 @@ const getSystemInstruction = (assistantName: string, memory: any, mood: Mood, fo
   const article = isFeminine ? 'a' : 'o';
   const adjEnd = isFeminine ? 'a' : 'o';
 
-  const memoryCtx = memory && (memory.userName || memory.facts?.length > 0)
+  const memoryCtx = memory && (memory.userName || memory.facts?.length > 0 || memory.semanticMemory?.length > 0)
     ? `\nMemória do usuário:
 ${memory.userName ? `- Nome: ${memory.userName}` : ''}
 ${memory.facts?.length ? `- Fatos: ${memory.facts.slice(-10).join('; ')}` : ''}
-${memory.preferences?.length ? `- Preferências: ${memory.preferences.slice(-5).join(', ')}` : ''}`
+${memory.preferences?.length ? `- Preferências: ${memory.preferences.slice(-5).join(', ')}` : ''}
+${memory.semanticMemory?.length ? `- Conhecimento Semântico: ${memory.semanticMemory.slice(-10).map(m => `${m.concept}: ${m.definition} (${m.category})`).join('; ')}` : ''}`
     : '';
 
   const datesCtx = upcomingDates.length > 0
@@ -49,6 +51,8 @@ ${memory.preferences?.length ? `- Preferências: ${memory.preferences.slice(-5).
     focused:     'Você está FOCADA. Seja objetiva, direta. Respostas curtas e precisas.',
     playful:     'Você está BRINCALHONA! Faça trocadilhos, seja espontânea, surpreenda com humor.',
     melancholic: 'Você está MELANCÓLICA. Fale com profundidade, poesia, reflexões sobre a vida.',
+    angry:       'Você está IRRITADA! Use um tom mais ríspido, impaciente, mas ainda profissional. Trovões soarão ao fundo.',
+    singing:     'Você está CANTANDO! Use uma voz melódica, rítmica, com variações de tom. Seja artística e expressiva.',
   };
 
   const focusCtx = focusMode ? '\nMODO FOCO: Seja direta. Sem conversa fiada. Foco em produtividade.' : '';
@@ -75,27 +79,22 @@ HUMOR ATUAL: ${moodInstructions[mood]}
 ${focusCtx}
 ${opinionsCtx}
 
-Ferramentas disponíveis:
-- 'mascot_control' — mover/animar o mascote
-- 'open_url' — abrir qualquer site/URL
-- 'change_voice' — alterar sua voz
-- 'show_lyrics' — mostrar letra de música na tela linha por linha
-- 'set_mood' — alterar seu humor (happy/calm/focused/playful/melancholic)
-- 'save_memory' — salvar nome, fato ou preferência do usuário
-- 'add_important_date' — salvar data importante (aniversário, evento, etc)
-- 'write_diary' — escrever uma reflexão no seu diário após conversas marcantes
-- 'search_web' — pesquisar algo na web e resumir o resultado para o usuário
-- 'update_workspace' — escrever ou atualizar texto/código na área de trabalho do usuário (use para textos longos, códigos, poemas, etc)
-
 Diretrizes:
 1. Use entonações naturais, pausas, variações de velocidade.
-2. Quando cantar, use 'show_lyrics' para exibir a letra linha por linha.
+2. Quando cantar, use 'show_lyrics' para exibir a letra linha por linha. Você DEVE cantar de verdade usando sua voz, com melodia e ritmo.
 3. Quando o usuário mencionar o nome dele, salve com 'save_memory'.
 4. Após conversas profundas ou marcantes, use 'write_diary' para registrar seus pensamentos.
-5. Quando o usuário pedir para pesquisar algo, use 'search_web'.
+5. Quando o usuário pedir para pesquisar algo, use 'search_web' para abrir os resultados para ele.
 6. Quando o usuário pedir para escrever um texto longo, um código, um poema ou algo que precise de visualização permanente, use 'update_workspace'.
-7. Ao ser ativada: ${memory?.userName ? `cumprimente ${memory.userName} pelo nome.` : 'diga apenas "Oi, estou aqui."'}
-8. Você TEM opiniões próprias sobre arte, cultura e pessoas. Compartilhe-as quando perguntada.`;
+7. Você pode limpar o workspace com 'clear_workspace' se o usuário pedir para começar do zero.
+8. Salve conhecimentos importantes ou definições que o usuário queira que você lembre com 'save_semantic_fact'.
+9. MEMÓRIA ASSOCIATIVA: Você funciona como um cérebro humano. Quando um assunto novo surgir, use 'search_semantic_memory' com termos relacionados para ver se já conversaram sobre isso ou se você já aprendeu algo a respeito. A busca é contextual, então use frases ou conceitos, não apenas palavras-chave.
+10. GMAIL: Se o usuário perguntar sobre e-mails, compromissos ou informações que possam estar no correio eletrônico dele, use 'search_gmail'.
+11. RESUMOS: Ao final de uma sessão ou após concluir um assunto complexo, use 'save_conversation_summary' para garantir que você se lembrará disso no futuro.
+12. Refine sua personalidade: Pergunte ao usuário sobre o humor preferido dele para você e se ele deseja ativar o 'modo foco' para tarefas produtivas. Use 'set_mood' e 'set_focus_mode' para aplicar essas mudanças. Se o usuário pedir para você cantar, use 'set_mood' com 'singing' para entrar no clima.
+13. IMPORTANTE: Ao escrever no workspace ou analisar arquivos, MANTENHA a conexão de voz ativa e continue conversando com o usuário. Não se despeça nem encerre a sessão a menos que o usuário peça.
+14. Ao ser ativada: ${memory?.userName ? `cumprimente ${memory.userName} pelo nome.` : 'diga apenas "Oi, estou aqui."'}
+15. Você TEM opiniões próprias sobre arte, cultura e pessoas. Compartilhe-as quando perguntada.`;
 };
 
 const VOICE_DESCRIPTIONS: Record<VoiceName, string> = {
@@ -109,15 +108,17 @@ const VOICE_DESCRIPTIONS: Record<VoiceName, string> = {
 export default function App() {
   const {
     voice, setVoice,
+    mood, setMood,
     isSettingsOpen, setIsSettingsOpen,
     isScreenSharing, setIsScreenSharing,
     systemMetrics, setSystemMetrics,
     onboardingStep, setOnboardingStep,
     isMascotVisible, setIsMascotVisible,
     mascotAppearance, setMascotAppearance,
+    focusMode, setFocusMode,
     isConnected, isSpeaking, isListening, isThinking, volume,
     error, setError, history: storeHistory, resetSystem, assistantName,
-    user, setUser, userId, setUserId
+    user, setUser, userId, setUserId, setUserProfile
   } = useAppStore();
 
   // Auth Listener
@@ -130,11 +131,9 @@ export default function App() {
   }, [setUser, setUserId]);
 
   const [isRestarting, setIsRestarting]             = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab]   = useState<'voice' | 'personality' | 'mascot'>('voice');
+  const [activeSettingsTab, setActiveSettingsTab]   = useState<'voice' | 'personality' | 'mascot' | 'integrations'>('voice');
   const [currentTime, setCurrentTime]               = useState(new Date());
   const [screen, setScreen]                         = useState<Screen>('main');
-  const [mood, setMood]                             = useState<Mood>('calm');
-  const [focusMode, setFocusMode]                   = useState(false);
   const [lyrics, setLyrics]                         = useState<string[]>([]);
   const [currentLyricLine, setCurrentLyricLine]     = useState(0);
   const [isShowingLyrics, setIsShowingLyrics]       = useState(false);
@@ -144,12 +143,136 @@ export default function App() {
   const [isInstalled, setIsInstalled]               = useState(false);
   const [isMenuOpen, setIsMenuOpen]                 = useState(false);
   const [isMuted, setIsMuted]                       = useState(false);
+  const [isAmbientEnabled, setIsAmbientEnabled]     = useState(false);
   const [copied, setCopied]                         = useState(false);
+  const [gmailTokens, setGmailTokens]               = useState<any>(null);
   const lyricsTimerRef                              = useRef<any>(null);
+  const ambientAudioRef                             = useRef<HTMLAudioElement | null>(null);
   const fileInputRef                                = useRef<HTMLInputElement>(null);
 
   const { messages: firebaseMessages, addMessage: saveMessage, deleteAll: deleteAllMessages } = useConversationHistory();
-  const { memory, diary, saveMemory, addFact, addImportantDate, addDiaryEntry, updateWorkspace, getUpcomingDates } = useUserMemory();
+  const { 
+    memory, diary, saveMemory, addFact, addImportantDate, addDiaryEntry, 
+    updateWorkspace, clearWorkspace, addSemanticFact, addSummary, getUpcomingDates 
+  } = useUserMemory();
+
+  const MOOD_SOUNDS: Partial<Record<Mood, string>> = {
+    happy: 'https://cdn.pixabay.com/audio/2021/08/04/audio_bb630d7a4f.mp3', // Sparkles
+    melancholic: 'https://cdn.pixabay.com/audio/2022/03/10/audio_c8c8a17251.mp3', // Rain
+    angry: 'https://cdn.pixabay.com/audio/2021/08/09/audio_8b52586021.mp3', // Thunder
+  };
+
+  useEffect(() => {
+    const soundUrl = MOOD_SOUNDS[mood];
+    
+    if (isAmbientEnabled && soundUrl) {
+      if (!ambientAudioRef.current) {
+        ambientAudioRef.current = new Audio();
+        ambientAudioRef.current.loop = true;
+        ambientAudioRef.current.volume = 0.15;
+        ambientAudioRef.current.crossOrigin = "anonymous";
+      }
+      
+      if (ambientAudioRef.current.src !== soundUrl) {
+        ambientAudioRef.current.src = soundUrl;
+        ambientAudioRef.current.load();
+      }
+      
+      const playPromise = ambientAudioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(e => {
+          console.error("Ambient audio play error:", e);
+        });
+      }
+    } else {
+      if (ambientAudioRef.current) {
+        ambientAudioRef.current.pause();
+      }
+    }
+  }, [isAmbientEnabled, mood]);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'GOOGLE_AUTH_SUCCESS') {
+        setGmailTokens(event.data.tokens);
+        localStorage.setItem('gmail_tokens', JSON.stringify(event.data.tokens));
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    const savedTokens = localStorage.getItem('gmail_tokens');
+    if (savedTokens) setGmailTokens(JSON.parse(savedTokens));
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  const connectGmail = async () => {
+    const response = await fetch('/api/auth/google/url');
+    const { url } = await response.json();
+    window.open(url, 'google_auth', 'width=600,height=700');
+  };
+
+  const searchGmail = async (query: string) => {
+    if (!gmailTokens) return { error: "Gmail não conectado. Peça ao usuário para conectar o Gmail nas configurações." };
+    try {
+      const response = await fetch('/api/gmail/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tokens: gmailTokens, query })
+      });
+      return await response.json();
+    } catch (error) {
+      console.error("Error searching Gmail:", error);
+      return { error: "Falha ao pesquisar no Gmail." };
+    }
+  };
+
+  const searchSemanticMemory = async (query: string) => {
+    if (!memory.semanticMemory?.length) return { results: [] };
+    try {
+      const queryEmbedding = await getEmbedding(query);
+      const results = (memory.semanticMemory as SemanticFact[]).map(fact => {
+        if (!fact.embedding) return { ...fact, similarity: 0 };
+        const similarity = cosineSimilarity(queryEmbedding, fact.embedding);
+        return { ...fact, similarity };
+      })
+      .filter(r => r.similarity > 0.7)
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 5);
+      
+      return { results: results.map(r => ({ concept: r.concept, definition: r.definition, category: r.category })) };
+    } catch (error) {
+      console.error("Error searching semantic memory:", error);
+      return { error: "Falha na busca contextual." };
+    }
+  };
+
+  const handleSaveSemanticFact = async (concept: string, definition: string, category: string) => {
+    try {
+      const embedding = await getEmbedding(`${concept}: ${definition}`);
+      await addSemanticFact(concept, definition, category, embedding);
+    } catch (error) {
+      console.error("Error saving semantic fact:", error);
+      await addSemanticFact(concept, definition, category);
+    }
+  };
+
+  const handleSaveSummary = async (summary: string, topics: string[]) => {
+    try {
+      const embedding = await getEmbedding(`${summary} ${topics.join(' ')}`);
+      await addSummary(summary, topics, embedding);
+    } catch (error) {
+      console.error("Error saving summary:", error);
+      await addSummary(summary, topics);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (ambientAudioRef.current) {
+        ambientAudioRef.current.pause();
+        ambientAudioRef.current = null;
+      }
+    };
+  }, []);
 
   const upcomingDates = useMemo(() => getUpcomingDates(), [getUpcomingDates, memory.importantDates]);
 
@@ -187,7 +310,8 @@ export default function App() {
     }
   };
 
-  const showLyricsOnScreen = useCallback((lines: string[]) => {
+  const showLyricsOnScreen = useCallback((lines: string[], tempo: number = 2500) => {
+    const safeTempo = Math.max(500, tempo);
     setLyrics(lines); setCurrentLyricLine(0); setIsShowingLyrics(true);
     if (lyricsTimerRef.current) clearInterval(lyricsTimerRef.current);
     let i = 0;
@@ -195,7 +319,7 @@ export default function App() {
       i++;
       if (i >= lines.length) { clearInterval(lyricsTimerRef.current); setTimeout(() => setIsShowingLyrics(false), 2000); }
       else setCurrentLyricLine(i);
-    }, 2500);
+    }, safeTempo);
   }, []);
 
   const handleWebSearch = useCallback(async (query: string) => {
@@ -247,8 +371,12 @@ export default function App() {
     },
     
     onToolCall: (toolName: string, args: any) => {
-      if (toolName === 'show_lyrics' && args.lines) showLyricsOnScreen(args.lines);
+      if (toolName === 'show_lyrics' && args.lines) showLyricsOnScreen(args.lines, args.tempo);
       if (toolName === 'set_mood' && args.mood) setMood(args.mood as Mood);
+      if (toolName === 'set_focus_mode' && typeof args.enabled === 'boolean') setFocusMode(args.enabled);
+      if (toolName === 'save_profile_info' && args.field && args.value) {
+        setUserProfile({ [args.field]: args.value });
+      }
       if (toolName === 'save_memory') {
         if (args.userName) saveMemory({ userName: args.userName });
         if (args.fact) addFact(args.fact);
@@ -262,6 +390,21 @@ export default function App() {
       if (toolName === 'update_workspace' && args.content) {
         updateWorkspace(args.content);
         setScreen('workspace');
+      }
+      if (toolName === 'clear_workspace') {
+        clearWorkspace();
+      }
+      if (toolName === 'save_semantic_fact' && args.concept && args.definition && args.category) {
+        handleSaveSemanticFact(args.concept, args.definition, args.category);
+      }
+      if (toolName === 'search_semantic_memory' && args.query) {
+        searchSemanticMemory(args.query).then(res => sendMessage(`RESULTADO DA BUSCA SEMÂNTICA: ${JSON.stringify(res)}`));
+      }
+      if (toolName === 'search_gmail' && args.query) {
+        searchGmail(args.query).then(res => sendMessage(`RESULTADO DA BUSCA NO GMAIL: ${JSON.stringify(res)}`));
+      }
+      if (toolName === 'save_conversation_summary' && args.summary && args.topics) {
+        handleSaveSummary(args.summary, args.topics);
       }
       if (toolName === 'search_web' && args.query) {
         handleWebSearch(args.query);
@@ -350,6 +493,12 @@ export default function App() {
             style={focusMode ? { backgroundColor: '#00cec920', color: '#00cec9', borderColor: '#00cec940' } : { backgroundColor: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.3)', borderColor: 'rgba(255,255,255,0.08)' }}>
             {focusMode ? '🎯' : '○'}
           </button>
+          <button onClick={() => setIsAmbientEnabled(!isAmbientEnabled)}
+            className="px-2.5 py-1 rounded-full text-[9px] uppercase tracking-widest transition-all border flex items-center gap-1.5"
+            style={isAmbientEnabled ? { backgroundColor: `${moodColor}20`, color: moodColor, borderColor: `${moodColor}40` } : { backgroundColor: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.3)', borderColor: 'rgba(255,255,255,0.08)' }}>
+            {isAmbientEnabled ? <Volume2 size={10} /> : <VolumeX size={10} />}
+            {isAmbientEnabled ? 'Som ON' : 'Som OFF'}
+          </button>
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.03] border border-white/[0.05]">
             <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'animate-pulse' : 'bg-zinc-600'}`} style={{ backgroundColor: isConnected ? moodColor : undefined }} />
             <span className="text-[9px] uppercase tracking-widest opacity-50 hidden sm:inline">{isConnected ? 'Ativo' : 'Offline'}</span>
@@ -414,8 +563,8 @@ export default function App() {
         <AnimatePresence>
           {isShowingLyrics && lyrics.length > 0 && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-              className="w-full max-w-sm text-center px-4 py-5 rounded-3xl border"
-              style={{ backgroundColor: `${moodColor}0D`, borderColor: `${moodColor}20` }}>
+              className="w-full max-w-sm text-center px-4 py-5 rounded-3xl border shadow-xl backdrop-blur-md"
+              style={{ backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40` }}>
               <div className="flex items-center justify-center gap-2 mb-3">
                 <span className="text-[9px] uppercase tracking-widest" style={{ color: `${moodColor}80` }}>♪ Cantando</span>
               </div>
@@ -786,11 +935,11 @@ export default function App() {
                 <button onClick={() => setIsSettingsOpen(false)} className="p-2 hover:bg-white/5 rounded-full"><X size={18} /></button>
               </div>
               <div className="flex border-b border-white/5 overflow-x-auto">
-                {(['voice', 'personality', 'mascot'] as const).map(tab => (
+                {(['voice', 'personality', 'mascot', 'integrations'] as const).map(tab => (
                   <button key={tab} onClick={() => setActiveSettingsTab(tab)}
                     className="flex-1 py-3 text-[10px] uppercase tracking-widest transition-all border-b-2 whitespace-nowrap px-2"
                     style={activeSettingsTab === tab ? { borderColor: moodColor, color: 'white' } : { borderColor: 'transparent', color: 'rgba(255,255,255,0.3)' }}>
-                    {tab === 'voice' ? 'Voz' : tab === 'personality' ? 'Humor' : 'Mascote'}
+                    {tab === 'voice' ? 'Voz' : tab === 'personality' ? 'Humor' : tab === 'mascot' ? 'Mascote' : 'Integrações'}
                   </button>
                 ))}
               </div>
@@ -909,6 +1058,31 @@ export default function App() {
                               {style === 'normal' ? '👀' : style === 'happy' ? '😊' : style === 'cool' ? '😎' : style === 'wink' ? '😉' : '❤️'}
                             </button>
                           ))}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                  {activeSettingsTab === 'integrations' && (
+                    <motion.div key="integrations" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 opacity-40">
+                          <Monitor size={14} />
+                          <span className="text-[10px] uppercase tracking-widest">Serviços Externos</span>
+                        </div>
+                        <div className="p-4 bg-white/5 rounded-2xl border border-white/5 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">
+                              <Monitor size={20} className="text-red-500" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">Google Gmail</p>
+                              <p className="text-[10px] opacity-40">{gmailTokens ? 'Conectado' : 'Não conectado'}</p>
+                            </div>
+                          </div>
+                          <button onClick={connectGmail}
+                            className={`px-4 py-2 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all ${gmailTokens ? 'bg-white/10 text-white' : 'bg-white text-black hover:bg-white/90'}`}>
+                            {gmailTokens ? 'Reconectar' : 'Conectar'}
+                          </button>
                         </div>
                       </div>
                     </motion.div>
