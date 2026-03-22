@@ -12,7 +12,15 @@ export interface UseGeminiLiveProps {
   isMuted?: boolean;
 }
 
-export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl, onInteract, onMessage, onToolCall, isMuted = false }: UseGeminiLiveProps) => {
+export const useGeminiLive = ({ 
+  onToggleScreenSharing, 
+  onChangeVoice, 
+  onOpenUrl, 
+  onInteract, 
+  onMessage, 
+  onToolCall, 
+  isMuted = false 
+}: UseGeminiLiveProps) => {
   const { 
     voice, 
     isConnected, setIsConnected, 
@@ -61,7 +69,10 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
     onToolCallRef.current = onToolCall;
   }, [onToggleScreenSharing, onChangeVoice, onOpenUrl, onInteract, onMessage, onToolCall]);
 
-  // --- DECLARAÇÕES DE FERRAMENTAS (TOOLS) ---
+  // ============================================
+  // 🛠️ DECLARAÇÕES DE FERRAMENTAS (TOOLS)
+  // ============================================
+
   const toggleScreenSharingFunc: FunctionDeclaration = {
     name: "toggle_screen_sharing",
     description: "Ativa ou desativa o compartilhamento de tela para que a IA possa ver o que o usuário está fazendo.",
@@ -203,7 +214,7 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
 
   const searchWebFunc: FunctionDeclaration = {
     name: "search_web",
-    description: "Pesquisa algo na web e retorna resultados relevantes com resumos.",
+    description: "Pesquisa algo na web e retorna resultados relevantes com resumos. Use para notícias, informações atuais, dados online.",
     parameters: {
       type: Type.OBJECT,
       properties: { 
@@ -216,7 +227,7 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
 
   const readUrlContentFunc: FunctionDeclaration = {
     name: "read_url_content",
-    description: "Lê e extrai o conteúdo textual principal de uma página da web.",
+    description: "Lê e extrai o conteúdo textual principal de uma página da web específica.",
     parameters: {
       type: Type.OBJECT,
       properties: { 
@@ -289,7 +300,10 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
     }
   };
 
-  // --- FUNÇÕES DE CONTROLE DE ÁUDIO ---
+  // ============================================
+  // 🎵 FUNÇÕES DE CONTROLE DE ÁUDIO
+  // ============================================
+
   const stopAudio = useCallback((isReconnecting = false) => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
@@ -383,22 +397,23 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
     }
   }, [setIsThinking]);
 
-  // --- FUNÇÕES DE PESQUISA E LEITURA DA WEB ---
-  
+  // ============================================
+  // 🌐 FUNÇÕES DE PESQUISA E LEITURA DA WEB
+  // ============================================
+
   /**
-   * Pesquisa na web usando a API do Jina AI Search
+   * Pesquisa na web usando a API do Jina AI Search (Gratuita)
    * Retorna resultados formatados com título, URL e resumo
    */
   const performWebSearch = useCallback(async (query: string, numResults: number = 5): Promise<string> => {
     try {
-      // API pública do Jina AI para busca na web
       const searchUrl = `https://s.jina.ai/${encodeURIComponent(query)}`;
       
       const response = await fetch(searchUrl, {
         headers: {
           'Accept': 'application/json',
-          'X-With-Generated-Alt': 'true', // Inclui descrições de imagens
-          'X-With-Links-Summary': 'true'  // Inclui resumos de links
+          'X-With-Generated-Alt': 'true',
+          'X-With-Links-Summary': 'true'
         }
       });
       
@@ -408,7 +423,6 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
       
       const data = await response.json();
       
-      // Formata os resultados para a IA
       if (data.data && Array.isArray(data.data)) {
         const results = data.data.slice(0, numResults).map((item: any, index: number) => {
           return `[${index + 1}] ${item.title}\nURL: ${item.url}\nResumo: ${item.description || item.content?.substring(0, 300) || 'Sem descrição disponível'}\n`;
@@ -417,13 +431,11 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
         return `🔍 Resultados para "${query}":\n\n${results}\n\n💡 Dica: Use "read_url_content" para ler o conteúdo completo de qualquer URL listada acima.`;
       }
       
-      // Fallback para resposta em texto
       const text = await response.text();
-      return text.substring(0, 2000); // Limita tamanho da resposta
+      return text.substring(0, 2000);
       
     } catch (error) {
       console.error('Erro na pesquisa web:', error);
-      // Fallback: tenta DuckDuckGo como alternativa
       return await fallbackDuckDuckGoSearch(query, numResults);
     }
   }, []);
@@ -464,17 +476,15 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
   }, []);
 
   /**
-   * Lê o conteúdo de uma URL usando a API do Jina AI Reader
+   * Lê o conteúdo de uma URL usando a API do Jina AI Reader (Gratuita)
    * Extrai texto limpo de artigos, notícias e páginas web
    */
   const readUrlContent = useCallback(async (url: string): Promise<string> => {
     try {
-      // Validação básica de URL
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
         url = 'https://' + url;
       }
       
-      // API pública do Jina AI para leitura de URLs
       const readerUrl = `https://r.jina.ai/${url}`;
       
       const response = await fetch(readerUrl, {
@@ -491,18 +501,15 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
         throw new Error(`Erro ao ler URL: ${response.status}`);
       }
       
-      // Tenta JSON primeiro (mais estruturado)
       const contentType = response.headers.get('content-type');
       if (contentType?.includes('application/json')) {
         const data = await response.json();
         if (data.content) {
-          // Limita o conteúdo para não sobrecarregar o contexto
           const content = data.content.substring(0, 4000);
           return `📄 Conteúdo de ${url}:\n\n${content}\n\n${data.content.length > 4000 ? '⚠️ Conteúdo truncado. Peça para ler seções específicas se necessário.' : ''}`;
         }
       }
       
-      // Fallback para texto puro
       const text = await response.text();
       const cleanText = text.substring(0, 4000);
       return `📄 Conteúdo de ${url}:\n\n${cleanText}${text.length > 4000 ? '\n\n⚠️ Conteúdo truncado.' : ''}`;
@@ -510,7 +517,6 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
     } catch (error: any) {
       console.error('Erro ao ler URL:', error);
       
-      // Tenta com parâmetros adicionais para sites difíceis
       try {
         const response = await fetch(`https://r.jina.ai/${url}`, {
           headers: {
@@ -530,7 +536,10 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
     }
   }, []);
 
-  // --- CONEXÃO COM A API GEMINI LIVE ---
+  // ============================================
+  // 🔌 CONEXÃO COM A API GEMINI LIVE
+  // ============================================
+
   const connect = useCallback(async (systemInstruction: string) => {
     try {
       setError(null);
@@ -572,10 +581,12 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
       const url = URL.createObjectURL(blob);
       await audioContextRef.current.audioWorklet.addModule(url);
       
-      console.log("🚀 Iniciando conexão com a Live API (Versão Corrigida)...");
+      console.log("🚀 Iniciando conexão com Gemini 2.0 Flash native audio preview 12 2025 Live API...");
 
       const sessionPromise = ai.live.connect({
-        model: "gemini-2.0-flash", 
+        // ✅ MODELO GEMINI 2.0 FLASH ATUALIZADO
+        model: "model: "gemini-2.5-flash-native-audio-preview-12-2025",
+        
         config: {
           responseModalities: [Modality.AUDIO],
           systemInstruction: systemInstruction,
@@ -653,14 +664,13 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
                   responses.push({ name, id: call.id, response: { success: true } });
                   handled = true;
                   
-                // === IMPLEMENTAÇÃO REAL: PESQUISA NA WEB ===
+                // === 🔍 IMPLEMENTAÇÃO: PESQUISA NA WEB ===
                 } else if (name === "search_web") {
                   handled = true;
                   try {
                     const query = args.query as string;
                     const numResults = args.num_results as number || 5;
                     
-                    // Envia resposta inicial de "processando"
                     responses.push({ 
                       name, 
                       id: call.id, 
@@ -671,10 +681,8 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
                       } 
                     });
                     
-                    // Executa a busca em background
                     const searchResult = await performWebSearch(query, numResults);
                     
-                    // Envia o resultado completo para a IA
                     sessionPromise.then((session: any) => {
                       session.sendToolResponse({ 
                         functionResponses: [{
@@ -703,13 +711,12 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
                     });
                   }
                   
-                // === IMPLEMENTAÇÃO REAL: LEITURA DE URL ===
+                // === 📖 IMPLEMENTAÇÃO: LEITURA DE URL ===
                 } else if (name === "read_url_content") {
                   handled = true;
                   try {
                     const url = args.url as string;
                     
-                    // Envia resposta inicial de "processando"
                     responses.push({ 
                       name, 
                       id: call.id, 
@@ -720,10 +727,8 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
                       } 
                     });
                     
-                    // Executa a leitura em background
                     const content = await readUrlContent(url);
                     
-                    // Envia o conteúdo para a IA
                     sessionPromise.then((session: any) => {
                       session.sendToolResponse({ 
                         functionResponses: [{
@@ -784,7 +789,6 @@ export const useGeminiLive = ({ onToggleScreenSharing, onChangeVoice, onOpenUrl,
                 }
               }
               
-              // Envia respostas imediatas (exceto search_web e read_url_content que enviam depois)
               const immediateResponses = responses.filter(r => 
                 !['search_web', 'read_url_content'].includes(r.name) || 
                 r.response?.status !== 'searching' && r.response?.status !== 'reading'
