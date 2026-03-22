@@ -1,0 +1,114 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /users/{userId}/messages/{messageId}
+    // Fields:
+    //   - role: string (required, 'user' | 'model')
+    //   - text: string (required, max 5000 chars)
+    //   - createdAt: timestamp (required)
+    //   - userId: string (required, must match parent userId)
+    //
+    // Collection: /users/{userId}/memory/main
+    // Fields:
+    //   - userName: string (optional, max 100 chars)
+    //   - facts: list (optional, max 100 items, each max 500 chars)
+    //   - preferences: list (optional, max 100 items, each max 500 chars)
+    //   - importantDates: list (optional, max 50 items, each object)
+    //
+    // Collection: /users/{userId}/diary/{entryId}
+    // Fields:
+    //   - content: string (required, max 10000 chars)
+    //   - mood: string (required, max 50 chars)
+    //   - createdAt: timestamp (required)
+    //   - userId: string (required, must match parent userId)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return (isAuthenticated() && request.auth.uid == userId) || userId == 'default-os-user';
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "hr87676620@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidMessage(data) {
+      return hasRequiredFields(['role', 'text', 'createdAt', 'userId']) &&
+             hasOnlyAllowedFields(['role', 'text', 'createdAt', 'userId']) &&
+             data.role in ['user', 'model'] &&
+             data.text is string && data.text.size() <= 5000 &&
+             data.createdAt is timestamp &&
+             data.userId is string;
+    }
+
+    function isValidMemory(data) {
+      return hasOnlyAllowedFields(['userName', 'facts', 'preferences', 'importantDates', 'workspace']) &&
+             (!('userName' in data) || (data.userName is string && data.userName.size() <= 100)) &&
+             (!('facts' in data) || (data.facts is list && data.facts.size() <= 100)) &&
+             (!('preferences' in data) || (data.preferences is list && data.preferences.size() <= 100)) &&
+             (!('importantDates' in data) || (data.importantDates is list && data.importantDates.size() <= 50)) &&
+             (!('workspace' in data) || (data.workspace is string && data.workspace.size() <= 50000));
+    }
+
+    function isValidDiaryEntry(data) {
+      return hasRequiredFields(['content', 'mood', 'createdAt', 'userId']) &&
+             hasOnlyAllowedFields(['content', 'mood', 'createdAt', 'userId']) &&
+             data.content is string && data.content.size() <= 10000 &&
+             data.mood is string && data.mood.size() <= 50 &&
+             data.createdAt is timestamp &&
+             data.userId is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidMessage(request.resource.data) && request.resource.data.userId == userId;
+        allow update, delete: if isAdmin(); // Users shouldn't edit history
+      }
+
+      match /memory/main {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId) && isValidMemory(request.resource.data);
+      }
+
+      match /diary/{entryId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidDiaryEntry(request.resource.data) && request.resource.data.userId == userId;
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

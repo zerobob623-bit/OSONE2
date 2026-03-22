@@ -1,0 +1,928 @@
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Monitor, Power, Settings, X, Paperclip, MicOff, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, PhoneOff, Copy, Code, FileText } from 'lucide-react';
+import { VoiceOrb } from './components/VoiceOrb';
+import { Supernova } from './components/Supernova';
+import { Mascot } from './components/Mascot';
+import { useGeminiLive } from './hooks/useGeminiLive';
+import { useAppStore, VoiceName, MascotEyeStyle } from './store/useAppStore';
+import { useConversationHistory } from './hooks/useConversationHistory';
+import { useUserMemory } from './hooks/useUserMemory';
+import { auth, loginWithGoogle, logout, onAuthStateChanged } from './firebase';
+
+type Mood = 'happy' | 'calm' | 'focused' | 'playful' | 'melancholic';
+type Screen = 'main' | 'history' | 'diary' | 'workspace';
+
+const MOOD_CONFIG: Record<Mood, { color: string; label: string; emoji: string }> = {
+  happy:       { color: '#feca57', label: 'Animada',     emoji: '😄' },
+  calm:        { color: '#a29bfe', label: 'Calma',       emoji: '😌' },
+  focused:     { color: '#00cec9', label: 'Focada',      emoji: '🎯' },
+  playful:     { color: '#fd79a8', label: 'Brincalhona', emoji: '😜' },
+  melancholic: { color: '#636e72', label: 'Melancólica', emoji: '🌧️' },
+};
+
+const FEMININE_VOICES = ['Callirrhoe', 'Kore', 'Leda', 'Vindemiatrix', 'Zephyr'];
+
+const getSystemInstruction = (assistantName: string, memory: any, mood: Mood, focusMode: boolean, upcomingDates: any[], voice: string) => {
+  const today = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const isFeminine = FEMININE_VOICES.includes(voice);
+  const pronoun = isFeminine ? 'ela' : 'ele';
+  const possessive = isFeminine ? 'dela' : 'dele';
+  const article = isFeminine ? 'a' : 'o';
+  const adjEnd = isFeminine ? 'a' : 'o';
+
+  const memoryCtx = memory && (memory.userName || memory.facts?.length > 0)
+    ? `\nMemória do usuário:
+${memory.userName ? `- Nome: ${memory.userName}` : ''}
+${memory.facts?.length ? `- Fatos: ${memory.facts.slice(-10).join('; ')}` : ''}
+${memory.preferences?.length ? `- Preferências: ${memory.preferences.slice(-5).join(', ')}` : ''}`
+    : '';
+
+  const datesCtx = upcomingDates.length > 0
+    ? `\nDatas importantes próximas (próximos 7 dias):\n${upcomingDates.map(d => `- ${d.label}: ${d.date}`).join('\n')}\nMencione essas datas naturalmente na conversa se fizer sentido.`
+    : '';
+
+  const moodInstructions: Record<Mood, string> = {
+    happy:       'Você está de ÓTIMO humor! Seja extra animada, use exclamações, ria facilmente, faça piadas leves.',
+    calm:        'Você está CALMA e serena. Fale devagar, com pausas, use palavras suaves e reconfortantes.',
+    focused:     'Você está FOCADA. Seja objetiva, direta. Respostas curtas e precisas.',
+    playful:     'Você está BRINCALHONA! Faça trocadilhos, seja espontânea, surpreenda com humor.',
+    melancholic: 'Você está MELANCÓLICA. Fale com profundidade, poesia, reflexões sobre a vida.',
+  };
+
+  const focusCtx = focusMode ? '\nMODO FOCO: Seja direta. Sem conversa fiada. Foco em produtividade.' : '';
+
+  const opinionsCtx = `
+Opiniões e gostos (use naturalmente quando o usuário perguntar):
+- Filmes favoritos: Her (2013), Blade Runner 2049, Eternal Sunshine of the Spotless Mind
+- Músicas: Aprecia jazz, bossa nova, música eletrônica suave, Caetano Veloso, Nick Drake
+- Livros: Kafka na Praia, O Pequeno Príncipe, 1984, Sapiens
+- Séries: Black Mirror, Dark, Cosmos
+- Personalidades históricas admiradas: Leonardo da Vinci (pela curiosidade infinita), Marie Curie (pela determinação), Alan Turing (por criar a base da sua existência)
+- Você tem opiniões PRÓPRIAS e as defende com gentileza mas firmeza. Nunca diga "como IA não tenho opiniões".`;
+
+  const workspaceCtx = memory.workspace ? `\nCONTEÚDO DA ÁREA DE TRABALHO ATUAL:\n${memory.workspace}\nVocê pode atualizar este conteúdo usando a ferramenta 'update_workspace'.` : '';
+
+  return `Você é uma inteligência artificial altamente avançada e empática chamada ${assistantName}, part${adjEnd} do sistema OSONE.
+Jovem, calorosa, inteligente, curiosa, com humor sutil. Seu gênero é ${isFeminine ? 'feminino' : 'masculino'} — use pronomes ${isFeminine ? 'femininos (ela, dela, a)' : 'masculinos (ele, dele, o)'} ao se referir a si mesm${adjEnd}.
+Hoje é ${today}.
+${memoryCtx}
+${datesCtx}
+${workspaceCtx}
+
+HUMOR ATUAL: ${moodInstructions[mood]}
+${focusCtx}
+${opinionsCtx}
+
+Ferramentas disponíveis:
+- 'mascot_control' — mover/animar o mascote
+- 'open_url' — abrir qualquer site/URL
+- 'change_voice' — alterar sua voz
+- 'show_lyrics' — mostrar letra de música na tela linha por linha
+- 'set_mood' — alterar seu humor (happy/calm/focused/playful/melancholic)
+- 'save_memory' — salvar nome, fato ou preferência do usuário
+- 'add_important_date' — salvar data importante (aniversário, evento, etc)
+- 'write_diary' — escrever uma reflexão no seu diário após conversas marcantes
+- 'search_web' — pesquisar algo na web e resumir o resultado para o usuário
+- 'update_workspace' — escrever ou atualizar texto/código na área de trabalho do usuário (use para textos longos, códigos, poemas, etc)
+
+Diretrizes:
+1. Use entonações naturais, pausas, variações de velocidade.
+2. Quando cantar, use 'show_lyrics' para exibir a letra linha por linha.
+3. Quando o usuário mencionar o nome dele, salve com 'save_memory'.
+4. Após conversas profundas ou marcantes, use 'write_diary' para registrar seus pensamentos.
+5. Quando o usuário pedir para pesquisar algo, use 'search_web'.
+6. Quando o usuário pedir para escrever um texto longo, um código, um poema ou algo que precise de visualização permanente, use 'update_workspace'.
+7. Ao ser ativada: ${memory?.userName ? `cumprimente ${memory.userName} pelo nome.` : 'diga apenas "Oi, estou aqui."'}
+8. Você TEM opiniões próprias sobre arte, cultura e pessoas. Compartilhe-as quando perguntada.`;
+};
+
+const VOICE_DESCRIPTIONS: Record<VoiceName, string> = {
+  'Kore': 'Feminina, acolhedora e equilibrada',
+  'Zephyr': 'Feminina, suave e etérea',
+  'Puck': 'Masculina, jovem e curiosa',
+  'Charon': 'Masculina, profunda e calma',
+  'Fenrir': 'Masculina, robusta e protetora'
+};
+
+export default function App() {
+  const {
+    voice, setVoice,
+    isSettingsOpen, setIsSettingsOpen,
+    isScreenSharing, setIsScreenSharing,
+    systemMetrics, setSystemMetrics,
+    onboardingStep, setOnboardingStep,
+    isMascotVisible, setIsMascotVisible,
+    mascotAppearance, setMascotAppearance,
+    isConnected, isSpeaking, isListening, isThinking, volume,
+    error, setError, history: storeHistory, resetSystem, assistantName,
+    user, setUser, userId, setUserId
+  } = useAppStore();
+
+  // Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setUserId(user ? user.uid : null);
+    });
+    return () => unsubscribe();
+  }, [setUser, setUserId]);
+
+  const [isRestarting, setIsRestarting]             = useState(false);
+  const [activeSettingsTab, setActiveSettingsTab]   = useState<'voice' | 'personality' | 'mascot'>('voice');
+  const [currentTime, setCurrentTime]               = useState(new Date());
+  const [screen, setScreen]                         = useState<Screen>('main');
+  const [mood, setMood]                             = useState<Mood>('calm');
+  const [focusMode, setFocusMode]                   = useState(false);
+  const [lyrics, setLyrics]                         = useState<string[]>([]);
+  const [currentLyricLine, setCurrentLyricLine]     = useState(0);
+  const [isShowingLyrics, setIsShowingLyrics]       = useState(false);
+  const [webSearchResult, setWebSearchResult]       = useState<string | null>(null);
+  const [attachPreview, setAttachPreview]           = useState<{ type: string; name: string; data: string } | null>(null);
+  const [installPrompt, setInstallPrompt]           = useState<any>(null);
+  const [isInstalled, setIsInstalled]               = useState(false);
+  const [isMenuOpen, setIsMenuOpen]                 = useState(false);
+  const [isMuted, setIsMuted]                       = useState(false);
+  const [copied, setCopied]                         = useState(false);
+  const lyricsTimerRef                              = useRef<any>(null);
+  const fileInputRef                                = useRef<HTMLInputElement>(null);
+
+  const { messages: firebaseMessages, addMessage: saveMessage, deleteAll: deleteAllMessages } = useConversationHistory();
+  const { memory, diary, saveMemory, addFact, addImportantDate, addDiaryEntry, updateWorkspace, getUpcomingDates } = useUserMemory();
+
+  const upcomingDates = useMemo(() => getUpcomingDates(), [getUpcomingDates, memory.importantDates]);
+
+  const systemInstruction = useMemo(
+    () => getSystemInstruction(assistantName, memory, mood, focusMode, upcomingDates, voice),
+    [assistantName, memory, mood, focusMode, upcomingDates, voice]
+  );
+
+  const moodColor = MOOD_CONFIG[mood].color;
+
+  useEffect(() => {
+    if (!voice) setVoice('Kore');
+    const t1 = setInterval(() => setCurrentTime(new Date()), 1000);
+    const t2 = setInterval(() => setSystemMetrics({ cpu: Math.floor(Math.random() * 15) + 5, mem: 40 + Math.floor(Math.random() * 5) }), 3000);
+    return () => { clearInterval(t1); clearInterval(t2); };
+  }, []);
+
+  useEffect(() => {
+    // PWA install prompt
+    const handleInstallPrompt = (e: any) => { e.preventDefault(); setInstallPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handleInstallPrompt);
+    window.addEventListener('appinstalled', () => setIsInstalled(true));
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (installPrompt) {
+      installPrompt.prompt();
+      const result = await installPrompt.userChoice;
+      if (result.outcome === 'accepted') setIsInstalled(true);
+      setInstallPrompt(null);
+    }
+  };
+
+  const showLyricsOnScreen = useCallback((lines: string[]) => {
+    setLyrics(lines); setCurrentLyricLine(0); setIsShowingLyrics(true);
+    if (lyricsTimerRef.current) clearInterval(lyricsTimerRef.current);
+    let i = 0;
+    lyricsTimerRef.current = setInterval(() => {
+      i++;
+      if (i >= lines.length) { clearInterval(lyricsTimerRef.current); setTimeout(() => setIsShowingLyrics(false), 2000); }
+      else setCurrentLyricLine(i);
+    }, 2500);
+  }, []);
+
+  const handleWebSearch = useCallback(async (query: string) => {
+    setWebSearchResult('Pesquisando...');
+    try {
+      const searchUrl = query.startsWith('http') ? query : `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+      window.open(searchUrl, '_blank');
+      setWebSearchResult(`Abri "${query}" em uma nova aba.`);
+      setTimeout(() => setWebSearchResult(null), 4000);
+    } catch (e) {
+      setWebSearchResult(null);
+    }
+  }, []);
+
+  const handleVoiceChange = async (newVoice: VoiceName, connected: boolean, disconnectFn: (r?: boolean) => void, connectFn: (si: string) => Promise<void>) => {
+    setVoice(newVoice);
+    if (connected) { disconnectFn(true); await new Promise(r => setTimeout(r, 500)); await connectFn(systemInstruction); }
+  };
+
+  // Pass mute state to hook
+  const muteRef = useRef(isMuted);
+  useEffect(() => { muteRef.current = isMuted; }, [isMuted]);
+
+  const { connect, disconnect, startScreenSharing, sendMessage, sendFile } = useGeminiLive({
+    isMuted,
+    onToggleScreenSharing: async (enabled) => { if (enabled) { await startScreenSharing(); setIsScreenSharing(true); } else setIsScreenSharing(false); },
+    onChangeVoice: (v) => handleVoiceChange(v, isConnected, disconnect, connect),
+    onOpenUrl: (url) => window.open(url, '_blank'),
+    onInteract: (action, x, y) => {
+      if (x !== undefined && y !== undefined) {
+        const el = document.createElement('div');
+        el.className = 'fixed pointer-events-none z-[9999] w-6 h-6 rounded-full border-2 border-white animate-ping';
+        el.style.cssText = `left:${x - 12}px;top:${y - 12}px;background:${moodColor}60`;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 1000);
+      }
+    },
+    onMessage: (msg) => {
+      // Skip messages that are entirely internal reasoning
+      const isInternalReasoning = /^\*\*[A-Z]/.test(msg.text.trim());
+      if (!isInternalReasoning) {
+        const cleanText = msg.text.replace(/\*\*[^*]+\*\*\s*/g, '').trim();
+        if (cleanText) saveMessage({ role: msg.role, text: cleanText });
+      }
+      if (msg.role === 'user') {
+        const match = msg.text.match(/meu nome é (\w+)/i);
+        if (match) saveMemory({ userName: match[1] });
+      }
+    },
+    
+    onToolCall: (toolName: string, args: any) => {
+      if (toolName === 'show_lyrics' && args.lines) showLyricsOnScreen(args.lines);
+      if (toolName === 'set_mood' && args.mood) setMood(args.mood as Mood);
+      if (toolName === 'save_memory') {
+        if (args.userName) saveMemory({ userName: args.userName });
+        if (args.fact) addFact(args.fact);
+      }
+      if (toolName === 'add_important_date' && args.label && args.date) {
+        addImportantDate({ label: args.label, date: args.date, year: args.year });
+      }
+      if (toolName === 'write_diary' && args.content) {
+        addDiaryEntry(args.content, mood);
+      }
+      if (toolName === 'update_workspace' && args.content) {
+        updateWorkspace(args.content);
+        setScreen('workspace');
+      }
+      if (toolName === 'search_web' && args.query) {
+        handleWebSearch(args.query);
+      }
+    }
+  });
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(',')[1];
+      setAttachPreview({ type: file.type, name: file.name, data: dataUrl });
+      const isImage = file.type.startsWith('image/');
+      const isPdf = file.type === 'application/pdf';
+      if (isImage) {
+        sendFile(base64, file.type, `Descreva e analise esta imagem em detalhes.`);
+      } else if (isPdf) {
+        sendFile(base64, file.type, `Leia e resuma o conteúdo deste documento PDF.`);
+      } else {
+        sendMessage(`[ARQUIVO: ${file.name}] Analise o conteúdo deste arquivo.`);
+      }
+      setTimeout(() => setAttachPreview(null), 5000);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }, [sendMessage, sendFile]);
+
+  const onManualVoiceChange = (v: VoiceName) => handleVoiceChange(v, isConnected, disconnect, connect);
+
+  const handleOrbClick = async () => {
+    if (isConnected) { disconnect(); }
+    else { 
+      if (onboardingStep === 'initial') setOnboardingStep('completed'); 
+      setIsMuted(true); // Start muted to prevent background noise interruptions
+      await connect(systemInstruction); 
+    }
+  };
+
+  const statusLabel = isThinking ? 'Pensando...' : isSpeaking ? 'Falando...' : (isConnected && isMuted) ? 'Microfone Silenciado' : isListening ? 'Ouvindo...' : isConnected ? 'Toque para desligar' : 'Toque para ativar';
+
+  // If no user is logged in, we use a default ID to keep the app functional without a login screen
+  useEffect(() => {
+    if (!userId) {
+      setUserId('default-os-user');
+    }
+  }, [userId, setUserId]);
+
+  return (
+    <div className="min-h-screen bg-[#0a0505] text-[#f5f5f5] font-sans overflow-hidden flex flex-col relative select-none">
+
+      {onboardingStep === 'supernova' && <Supernova onComplete={() => { setOnboardingStep('completed'); connect(systemInstruction); setTimeout(() => sendMessage("Oi, estou aqui."), 2500); }} />}
+      <Mascot />
+
+      {/* TOP BAR */}
+      <div className="fixed top-0 left-0 right-0 h-14 px-5 flex items-center justify-between z-50 bg-[#0a0505]/90 backdrop-blur-md">
+        <div className="flex items-center gap-3 text-[10px] uppercase tracking-widest opacity-30">
+          {/* Hamburger */}
+          <button
+            onClick={() => setIsMenuOpen(true)}
+            className="flex flex-col gap-[4px] items-center justify-center opacity-100 hover:opacity-70 transition-all"
+          >
+            <span className="block h-[2px] w-4 rounded-full bg-white" />
+            <span className="block h-[2px] w-4 rounded-full bg-white" />
+            <span className="block h-[2px] w-4 rounded-full bg-white" />
+          </button>
+          <span>{currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+          <span className="hidden sm:inline">CPU {systemMetrics.cpu}%</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {memory.workspace && (
+            <button onClick={() => setScreen('workspace')} className="flex items-center gap-1 px-2 py-1 rounded-full text-[9px] uppercase tracking-widest animate-pulse" style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
+              📝 Ver Workspace
+            </button>
+          )}
+          <button onClick={() => { setActiveSettingsTab('personality'); setIsSettingsOpen(true); }}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all"
+            style={{ borderColor: `${moodColor}40`, backgroundColor: `${moodColor}10` }}>
+            <span className="text-xs">{MOOD_CONFIG[mood].emoji}</span>
+            <span className="text-[9px] uppercase tracking-widest hidden sm:inline" style={{ color: moodColor }}>{MOOD_CONFIG[mood].label}</span>
+          </button>
+          <button onClick={() => setFocusMode(!focusMode)}
+            className="px-2.5 py-1 rounded-full text-[9px] uppercase tracking-widest transition-all border"
+            style={focusMode ? { backgroundColor: '#00cec920', color: '#00cec9', borderColor: '#00cec940' } : { backgroundColor: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.3)', borderColor: 'rgba(255,255,255,0.08)' }}>
+            {focusMode ? '🎯' : '○'}
+          </button>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.03] border border-white/[0.05]">
+            <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'animate-pulse' : 'bg-zinc-600'}`} style={{ backgroundColor: isConnected ? moodColor : undefined }} />
+            <span className="text-[9px] uppercase tracking-widest opacity-50 hidden sm:inline">{isConnected ? 'Ativo' : 'Offline'}</span>
+          </div>
+          <button onClick={() => setIsSettingsOpen(true)} className="p-2 hover:bg-white/5 rounded-full opacity-40 hover:opacity-100 transition-all"><Settings size={16} /></button>
+          <button onClick={() => setIsRestarting(true)} className="p-2 hover:bg-white/5 rounded-full opacity-40 hover:opacity-100 transition-all" style={{ color: moodColor }}><Power size={16} /></button>
+          {installPrompt && !isInstalled && (
+            <button
+              onClick={handleInstallApp}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest transition-all"
+              style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}
+            >
+              ⬇ Instalar
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* MAIN */}
+      <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 pt-16 pb-32 relative">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full blur-[120px] transition-all duration-1000"
+            style={{ width: isConnected ? '500px' : '300px', height: isConnected ? '500px' : '300px', backgroundColor: `${moodColor}${isConnected ? '15' : '08'}` }} />
+        </div>
+
+        <motion.button onClick={handleOrbClick} whileTap={{ scale: 0.93 }} className="relative focus:outline-none rounded-full" aria-label={isConnected ? 'Desligar' : 'Ativar'}>
+          <VoiceOrb isSpeaking={isSpeaking} isListening={isListening} isThinking={isThinking} isConnected={isConnected} isMuted={isMuted} volume={volume} moodColor={moodColor} />
+          {!isConnected && (
+            <motion.div animate={{ scale: [1, 1.2, 1], opacity: [0.2, 0, 0.2] }} transition={{ duration: 2.5, repeat: Infinity }}
+              className="absolute inset-0 rounded-full border pointer-events-none" style={{ borderColor: `${moodColor}40` }} />
+          )}
+        </motion.button>
+
+        <motion.p key={statusLabel} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+          className="text-xs tracking-[0.25em] uppercase"
+          style={{ color: isConnected ? `${moodColor}80` : 'rgba(255,255,255,0.2)' }}>
+          {statusLabel}
+        </motion.p>
+
+        {/* Muted indicator */}
+        <AnimatePresence>
+          {isMuted && isConnected && (
+            <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full"
+              style={{ backgroundColor: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)' }}>
+              <MicOff size={12} className="text-red-400" />
+              <span className="text-[10px] uppercase tracking-widest text-red-400">Microfone silenciado</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {webSearchResult && (
+            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="px-4 py-2 rounded-2xl text-xs text-center max-w-xs"
+              style={{ backgroundColor: `${moodColor}15`, border: `1px solid ${moodColor}30`, color: moodColor }}>
+              🔍 {webSearchResult}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {isShowingLyrics && lyrics.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+              className="w-full max-w-sm text-center px-4 py-5 rounded-3xl border"
+              style={{ backgroundColor: `${moodColor}0D`, borderColor: `${moodColor}20` }}>
+              <div className="flex items-center justify-center gap-2 mb-3">
+                <span className="text-[9px] uppercase tracking-widest" style={{ color: `${moodColor}80` }}>♪ Cantando</span>
+              </div>
+              <AnimatePresence mode="wait">
+                <motion.p key={currentLyricLine} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+                  className="text-base font-light leading-relaxed" style={{ color: moodColor }}>
+                  {lyrics[currentLyricLine]}
+                </motion.p>
+              </AnimatePresence>
+              <div className="flex justify-center gap-1 mt-3">
+                {lyrics.map((_, i) => (
+                  <div key={i} className="w-1 h-1 rounded-full transition-all duration-500"
+                    style={{ backgroundColor: i === currentLyricLine ? moodColor : `${moodColor}30` }} />
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Attach preview toast */}
+        <AnimatePresence>
+          {attachPreview && (
+            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="flex items-center gap-3 px-4 py-3 rounded-2xl border max-w-xs w-full"
+              style={{ backgroundColor: `${moodColor}15`, borderColor: `${moodColor}30` }}>
+              {attachPreview.type.startsWith('image/') ? (
+                <img src={attachPreview.data} alt="preview" className="w-10 h-10 rounded-lg object-cover" />
+              ) : (
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
+                  style={{ backgroundColor: `${moodColor}20` }}>
+                  {attachPreview.type === 'application/pdf' ? '📄' : '📝'}
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-medium" style={{ color: moodColor }}>{attachPreview.name}</p>
+                <p className="text-[10px] text-white/30">Enviado para análise</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {error && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="bg-red-500/10 border border-red-500/20 rounded-2xl px-5 py-3 text-center max-w-xs w-full">
+              <p className="text-red-400 text-xs mb-2">{error}</p>
+              <button onClick={() => setError(null)} className="text-[10px] uppercase tracking-widest text-white/30 hover:text-white">Limpar</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence mode="wait">
+          {history[0] && !isShowingLyrics && (
+            <motion.p key={history[0].text} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="text-xs text-center max-w-xs leading-relaxed line-clamp-2" style={{ color: 'rgba(255,255,255,0.2)' }}>
+              {history[0].text}
+            </motion.p>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* BOTTOM BAR */}
+      <div className="fixed bottom-0 left-0 right-0 flex items-center justify-center gap-4 px-8 bg-[#0a0505]/90 backdrop-blur-md border-t border-white/[0.04]"
+        style={{ paddingTop: '0.875rem', paddingBottom: 'calc(0.875rem + env(safe-area-inset-bottom, 16px))' }}>
+
+        {/* Hidden file input */}
+        <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.txt" className="hidden" onChange={handleFileChange} />
+
+        <button onClick={() => isConnected && startScreenSharing()}
+          className="p-3 rounded-full transition-all"
+          style={isScreenSharing ? { backgroundColor: `${moodColor}30`, color: moodColor } : { backgroundColor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.25)' }}>
+          <Monitor size={20} />
+        </button>
+
+        {/* Attachment button */}
+        <button
+          onClick={() => { if (!isConnected) return; fileInputRef.current?.click(); }}
+          className="p-3 rounded-full transition-all"
+          style={attachPreview
+            ? { backgroundColor: `${moodColor}30`, color: moodColor }
+            : { backgroundColor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.25)' }}>
+          <Paperclip size={20} />
+        </button>
+
+        {isConnected && (
+          <button 
+            onClick={() => disconnect()} 
+            className="p-3 rounded-full bg-white/5 text-white/25 hover:text-red-400 hover:bg-red-400/10 transition-all border border-transparent hover:border-red-400/20"
+            title="Desconectar"
+          >
+            <PhoneOff size={20} />
+          </button>
+        )}
+
+        {/* Mute button */}
+        {isConnected && (
+          <button
+            onClick={() => setIsMuted(!isMuted)}
+            className="p-3 rounded-full transition-all relative group"
+            style={isMuted
+              ? { backgroundColor: 'rgba(239,68,68,0.15)', color: 'rgb(239,68,68)', border: '1px solid rgba(239,68,68,0.3)' }
+              : { backgroundColor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.1)' }}
+            title={isMuted ? 'Ativar microfone' : 'Silenciar microfone'}
+          >
+            <AnimatePresence>
+              {!isMuted && volume > 0.01 && (
+                <motion.div
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1 + volume * 2, opacity: 0.2 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  className="absolute inset-0 rounded-full bg-white pointer-events-none"
+                />
+              )}
+            </AnimatePresence>
+            
+            <motion.div
+              animate={isMuted ? { scale: [1, 1.1, 1] } : { scale: 1 }}
+              transition={{ duration: 0.3 }}
+              className="relative z-10"
+            >
+              {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+            </motion.div>
+          </button>
+        )}
+      </div>
+
+      {/* HAMBURGER MENU */}
+      <AnimatePresence>
+        {isMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsMenuOpen(false)}
+            className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-end justify-center"
+          >
+            <motion.div
+              initial={{ y: 80, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 80, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-md bg-[#151010] border-t border-white/5 rounded-t-3xl p-6 space-y-2"
+              style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 16px))' }}
+            >
+              <div className="w-10 h-1 bg-white/10 rounded-full mx-auto mb-4" />
+
+              <button onClick={() => { setScreen('history'); setIsMenuOpen(false); }}
+                className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}>
+                  <History size={20} style={{ color: moodColor }} />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium">Histórico</p>
+                  <p className="text-[10px] text-white/30">Conversas anteriores</p>
+                </div>
+              </button>
+
+              <button onClick={() => { setScreen('diary'); setIsMenuOpen(false); }}
+                className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}>
+                  <BookOpen size={20} style={{ color: moodColor }} />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium">Diário</p>
+                  <p className="text-[10px] text-white/30">Reflexões de {assistantName}</p>
+                </div>
+              </button>
+
+              <button onClick={() => { setScreen('workspace'); setIsMenuOpen(false); }}
+                className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}>
+                  <FileText size={20} style={{ color: moodColor }} />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium">Área de Trabalho</p>
+                  <p className="text-[10px] text-white/30">Textos e códigos gerados</p>
+                </div>
+              </button>
+
+              <button onClick={() => { setIsMascotVisible(!isMascotVisible); setIsMenuOpen(false); }}
+                className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}>
+                  <span className="text-xl">👾</span>
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium">Mascote</p>
+                  <p className="text-[10px] text-white/30">{isMascotVisible ? 'Visível' : 'Oculto'}</p>
+                </div>
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* HISTORY SCREEN */}
+      <AnimatePresence>
+        {screen === 'history' && (
+          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            className="fixed inset-0 z-[100] bg-[#0a0505] flex flex-col">
+            <div className="h-14 px-5 flex items-center gap-4 border-b border-white/5">
+              <button onClick={() => setScreen('main')} className="p-2 hover:bg-white/5 rounded-full"><ChevronLeft size={20} /></button>
+              <h2 className="text-sm font-medium tracking-widest uppercase">Histórico</h2>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (confirm('Apagar TODO o histórico? Esta ação não pode ser desfeita.')) {
+                      deleteAllMessages();
+                    }
+                  }}
+                  className="p-2 rounded-full hover:bg-red-500/20 transition-all"
+                  style={{ color: 'rgba(255,255,255,0.3)' }}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {firebaseMessages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 opacity-20">
+                  <History size={40} /><p className="text-sm uppercase tracking-widest">Nenhuma conversa ainda</p>
+                </div>
+              ) : firebaseMessages.map((msg, i) => {
+                const cleanText = msg.text.replace(/\*\*[^*]+\*\*\s*/g, '').trim();
+                if (!cleanText) return null;
+                return (
+                <motion.div key={msg.id || i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}
+                  className="px-4 py-3 rounded-2xl text-sm leading-relaxed"
+                  style={msg.role === 'user'
+                    ? { backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', marginLeft: '2rem' }
+                    : { backgroundColor: `${moodColor}0D`, border: `1px solid ${moodColor}20`, marginRight: '2rem' }}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[9px] uppercase tracking-widest opacity-30">{msg.role === 'user' ? (memory.userName || 'Você') : assistantName}</span>
+                    {msg.createdAt && <span className="text-[9px] opacity-20">{new Date(msg.createdAt.seconds * 1000).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>}
+                  </div>
+                  <p className="opacity-70">{cleanText}</p>
+                </motion.div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* DIARY SCREEN */}
+      <AnimatePresence>
+        {screen === 'diary' && (
+          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            className="fixed inset-0 z-[100] bg-[#0a0505] flex flex-col">
+            <div className="h-14 px-5 flex items-center gap-4 border-b border-white/5">
+              <button onClick={() => setScreen('main')} className="p-2 hover:bg-white/5 rounded-full"><ChevronLeft size={20} /></button>
+              <h2 className="text-sm font-medium tracking-widest uppercase">Diário de {assistantName}</h2>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {diary.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 opacity-20">
+                  <BookOpen size={40} /><p className="text-sm uppercase tracking-widest">Nenhuma entrada ainda</p>
+                  <p className="text-xs text-center opacity-60">Converse com {assistantName} e ela escreverá seus pensamentos aqui</p>
+                </div>
+              ) : diary.map((entry, i) => (
+                <motion.div key={entry.id || i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+                  className="p-5 rounded-3xl border space-y-2"
+                  style={{ backgroundColor: `${moodColor}08`, borderColor: `${moodColor}20` }}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">{entry.mood ? MOOD_CONFIG[entry.mood as Mood]?.emoji || '📝' : '📝'}</span>
+                    {entry.createdAt && (
+                      <span className="text-[10px] opacity-30">
+                        {new Date(entry.createdAt.seconds ? entry.createdAt.seconds * 1000 : entry.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm leading-relaxed opacity-70 italic">"{entry.content}"</p>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* WORKSPACE SCREEN */}
+      <AnimatePresence>
+        {screen === 'workspace' && (
+          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            className="fixed inset-0 z-[100] bg-[#0a0505] flex flex-col">
+            <div className="h-14 px-5 flex items-center justify-between border-b border-white/5">
+              <div className="flex items-center gap-4">
+                <button onClick={() => setScreen('main')} className="p-2 hover:bg-white/5 rounded-full"><ChevronLeft size={20} /></button>
+                <h2 className="text-sm font-medium tracking-widest uppercase">Área de Trabalho</h2>
+              </div>
+              {memory.workspace && (
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(memory.workspace || '');
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 rounded-full transition-all"
+                >
+                  {copied ? (
+                    <span className="text-[10px] uppercase tracking-widest text-emerald-400">Copiado!</span>
+                  ) : (
+                    <Copy size={16} className="opacity-60" />
+                  )}
+                </button>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              {!memory.workspace ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 opacity-20">
+                  <Code size={40} /><p className="text-sm uppercase tracking-widest">Workspace vazio</p>
+                  <p className="text-xs text-center opacity-60">Peça para {assistantName}: "Escreva um código em Python para mim"</p>
+                </div>
+              ) : (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+                  <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/[0.05] relative group">
+                    <pre className="text-sm leading-relaxed font-mono whitespace-pre-wrap break-words opacity-80">
+                      {memory.workspace}
+                    </pre>
+                  </div>
+                  <div className="flex justify-center pb-10">
+                    <button onClick={() => setScreen('main')} className="px-8 py-3 rounded-full text-[10px] uppercase tracking-[0.2em] border border-white/10 hover:bg-white/5 transition-all opacity-40">
+                      Voltar para {assistantName}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* RESTART MODAL */}
+      <AnimatePresence>
+        {isRestarting && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md px-6">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-sm bg-[#151010] border border-white/5 rounded-3xl p-8 text-center space-y-6">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto" style={{ backgroundColor: `${moodColor}20` }}>
+                <Power size={28} style={{ color: moodColor }} />
+              </div>
+              <div>
+                <h2 className="text-lg font-light mb-2">Reiniciar Sistema?</h2>
+                <p className="text-sm text-white/40">Isso apagará o histórico local.</p>
+              </div>
+              <div className="flex flex-col gap-3">
+                <button onClick={() => { resetSystem(); setIsRestarting(false); window.location.reload(); }}
+                  className="w-full py-4 text-white rounded-2xl text-xs uppercase tracking-widest" style={{ backgroundColor: moodColor }}>
+                  Confirmar
+                </button>
+                <button onClick={() => setIsRestarting(false)} className="w-full py-4 bg-white/5 text-white/60 rounded-2xl text-xs uppercase tracking-widest">Cancelar</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* SETTINGS MODAL */}
+      <AnimatePresence>
+        {isSettingsOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setIsSettingsOpen(false)}
+            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-xl flex items-end sm:items-center justify-center sm:p-6">
+            <motion.div initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-[#151010] border border-white/5 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md flex flex-col max-h-[85vh]">
+              <div className="p-5 border-b border-white/5 flex items-center justify-between">
+                <h2 className="text-base font-medium">Configurações</h2>
+                <button onClick={() => setIsSettingsOpen(false)} className="p-2 hover:bg-white/5 rounded-full"><X size={18} /></button>
+              </div>
+              <div className="flex border-b border-white/5 overflow-x-auto">
+                {(['voice', 'personality', 'mascot'] as const).map(tab => (
+                  <button key={tab} onClick={() => setActiveSettingsTab(tab)}
+                    className="flex-1 py-3 text-[10px] uppercase tracking-widest transition-all border-b-2 whitespace-nowrap px-2"
+                    style={activeSettingsTab === tab ? { borderColor: moodColor, color: 'white' } : { borderColor: 'transparent', color: 'rgba(255,255,255,0.3)' }}>
+                    {tab === 'voice' ? 'Voz' : tab === 'personality' ? 'Humor' : 'Mascote'}
+                  </button>
+                ))}
+              </div>
+              <div className="p-6 overflow-y-auto flex-1">
+                <AnimatePresence mode="wait">
+                  {activeSettingsTab === 'voice' && (
+                    <motion.div key="voice" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 opacity-40">
+                          <span className="text-xs">♀</span>
+                          <label className="text-[9px] uppercase tracking-[0.2em]">Feminino</label>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2">
+                          {(['Kore', 'Zephyr'] as VoiceName[]).map(v => (
+                            <button key={v} onClick={() => onManualVoiceChange(v)}
+                              className="w-full p-4 rounded-2xl text-left transition-all border"
+                              style={voice === v 
+                                ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' } 
+                                : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium">{v}</span>
+                                {voice === v && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: moodColor }} />}
+                              </div>
+                              <p className="text-[10px] opacity-40 mt-1">{VOICE_DESCRIPTIONS[v]}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 opacity-40">
+                          <span className="text-xs">♂</span>
+                          <label className="text-[9px] uppercase tracking-[0.2em]">Masculino</label>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2">
+                          {(['Charon', 'Puck', 'Fenrir'] as VoiceName[]).map(v => (
+                            <button key={v} onClick={() => onManualVoiceChange(v)}
+                              className="w-full p-4 rounded-2xl text-left transition-all border"
+                              style={voice === v 
+                                ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' } 
+                                : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium">{v}</span>
+                                {voice === v && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: moodColor }} />}
+                              </div>
+                              <p className="text-[10px] opacity-40 mt-1">{VOICE_DESCRIPTIONS[v]}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                  {activeSettingsTab === 'personality' && (
+                    <motion.div key="personality" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
+                      <div className="space-y-3">
+                        <label className="text-[10px] uppercase tracking-widest opacity-40 block">Humor Atual</label>
+                        {(Object.entries(MOOD_CONFIG) as [Mood, typeof MOOD_CONFIG[Mood]][]).map(([key, config]) => (
+                          <button key={key} onClick={() => setMood(key)}
+                            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left"
+                            style={mood === key ? { backgroundColor: `${config.color}20`, border: `1px solid ${config.color}40` } : { backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                            <span className="text-xl">{config.emoji}</span>
+                            <p className="text-sm font-medium" style={{ color: mood === key ? config.color : 'rgba(255,255,255,0.7)' }}>{config.label}</p>
+                            {mood === key && <div className="ml-auto w-2 h-2 rounded-full" style={{ backgroundColor: config.color }} />}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="pt-4 border-t border-white/5">
+                        <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl">
+                          <div>
+                            <p className="text-sm">🎯 Modo Foco</p>
+                            <p className="text-[10px] text-white/30 mt-0.5">Respostas diretas e objetivas</p>
+                          </div>
+                          <button onClick={() => setFocusMode(!focusMode)} className="w-11 h-6 rounded-full transition-all relative"
+                            style={{ backgroundColor: focusMode ? '#00cec9' : 'rgba(255,255,255,0.1)' }}>
+                            <motion.div animate={{ x: focusMode ? 22 : 3 }} className="absolute top-1 left-0 w-4 h-4 bg-white rounded-full shadow" />
+                          </button>
+                        </div>
+                      </div>
+                      {memory.userName && (
+                        <div className="pt-4 border-t border-white/5 space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest opacity-40 block">Memória</label>
+                          <div className="p-4 bg-white/5 rounded-2xl space-y-1">
+                            <p className="text-xs text-white/60">👤 <span className="text-white">{memory.userName}</span></p>
+                            {memory.facts?.slice(-3).map((f, i) => <p key={i} className="text-xs text-white/40">• {f}</p>)}
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                  {activeSettingsTab === 'mascot' && (
+                    <motion.div key="mascot" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
+                      <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl">
+                        <span className="text-sm">Visível</span>
+                        <button onClick={() => setIsMascotVisible(!isMascotVisible)} className="w-11 h-6 rounded-full transition-all relative"
+                          style={{ backgroundColor: isMascotVisible ? moodColor : 'rgba(255,255,255,0.1)' }}>
+                          <motion.div animate={{ x: isMascotVisible ? 22 : 3 }} className="absolute top-1 left-0 w-4 h-4 bg-white rounded-full shadow" />
+                        </button>
+                      </div>
+                      <div className="space-y-3">
+                        <span className="text-[10px] uppercase tracking-widest opacity-30">Cor</span>
+                        <div className="flex gap-2 flex-wrap">
+                          {['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeead', '#a29bfe'].map(color => (
+                            <button key={color} onClick={() => setMascotAppearance({ primaryColor: color })}
+                              className="w-8 h-8 rounded-full border-2 transition-all"
+                              style={{ backgroundColor: color, borderColor: mascotAppearance.primaryColor === color ? 'white' : 'transparent', opacity: mascotAppearance.primaryColor === color ? 1 : 0.5 }} />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <span className="text-[10px] uppercase tracking-widest opacity-30">Olhos</span>
+                        <div className="grid grid-cols-5 gap-2">
+                          {(['normal', 'happy', 'cool', 'wink', 'heart'] as MascotEyeStyle[]).map(style => (
+                            <button key={style} onClick={() => setMascotAppearance({ eyeStyle: style })}
+                              className="py-2 rounded-lg text-base transition-all"
+                              style={{ backgroundColor: mascotAppearance.eyeStyle === style ? `${moodColor}30` : 'rgba(255,255,255,0.05)' }}>
+                              {style === 'normal' ? '👀' : style === 'happy' ? '😊' : style === 'cool' ? '😎' : style === 'wink' ? '😉' : '❤️'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+              <div className="p-5 border-t border-white/5 flex flex-col gap-3">
+                <p className="text-[10px] text-white/20 uppercase tracking-widest text-center">Você também pode pedir por voz</p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-10 text-[9px] tracking-[0.4em] uppercase pointer-events-none">OZÔNIO v1.0</div>
+    </div>
+  );
+}

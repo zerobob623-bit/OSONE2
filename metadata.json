@@ -1,0 +1,10 @@
+{
+  "name": "OZÔNIO",
+  "description": "O primeiro sistema operacional artificialmente inteligente do mundo, inspirado em Samantha.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "display-capture",
+    "geolocation"
+  ]
+}

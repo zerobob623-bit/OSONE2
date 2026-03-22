@@ -1,0 +1,106 @@
+{
+  "entities": {
+    "Message": {
+      "title": "Message",
+      "description": "A single message in a conversation",
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["user", "model"],
+          "description": "The role of the sender"
+        },
+        "text": {
+          "type": "string",
+          "description": "The text content of the message"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the message was sent"
+        },
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user who owns this message"
+        }
+      },
+      "required": ["role", "text", "createdAt", "userId"]
+    },
+    "UserMemory": {
+      "title": "UserMemory",
+      "description": "The memory and preferences of a user",
+      "type": "object",
+      "properties": {
+        "userName": {
+          "type": "string",
+          "description": "The user's name"
+        },
+        "facts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Facts learned about the user"
+        },
+        "preferences": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "User preferences"
+        },
+        "importantDates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" },
+              "date": { "type": "string" },
+              "year": { "type": "string" }
+            }
+          },
+          "description": "Important dates for the user"
+        },
+        "workspace": {
+          "type": "string",
+          "description": "Text or code generated for the user"
+        }
+      }
+    },
+    "DiaryEntry": {
+      "title": "DiaryEntry",
+      "description": "A diary entry written by the AI about the user",
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string",
+          "description": "The content of the diary entry"
+        },
+        "mood": {
+          "type": "string",
+          "description": "The mood of the session"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the entry was written"
+        },
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user who owns this entry"
+        }
+      },
+      "required": ["content", "createdAt", "userId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Conversation history for a user"
+    },
+    "/users/{userId}/memory/main": {
+      "schema": "UserMemory",
+      "description": "Main memory for a user"
+    },
+    "/users/{userId}/diary/{entryId}": {
+      "schema": "DiaryEntry",
+      "description": "Diary entries for a user"
+    }
+  }
+}
