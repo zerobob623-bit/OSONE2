@@ -10,6 +10,7 @@ export interface UseGeminiLiveProps {
   onMessage?: (msg: { role: 'user' | 'model'; text: string }) => void;
   onToolCall?: (toolName: string, args: any) => void;
   isMuted?: boolean;
+  systemInstruction?: string;
 }
 
 export const useGeminiLive = ({ 
@@ -19,7 +20,8 @@ export const useGeminiLive = ({
   onInteract, 
   onMessage, 
   onToolCall, 
-  isMuted = false 
+  isMuted = false,
+  systemInstruction = ""
 }: UseGeminiLiveProps) => {
   const { 
     voice, 
@@ -146,8 +148,7 @@ export const useGeminiLive = ({
 
   const completeOnboardingFunc: FunctionDeclaration = {
     name: "complete_onboarding",
-    description: "Finaliza o processo de onboarding e inicia a animação de nascimento (Supernova).",
-    parameters: { type: Type.OBJECT, properties: {} }
+    description: "Finaliza o processo de onboarding e inicia a animação de nascimento (Supernova)."
   };
 
   const showLyricsFunc: FunctionDeclaration = {
@@ -188,7 +189,8 @@ export const useGeminiLive = ({
     description: "Salva informações importantes sobre o usuário.",
     parameters: {
       type: Type.OBJECT,
-      properties: { userName: { type: Type.STRING }, fact: { type: Type.STRING }, preference: { type: Type.STRING } }
+      properties: { userName: { type: Type.STRING }, fact: { type: Type.STRING }, preference: { type: Type.STRING } },
+      required: ["fact"]
     }
   };
 
@@ -219,7 +221,7 @@ export const useGeminiLive = ({
       type: Type.OBJECT,
       properties: { 
         query: { type: Type.STRING, description: "Termo de pesquisa para buscar na internet." },
-        num_results: { type: Type.NUMBER, description: "Número máximo de resultados (1-10).", default: 5 }
+        num_results: { type: Type.NUMBER, description: "Número máximo de resultados (1-10)." }
       },
       required: ["query"]
     }
@@ -249,8 +251,7 @@ export const useGeminiLive = ({
 
   const clearWorkspaceFunc: FunctionDeclaration = {
     name: "clear_workspace",
-    description: "Limpa todo o conteúdo da Área de Trabalho (Workspace).",
-    parameters: { type: Type.OBJECT, properties: {} }
+    description: "Limpa todo o conteúdo da Área de Trabalho (Workspace)."
   };
 
   const saveSemanticFactFunc: FunctionDeclaration = {
@@ -280,6 +281,16 @@ export const useGeminiLive = ({
   const searchGmailFunc: FunctionDeclaration = {
     name: "search_gmail",
     description: "Pesquisa nos e-mails do usuário (Gmail).",
+    parameters: {
+      type: Type.OBJECT,
+      properties: { query: { type: Type.STRING } },
+      required: ["query"]
+    }
+  };
+
+  const searchEmailFunc: FunctionDeclaration = {
+    name: "search_email",
+    description: "Pesquisa nos e-mails do usuário usando IMAP (Outros provedores).",
     parameters: {
       type: Type.OBJECT,
       properties: { query: { type: Type.STRING } },
@@ -376,7 +387,56 @@ export const useGeminiLive = ({
     return window.btoa(binary);
   }, []);
 
-  const sendMessage = useCallback((text: string) => {
+  const sendMessage = useCallback(async (text: string) => {
+    addMessage({ role: 'user', text });
+    onMessageRef.current?.({ role: 'user', text });
+    setIsThinking(true);
+    
+    try {
+      // Build history for context (reverse to get oldest first)
+      const contextHistory = [...history].reverse().map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.text
+      }));
+      
+      const messages = [...contextHistory, { role: 'user', content: text }];
+
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messages: messages,
+          systemInstruction: systemInstruction
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const replyText = data.text;
+
+      if (replyText) {
+        addMessage({ role: 'model', text: replyText });
+        onMessageRef.current?.({ role: 'model', text: replyText });
+      }
+    } catch (err: any) {
+      console.error("Error sending text message:", err);
+      const errorMsg = err.message === "Groq API Key not found" 
+        ? "Por favor, configure sua chave da API Groq nas Configurações para usar o chat de texto."
+        : "Desculpe, ocorreu um erro ao processar sua mensagem de texto via Groq.";
+      addMessage({ role: 'model', text: errorMsg });
+      onMessageRef.current?.({ role: 'model', text: errorMsg });
+    } finally {
+      setIsThinking(false);
+    }
+  }, [history, addMessage, setIsThinking, systemInstruction]);
+
+  const sendLiveMessage = useCallback((text: string) => {
     if (sessionRef.current && isConnectedRef.current) {
       setIsThinking(true);
       sessionRef.current.then((session: any) => session.sendRealtimeInput({ text }));
@@ -407,36 +467,11 @@ export const useGeminiLive = ({
    */
   const performWebSearch = useCallback(async (query: string, numResults: number = 5): Promise<string> => {
     try {
-      const searchUrl = `https://s.jina.ai/${encodeURIComponent(query)}`;
-      
-      const response = await fetch(searchUrl, {
-        headers: {
-          'Accept': 'application/json',
-          'X-With-Generated-Alt': 'true',
-          'X-With-Links-Summary': 'true'
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Erro na busca: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.data && Array.isArray(data.data)) {
-        const results = data.data.slice(0, numResults).map((item: any, index: number) => {
-          return `[${index + 1}] ${item.title}\nURL: ${item.url}\nResumo: ${item.description || item.content?.substring(0, 300) || 'Sem descrição disponível'}\n`;
-        }).join('\n---\n');
-        
-        return `🔍 Resultados para "${query}":\n\n${results}\n\n💡 Dica: Use "read_url_content" para ler o conteúdo completo de qualquer URL listada acima.`;
-      }
-      
-      const text = await response.text();
-      return text.substring(0, 2000);
-      
+      // Tenta usar o DuckDuckGo como primário para evitar o 401 do Jina Search sem chave
+      return await fallbackDuckDuckGoSearch(query, numResults);
     } catch (error) {
       console.error('Erro na pesquisa web:', error);
-      return await fallbackDuckDuckGoSearch(query, numResults);
+      return `⚠️ Não foi possível realizar a busca no momento.`;
     }
   }, []);
 
@@ -487,12 +522,7 @@ export const useGeminiLive = ({
       
       const readerUrl = `https://r.jina.ai/${url}`;
       
-      const response = await fetch(readerUrl, {
-        headers: {
-          'Accept': 'application/json',
-          'X-With-Generated-Alt': 'true'
-        }
-      });
+      const response = await fetch(readerUrl);
       
       if (!response.ok) {
         if (response.status === 403) {
@@ -501,18 +531,8 @@ export const useGeminiLive = ({
         throw new Error(`Erro ao ler URL: ${response.status}`);
       }
       
-      const contentType = response.headers.get('content-type');
-      if (contentType?.includes('application/json')) {
-        const data = await response.json();
-        if (data.content) {
-          const content = data.content.substring(0, 4000);
-          return `📄 Conteúdo de ${url}:\n\n${content}\n\n${data.content.length > 4000 ? '⚠️ Conteúdo truncado. Peça para ler seções específicas se necessário.' : ''}`;
-        }
-      }
-      
       const text = await response.text();
-      const cleanText = text.substring(0, 4000);
-      return `📄 Conteúdo de ${url}:\n\n${cleanText}${text.length > 4000 ? '\n\n⚠️ Conteúdo truncado.' : ''}`;
+      return `📄 Conteúdo de ${url}:\n\n${text.substring(0, 5000)}${text.length > 5000 ? '\n\n⚠️ Conteúdo truncado.' : ''}`;
       
     } catch (error: any) {
       console.error('Erro ao ler URL:', error);
@@ -581,15 +601,15 @@ export const useGeminiLive = ({
       const url = URL.createObjectURL(blob);
       await audioContextRef.current.audioWorklet.addModule(url);
       
-      console.log("🚀 Iniciando conexão com Gemini 3.1 Flash-Lite Live API...");
+      console.log("🚀 Iniciando conexão híbrida: Gemini 2.5 Flash (Voz) + Groq (Texto)...");
 
       const sessionPromise = ai.live.connect({
-  // ✅ MODELO CORRETO PARA LIVE API
-  model: "Gemini 3.1 Flash-Lite",
+  // ✅ Modelo compatível para Live API (Voz em tempo real)
+  model: "gemini-2.5-flash-native-audio-preview-12-2025",
   
   config: {
     responseModalities: [Modality.AUDIO],
-    systemInstruction: systemInstruction,
+    ...(systemInstruction ? { systemInstruction } : {}),
     speechConfig: {
       voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAPPING[voice] || 'Kore' } },
     },
@@ -600,7 +620,7 @@ export const useGeminiLive = ({
               setMoodFunc, setFocusModeFunc, saveMemoryFunc, addImportantDateFunc,
               writeDiaryFunc, searchWebFunc, readUrlContentFunc, updateWorkspaceFunc,
               clearWorkspaceFunc, saveSemanticFactFunc, searchSemanticMemoryFunc,
-              searchGmailFunc, saveConversationSummaryFunc
+              searchGmailFunc, searchEmailFunc, saveConversationSummaryFunc
             ] }
           ]
         },
@@ -657,7 +677,7 @@ export const useGeminiLive = ({
                 const args = call.args || {};
                 let handled = false;
 
-                const newTools = ['show_lyrics', 'set_mood', 'set_focus_mode', 'save_memory', 'add_important_date', 'write_diary', 'update_workspace', 'clear_workspace', 'save_semantic_fact', 'search_semantic_memory', 'search_gmail', 'save_conversation_summary', 'save_profile_info'];
+                const newTools = ['show_lyrics', 'set_mood', 'set_focus_mode', 'save_memory', 'add_important_date', 'write_diary', 'update_workspace', 'clear_workspace', 'save_semantic_fact', 'search_semantic_memory', 'search_gmail', 'search_email', 'save_conversation_summary', 'save_profile_info'];
                 
                 if (newTools.includes(name)) {
                   onToolCallRef.current?.(name, args);
@@ -826,6 +846,7 @@ export const useGeminiLive = ({
       });
 
       sessionRef.current = sessionPromise;
+      await sessionPromise;
 
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true } 
@@ -954,6 +975,7 @@ export const useGeminiLive = ({
     startScreenSharing,
     history,
     sendMessage,
+    sendLiveMessage,
     sendFile
   };
 };
