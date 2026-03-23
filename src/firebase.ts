@@ -1,13 +1,20 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getAuth, signOut, onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, getDoc, getDocs, query, orderBy, limit, onSnapshot, addDoc, deleteDoc, where, Timestamp, getDocFromServer, writeBatch } from 'firebase/firestore';
 
-// Import the Firebase configuration
-import firebaseConfig from '../firebase-applet-config.json';
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyAacJQQOprFd6AIyllaltNJqyMJK_7YUl8",
+  authDomain: "hrst-971b9.firebaseapp.com",
+  projectId: "hrst-971b9",
+  storageBucket: "hrst-971b9.firebasestorage.app",
+  messagingSenderId: "719745014650",
+  appId: "1:719745014650:web:82a31adb0dd940451894c3"
+};
 
 // Initialize Firebase SDK
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
