@@ -537,7 +537,7 @@ export default function App() {
     <div className="min-h-screen bg-gradient-to-b from-[#101010] to-[#000000] text-[#f5f5f5] font-sans overflow-hidden flex flex-col relative select-none">
 
       {onboardingStep === 'supernova' && <Supernova onComplete={() => { setOnboardingStep('completed'); connect(systemInstruction); setTimeout(() => sendLiveMessage("Oi, estou aqui."), 2500); }} />}
-      <Mascot />
+      <Mascot onToggleVoice={handleOrbClick} />
 
       {/* TOP BAR */}
       <div className="fixed top-0 left-0 right-0 h-14 px-5 flex items-center justify-between z-50 bg-[#0a0505]/90 backdrop-blur-md">
@@ -598,12 +598,8 @@ export default function App() {
       {/* HUD CONTAINER - ANCHORED AT TOP */}
       <div id="ai-hud-container">
         {/* 1. AUDIO WAVES */}
-        <div className="w-full h-24 pointer-events-auto">
-          <motion.button 
-            onClick={handleOrbClick} 
-            className="w-full h-full focus:outline-none" 
-            aria-label={isConnected ? 'Desligar' : 'Ativar'}
-          >
+        <div className="w-full h-24 pointer-events-none">
+          <div className="w-full h-full focus:outline-none">
             <VoiceOrb 
               isSpeaking={isSpeaking} 
               isListening={isListening} 
@@ -613,7 +609,7 @@ export default function App() {
               volume={volume} 
               moodColor={moodColor} 
             />
-          </motion.button>
+          </div>
         </div>
 
         {/* STATUS INDICATOR */}
