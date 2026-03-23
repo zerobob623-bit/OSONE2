@@ -9,6 +9,7 @@ service cloud.firestore {
     // Fields:
     //   - role: string (required, 'user' | 'model')
     //   - text: string (required, max 5000 chars)
+    //   - imageUrl: string (optional, max 10000 chars)
     //   - createdAt: timestamp (required)
     //   - userId: string (required, must match parent userId)
     //
@@ -56,11 +57,12 @@ service cloud.firestore {
 
     function isValidMessage(data) {
       return hasRequiredFields(['role', 'text', 'createdAt', 'userId']) &&
-             hasOnlyAllowedFields(['role', 'text', 'createdAt', 'userId']) &&
+             hasOnlyAllowedFields(['role', 'text', 'createdAt', 'userId', 'imageUrl']) &&
              data.role in ['user', 'model'] &&
              data.text is string && data.text.size() <= 5000 &&
              data.createdAt is timestamp &&
-             data.userId is string;
+             data.userId is string &&
+             (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 10000));
     }
 
     function isValidMemory(data) {
