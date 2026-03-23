@@ -2,7 +2,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppStore } from '../store/useAppStore';
 
-export const Mascot: React.FC = () => {
+interface MascotProps {
+  onToggleVoice?: () => void;
+}
+
+export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
   const { isMascotVisible, mascotTarget, setMascotTarget, mascotAction, setMascotAction, mascotAppearance } = useAppStore();
   const [position, setPosition] = useState({ x: window.innerWidth - 100, y: window.innerHeight - 100 });
   const [isPointing, setIsPointing] = useState(false);
@@ -10,6 +14,14 @@ export const Mascot: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   
   const mascotRef = useRef<HTMLDivElement>(null);
+
+  const handleMascotClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onToggleVoice) {
+      onToggleVoice();
+      playClickSound();
+    }
+  };
 
   const playClickSound = () => {
     try {
@@ -189,8 +201,9 @@ export const Mascot: React.FC = () => {
         y: { duration: 2, repeat: Infinity, ease: "easeInOut" },
         rotate: { repeat: Infinity, duration: 0.2 }
       }}
-      className="fixed z-[9999] pointer-events-none"
+      className="fixed z-[9999] pointer-events-auto cursor-pointer"
       style={{ left: 0, top: 0 }}
+      onClick={handleMascotClick}
     >
       <div className="relative group">
         {/* Mascot Body */}
