@@ -1,20 +1,67 @@
 {
-  "name": "OSONE",
+  "name": "OSONE - Sistema Operacional de Inteligência Artificial",
   "short_name": "OSONE",
+  "description": "Uma inteligência artificial altamente avançada e empática para o seu dia a dia.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#0a0505",
+  "theme_color": "#0a0505",
+  "orientation": "portrait",
+  "scope": "/",
+  "id": "osone-ai-system",
+  "categories": ["productivity", "utilities", "artificial intelligence"],
   "icons": [
     {
-      "src": "android-chrome-192x192.png",
+      "src": "https://picsum.photos/seed/osone/192/192",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "android-chrome-512x512.png",
+      "src": "https://picsum.photos/seed/osone/512/512",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://picsum.photos/seed/osone/192/192",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "https://picsum.photos/seed/osone/512/512",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "https://picsum.photos/seed/osone-screenshot1/1080/1920",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Interface Principal do OSONE"
+    },
+    {
+      "src": "https://picsum.photos/seed/osone-screenshot2/1920/1080",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Interface Desktop do OSONE"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Nova Conversa",
+      "url": "/",
+      "icons": [{ "src": "https://picsum.photos/seed/osone-new/96/96", "sizes": "96x96" }]
+    },
+    {
+      "name": "Histórico",
+      "url": "/history",
+      "icons": [{ "src": "https://picsum.photos/seed/osone-history/96/96", "sizes": "96x96" }]
     }
   ]
 }
