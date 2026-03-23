@@ -1,7 +1,7 @@
 // src/hooks/useGeminiLive.ts
-// ✅ Versão refatorada — bugs corrigidos, performance melhorada
+// ✅ Busca web corrigida: Jina AI Search (resultados reais) + fallback DuckDuckGo
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { useAppStore, VoiceName, VOICE_MAPPING } from '../store/useAppStore';
 import { TOOL_DECLARATIONS, DELEGATED_TOOLS } from './geminiToolDeclarations';
@@ -42,7 +42,6 @@ export const useGeminiLive = ({
     apiKey: storedApiKey
   } = useAppStore();
 
-  // ─── Refs de sessão e áudio ───────────────────────────────────────────────
   const sessionRef = useRef<any>(null);
   const isConnectedRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -55,10 +54,8 @@ export const useGeminiLive = ({
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const isMutedRef = useRef(isMuted);
 
-  // ─── Sincroniza isMuted sem re-render ────────────────────────────────────
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
 
-  // ─── Estabiliza callbacks via Refs (evita stale closures) ────────────────
   const onToggleScreenSharingRef = useRef(onToggleScreenSharing);
   const onChangeVoiceRef = useRef(onChangeVoice);
   const onOpenUrlRef = useRef(onOpenUrl);
@@ -76,13 +73,12 @@ export const useGeminiLive = ({
   }, [onToggleScreenSharing, onChangeVoice, onOpenUrl, onInteract, onMessage, onToolCall]);
 
   // ============================================================
-  // 🎵 ÁUDIO — Playback
+  // 🎵 ÁUDIO
   // ============================================================
 
   const stopAudio = useCallback((isReconnecting = false) => {
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
-
     if (audioWorkletNodeRef.current) {
       audioWorkletNodeRef.current.disconnect();
       audioWorkletNodeRef.current = null;
@@ -93,7 +89,6 @@ export const useGeminiLive = ({
     }
     activeSourcesRef.current.forEach(s => { try { s.stop(); } catch {} });
     activeSourcesRef.current = [];
-
     if (!isReconnecting && audioContextRef.current?.state !== 'closed') {
       audioContextRef.current?.close().catch(console.error);
       audioContextRef.current = null;
@@ -106,78 +101,111 @@ export const useGeminiLive = ({
 
   const playNextChunk = useCallback(() => {
     if (audioQueue.current.length === 0 || !audioContextRef.current) return;
-
     const ctx = audioContextRef.current;
     const chunk = audioQueue.current.shift()!;
     const audioBuffer = ctx.createBuffer(1, chunk.length, 24000);
     const channelData = audioBuffer.getChannelData(0);
-
-    for (let i = 0; i < chunk.length; i++) {
-      channelData[i] = chunk[i] / 0x7FFF;
-    }
-
+    for (let i = 0; i < chunk.length; i++) channelData[i] = chunk[i] / 0x7FFF;
     const source = ctx.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(ctx.destination);
-
     const now = ctx.currentTime;
-    // Pequeno lookahead para evitar gaps entre chunks
-    if (nextStartTimeRef.current < now + 0.02) {
-      nextStartTimeRef.current = now + 0.05;
-    }
-
+    if (nextStartTimeRef.current < now + 0.02) nextStartTimeRef.current = now + 0.05;
     source.start(nextStartTimeRef.current);
     activeSourcesRef.current.push(source);
     nextStartTimeRef.current += audioBuffer.duration;
     setIsSpeaking(true);
-
     source.onended = () => {
       activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== source);
-      if (activeSourcesRef.current.length === 0 && audioQueue.current.length === 0) {
-        setIsSpeaking(false);
-      }
+      if (activeSourcesRef.current.length === 0 && audioQueue.current.length === 0) setIsSpeaking(false);
     };
   }, [setIsSpeaking]);
 
-  // ─── Converte ArrayBuffer → base64 com chunks para evitar stack overflow ──
   const toBase64 = useCallback((buffer: ArrayBuffer): string => {
     const bytes = new Uint8Array(buffer);
     let binary = '';
     const CHUNK = 8192;
-    for (let i = 0; i < bytes.length; i += CHUNK) {
+    for (let i = 0; i < bytes.length; i += CHUNK)
       binary += String.fromCharCode(...(bytes.subarray(i, i + CHUNK) as any));
-    }
     return window.btoa(binary);
   }, []);
 
   // ============================================================
-  // 🌐 WEB SEARCH & URL READER
+  // 🌐 BUSCA WEB — CORRIGIDA
   // ============================================================
 
+  /**
+   * COMO FUNCIONA AGORA:
+   * 1. Jina AI Search (s.jina.ai) — retorna resultados reais com título, URL e resumo
+   * 2. Fallback: DuckDuckGo Instant Answer se Jina falhar
+   * 3. O resultado é enviado DE VOLTA ao modelo via sendToolResponse
+   *    para que ele possa responder com base nas informações reais.
+   *
+   * ANTES (com bug): o App.tsx abria o Google.com em nova aba e o modelo
+   * nunca recebia o conteúdo da busca, causando alucinações.
+   */
   const performWebSearch = useCallback(async (query: string, numResults = 5): Promise<string> => {
+    // --- Tentativa 1: Jina AI Search (resultados reais) ---
+    try {
+      const res = await fetch(`https://s.jina.ai/${encodeURIComponent(query)}`, {
+        headers: {
+          'Accept': 'application/json',
+          'X-Retain-Images': 'none',
+        }
+      });
+
+      if (!res.ok) throw new Error(`Jina Search HTTP ${res.status}`);
+
+      const text = await res.text();
+
+      if (text && text.length > 100) {
+        const trimmed = text.length > 6000
+          ? text.substring(0, 6000) + '\n\n[Resultados truncados]'
+          : text;
+        return `🔍 Resultados de busca para "${query}":\n\n${trimmed}`;
+      }
+      throw new Error('Resposta vazia');
+
+    } catch (jinaErr) {
+      console.warn('Jina Search falhou, usando DuckDuckGo:', jinaErr);
+    }
+
+    // --- Tentativa 2: DuckDuckGo Instant Answer ---
     try {
       const res = await fetch(
-        `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1`
+        `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1`
       );
-      if (!res.ok) throw new Error(`DuckDuckGo ${res.status}`);
+      if (!res.ok) throw new Error(`DDG HTTP ${res.status}`);
       const data = await res.json();
 
       let result = `🔍 Resultados para "${query}":\n\n`;
+
+      if (data.Answer) result += `✅ Resposta direta: ${data.Answer}\n\n`;
+
       if (data.AbstractText) {
-        result += `📋 ${data.AbstractText}\nFonte: ${data.AbstractSource || 'DuckDuckGo'}\n\n`;
+        result += `📋 Resumo: ${data.AbstractText}\n`;
+        if (data.AbstractURL) result += `Fonte: ${data.AbstractURL}\n\n`;
       }
+
       const topics: string[] = (data.RelatedTopics ?? [])
         .slice(0, numResults)
-        .map((t: any, i: number) =>
-          t.Text ? `[${i + 1}] ${t.Text}${t.FirstURL ? `\nURL: ${t.FirstURL}` : ''}` : null
-        )
+        .flatMap((t: any) => {
+          if (t.Topics) return t.Topics.slice(0, 2).map((s: any) => s.Text ? `• ${s.Text}` : null);
+          return t.Text ? [`• ${t.Text}${t.FirstURL ? `\n  URL: ${t.FirstURL}` : ''}`] : [];
+        })
         .filter(Boolean);
 
-      if (topics.length) result += `🔗 Tópicos relacionados:\n${topics.join('\n\n')}`;
-      return result.trim() || `Nenhum resultado encontrado para "${query}".`;
-    } catch (err) {
-      console.error('performWebSearch error:', err);
-      return `⚠️ Não foi possível realizar a busca. Verifique sua conexão.`;
+      if (topics.length) result += `📚 Tópicos relacionados:\n${topics.join('\n')}`;
+
+      const trimmed = result.trim();
+      if (trimmed.length < 80) {
+        return `⚠️ Não encontrei resultados detalhados para "${query}". Tente reformular a pergunta.`;
+      }
+      return trimmed;
+
+    } catch (ddgErr) {
+      console.error('DuckDuckGo também falhou:', ddgErr);
+      return `❌ Não foi possível realizar a busca por "${query}". Verifique sua conexão.`;
     }
   }, []);
 
@@ -185,15 +213,14 @@ export const useGeminiLive = ({
     const url = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
     try {
       const res = await fetch(`https://r.jina.ai/${url}`, {
-        headers: { 'Accept': 'text/plain', 'X-With-Generated-Alt': 'true' }
+        headers: { 'Accept': 'text/plain', 'X-Retain-Images': 'none' }
       });
-      if (!res.ok) throw new Error(`Jina ${res.status}`);
+      if (!res.ok) throw new Error(`Jina Reader HTTP ${res.status}`);
       const text = await res.text();
-      const truncated = text.length > 5000 ? text.substring(0, 5000) + '\n\n⚠️ Conteúdo truncado.' : text;
-      return `📄 Conteúdo de ${url}:\n\n${truncated}`;
+      const trimmed = text.length > 5000 ? text.substring(0, 5000) + '\n\n⚠️ Conteúdo truncado.' : text;
+      return `📄 Conteúdo de ${url}:\n\n${trimmed}`;
     } catch (err: any) {
-      console.error('readUrlContent error:', err);
-      return `❌ Não foi possível ler "${url}".\n\nDica: tente "search_web" para encontrar informações sobre o tópico.`;
+      return `❌ Não foi possível ler "${url}". Dica: tente "search_web" para encontrar informações sobre o tópico.`;
     }
   }, []);
 
@@ -201,30 +228,23 @@ export const useGeminiLive = ({
   // 🎨 GERAÇÃO DE IMAGEM
   // ============================================================
 
-  const generateImage = useCallback(async (
-    prompt: string,
-    aspectRatio: "1:1" | "16:9" | "9:16" = "1:1"
-  ) => {
+  const generateImage = useCallback(async (prompt: string, aspectRatio: "1:1" | "16:9" | "9:16" = "1:1") => {
     setIsThinking(true);
     try {
       const apiKey = storedApiKey || process.env.GEMINI_API_KEY;
       if (!apiKey) throw new Error("API Key não encontrada.");
-
       const genAI = new GoogleGenAI({ apiKey });
       const response = await genAI.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: { parts: [{ text: prompt }] },
         config: { imageConfig: { aspectRatio } },
       });
-
-      const imagePart = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-      if (!imagePart?.inlineData) throw new Error("Nenhuma imagem gerada pelo modelo.");
-
+      const imagePart = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
+      if (!imagePart?.inlineData) throw new Error("Nenhuma imagem gerada.");
       const imageUrl = `data:image/png;base64,${imagePart.inlineData.data}`;
       addMessage({ role: 'model', text: `Imagem gerada para: "${prompt}"`, imageUrl });
       onMessageRef.current?.({ role: 'model', text: `Imagem gerada para: "${prompt}"`, imageUrl });
     } catch (err: any) {
-      console.error("generateImage error:", err);
       const msg = "Não consegui gerar a imagem. Verifique se sua chave API suporta geração de imagens.";
       addMessage({ role: 'model', text: msg });
       onMessageRef.current?.({ role: 'model', text: msg });
@@ -234,56 +254,40 @@ export const useGeminiLive = ({
   }, [storedApiKey, addMessage, setIsThinking]);
 
   // ============================================================
-  // 💬 ENVIO DE MENSAGEM (modo texto/Groq)
+  // 💬 ENVIO DE MENSAGEM (modo texto)
   // ============================================================
 
   const sendMessage = useCallback(async (text: string) => {
     addMessage({ role: 'user', text });
     onMessageRef.current?.({ role: 'user', text });
     setIsThinking(true);
-
     try {
-      // ✅ FIX: histórico já está em ordem, não inverter
       const contextHistory = history.map(msg => ({
         role: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.text
       }));
-
-      // Detecta pedido de imagem antes de enviar ao chat
       const IMAGE_KEYWORDS = ['gere uma imagem', 'crie uma imagem', 'gerar imagem', 'criar imagem', 'desenhe', 'faça uma imagem'];
       const lower = text.toLowerCase();
       const matchedKw = IMAGE_KEYWORDS.find(kw => lower.includes(kw));
-
       if (matchedKw) {
-        const idx = lower.indexOf(matchedKw);
-        const prompt = text.substring(idx + matchedKw.length).trim();
-        if (prompt) {
-          await generateImage(prompt);
-          return;
-        }
+        const prompt = text.substring(lower.indexOf(matchedKw) + matchedKw.length).trim();
+        if (prompt) { await generateImage(prompt); return; }
       }
-
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [...contextHistory, { role: 'user', content: text }],
-          systemInstruction
-        })
+        body: JSON.stringify({ messages: [...contextHistory, { role: 'user', content: text }], systemInstruction })
       });
-
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Server error: ${res.status}`);
       }
-
       const { text: replyText } = await res.json();
       if (replyText) {
         addMessage({ role: 'model', text: replyText });
         onMessageRef.current?.({ role: 'model', text: replyText });
       }
     } catch (err: any) {
-      console.error("sendMessage error:", err);
       const msg = err.message === "Groq API Key not found"
         ? "Configure sua chave Groq nas Configurações para usar o chat de texto."
         : "Ocorreu um erro ao processar sua mensagem.";
@@ -295,16 +299,14 @@ export const useGeminiLive = ({
   }, [history, addMessage, setIsThinking, systemInstruction, generateImage]);
 
   // ============================================================
-  // 🔌 CONEXÃO COM GEMINI LIVE API
+  // 🔌 CONEXÃO COM GEMINI LIVE
   // ============================================================
 
   const connect = useCallback(async (sysInstruction: string) => {
-    // ✅ FIX: garante que não abre sessão dupla
     if (isConnectedRef.current) {
-      console.warn("Já conectado — ignorando chamada duplicada de connect().");
+      console.warn("Já conectado — ignorando connect() duplicado.");
       return;
     }
-
     try {
       setError(null);
       const apiKey = storedApiKey || process.env.GEMINI_API_KEY;
@@ -312,19 +314,11 @@ export const useGeminiLive = ({
 
       const ai = new GoogleGenAI({ apiKey });
 
-      // ─── AudioContext de saída ──────────────────────────────
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
         audioContextRef.current = new AudioContext({ sampleRate: 24000 });
       }
-      if (audioContextRef.current.state === 'suspended') {
-        await audioContextRef.current.resume();
-      }
-
-      // ✅ FIX: AudioWorklet como arquivo externo (sem memory leak de createObjectURL)
-      // Certifique-se de que /public/audio-processor.js existe no projeto
+      if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
       await audioContextRef.current.audioWorklet.addModule('/audio-processor.js');
-
-      console.log("🚀 Conectando ao Gemini Live...");
 
       const sessionPromise = ai.live.connect({
         model: "gemini-2.5-flash-native-audio-preview-12-2025",
@@ -345,20 +339,14 @@ export const useGeminiLive = ({
           },
 
           onmessage: async (message: any) => {
-            // ─── Turno do modelo (texto + áudio) ──────────────
             const modelParts = message.serverContent?.modelTurn?.parts;
             if (modelParts) {
               setIsThinking(false);
-              const textContent = modelParts
-                .filter((p: any) => p.text)
-                .map((p: any) => p.text)
-                .join('');
-
+              const textContent = modelParts.filter((p: any) => p.text).map((p: any) => p.text).join('');
               if (textContent) {
                 addMessage({ role: 'model', text: textContent });
                 onMessageRef.current?.({ role: 'model', text: textContent });
               }
-
               for (const part of modelParts) {
                 if (part.inlineData?.data) {
                   const bin = atob(part.inlineData.data);
@@ -370,7 +358,6 @@ export const useGeminiLive = ({
               }
             }
 
-            // ─── Turno do usuário (transcrição) ───────────────
             const userParts = message.serverContent?.userTurn?.parts;
             if (userParts) {
               const userText = userParts.filter((p: any) => p.text).map((p: any) => p.text).join('');
@@ -380,7 +367,6 @@ export const useGeminiLive = ({
               }
             }
 
-            // ─── Tool Calls ────────────────────────────────────
             if (message.toolCall) {
               setIsThinking(true);
               const session = await sessionPromise;
@@ -389,62 +375,66 @@ export const useGeminiLive = ({
               for (const call of message.toolCall.functionCalls) {
                 const { name, args = {}, id } = call;
 
-                // Tools delegadas ao componente pai
                 if (DELEGATED_TOOLS.has(name)) {
                   onToolCallRef.current?.(name, args);
                   syncResponses.push({ name, id, response: { success: true } });
                   continue;
                 }
 
-                // ✅ FIX: async tools enviam UMA resposta apenas (sem resposta dupla)
+                // ✅ BUSCA WEB CORRIGIDA:
+                // O resultado da busca volta para o modelo via sendToolResponse.
+                // O App.tsx é notificado via onToolCall SOMENTE para atualizar a UI,
+                // mas NÃO deve mais abrir o Google ou interferir no fluxo.
                 if (name === "search_web") {
-                  // Envia resposta async após busca completar
-                  performWebSearch(args.query, args.num_results ?? 5).then(content => {
-                    session.sendToolResponse({
-                      functionResponses: [{ name, id, response: { success: true, content, query: args.query } }]
+                  performWebSearch(args.query, args.num_results ?? 5)
+                    .then(content => {
+                      // Notifica App para mostrar resultado na UI (opcional)
+                      onToolCallRef.current?.(name, { ...args, result: content });
+                      // Envia resultado ao modelo para ele responder com base nele
+                      session.sendToolResponse({
+                        functionResponses: [{ name, id, response: { success: true, content, query: args.query } }]
+                      });
+                    })
+                    .catch(err => {
+                      session.sendToolResponse({
+                        functionResponses: [{ name, id, response: { success: false, error: String(err) } }]
+                      });
                     });
-                  }).catch(err => {
-                    session.sendToolResponse({
-                      functionResponses: [{ name, id, response: { success: false, error: err.message } }]
-                    });
-                  });
-                  onToolCallRef.current?.(name, args);
                   continue;
                 }
 
                 if (name === "read_url_content") {
-                  readUrlContent(args.url).then(content => {
-                    session.sendToolResponse({
-                      functionResponses: [{ name, id, response: { success: true, content, url: args.url } }]
+                  readUrlContent(args.url)
+                    .then(content => {
+                      onToolCallRef.current?.(name, args);
+                      session.sendToolResponse({
+                        functionResponses: [{ name, id, response: { success: true, content, url: args.url } }]
+                      });
+                    })
+                    .catch(err => {
+                      session.sendToolResponse({
+                        functionResponses: [{ name, id, response: { success: false, error: String(err) } }]
+                      });
                     });
-                  }).catch(err => {
-                    session.sendToolResponse({
-                      functionResponses: [{ name, id, response: { success: false, error: err.message } }]
-                    });
-                  });
-                  onToolCallRef.current?.(name, args);
                   continue;
                 }
 
                 if (name === "generate_image") {
-                  generateImage(args.prompt, args.aspect_ratio ?? "1:1").then(() => {
-                    session.sendToolResponse({
+                  generateImage(args.prompt, args.aspect_ratio ?? "1:1")
+                    .then(() => session.sendToolResponse({
                       functionResponses: [{ name, id, response: { success: true } }]
-                    });
-                  }).catch(err => {
-                    session.sendToolResponse({
-                      functionResponses: [{ name, id, response: { success: false, error: err.message } }]
-                    });
-                  });
+                    }))
+                    .catch(err => session.sendToolResponse({
+                      functionResponses: [{ name, id, response: { success: false, error: String(err) } }]
+                    }));
                   onToolCallRef.current?.(name, args);
                   continue;
                 }
 
-                // Tools síncronas
                 switch (name) {
                   case "toggle_screen_sharing":
                     onToggleScreenSharingRef.current?.(args.enabled);
-                    syncResponses.push({ name, id, response: { success: true, message: `Compartilhamento ${args.enabled ? 'ativado' : 'desativado'}.` } });
+                    syncResponses.push({ name, id, response: { success: true } });
                     break;
                   case "open_url":
                     onOpenUrlRef.current?.(args.url);
@@ -452,7 +442,7 @@ export const useGeminiLive = ({
                     break;
                   case "change_voice":
                     onChangeVoiceRef.current?.(args.voice_name);
-                    syncResponses.push({ name, id, response: { success: true, message: `Voz: ${args.voice_name}` } });
+                    syncResponses.push({ name, id, response: { success: true } });
                     break;
                   case "interact_with_screen":
                     onInteractRef.current?.(args.action, args.x, args.y, args.text);
@@ -479,7 +469,6 @@ export const useGeminiLive = ({
               setIsThinking(false);
             }
 
-            // ─── Interrupção de áudio ──────────────────────────
             if (message.serverContent?.interrupted) {
               audioQueue.current = [];
               activeSourcesRef.current.forEach(s => { try { s.stop(); } catch {} });
@@ -490,7 +479,6 @@ export const useGeminiLive = ({
           },
 
           onclose: () => {
-            console.log("🔌 Sessão Gemini Live encerrada.");
             setIsConnected(false);
             isConnectedRef.current = false;
             sessionRef.current = null;
@@ -509,7 +497,6 @@ export const useGeminiLive = ({
       sessionRef.current = sessionPromise;
       await sessionPromise;
 
-      // ─── Microfone ─────────────────────────────────────────
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
       });
@@ -517,7 +504,6 @@ export const useGeminiLive = ({
 
       const inputCtx = new AudioContext({ sampleRate: 16000 });
       inputAudioContextRef.current = inputCtx;
-
       await inputCtx.audioWorklet.addModule('/audio-processor.js');
       const micSource = inputCtx.createMediaStreamSource(stream);
       const inputWorklet = new AudioWorkletNode(inputCtx, 'audio-processor');
@@ -531,25 +517,18 @@ export const useGeminiLive = ({
       inputWorklet.port.onmessage = (event: MessageEvent<Int16Array>) => {
         micBuffer.push(event.data);
         micBufferSize += event.data.length;
-
         if (micBufferSize >= TARGET_BUFFER) {
           const combined = new Int16Array(micBufferSize);
           let offset = 0;
           for (const chunk of micBuffer) { combined.set(chunk, offset); offset += chunk.length; }
-
-          // Volume RMS
           let sum = 0;
           for (let i = 0; i < combined.length; i++) sum += Math.abs(combined[i] / 0x7FFF);
           setVolume(sum / combined.length);
-
           if (!isMutedRef.current && sessionRef.current && isConnectedRef.current) {
             sessionRef.current.then((session: any) => {
-              session.sendRealtimeInput({
-                audio: { data: toBase64(combined.buffer), mimeType: 'audio/pcm;rate=16000' }
-              });
+              session.sendRealtimeInput({ audio: { data: toBase64(combined.buffer), mimeType: 'audio/pcm;rate=16000' } });
             }).catch((e: any) => console.error("Erro ao enviar áudio:", e));
           }
-
           micBuffer = [];
           micBufferSize = 0;
         }
@@ -562,44 +541,32 @@ export const useGeminiLive = ({
       isConnectedRef.current = false;
     }
   }, [
-    voice, storedApiKey,
-    stopAudio, playNextChunk, toBase64,
+    voice, storedApiKey, stopAudio, playNextChunk, toBase64,
     setError, setIsConnected, setIsListening, setVolume,
     addMessage, setMascotAction, setMascotTarget, setOnboardingStep,
     performWebSearch, readUrlContent, generateImage
   ]);
 
-  // ============================================================
-  // 📺 SCREEN SHARING
-  // ============================================================
-
   const startScreenSharing = useCallback(async () => {
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (isMobile) {
+    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
       setError("Compartilhamento de tela não suportado em dispositivos móveis.");
       return;
     }
-
     try {
       const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true });
       screenStreamRef.current = stream;
-
       const video = document.createElement('video');
       video.srcObject = stream;
       await video.play();
-
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d')!;
-
       const sendFrame = async () => {
         if (!screenStreamRef.current?.active || !sessionRef.current) return;
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0);
         const base64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-        sessionRef.current.then((session: any) => {
-          session.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } });
-        }).catch(console.error);
+        sessionRef.current.then((s: any) => s.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } })).catch(console.error);
         setTimeout(sendFrame, 1000);
       };
       sendFrame();
@@ -612,52 +579,32 @@ export const useGeminiLive = ({
     }
   }, [setError]);
 
-  // ============================================================
-  // ⌨️ MENSAGENS AO VIVO
-  // ============================================================
-
   const sendLiveMessage = useCallback((text: string) => {
     if (sessionRef.current && isConnectedRef.current) {
       setIsThinking(true);
-      sessionRef.current.then((session: any) => session.sendRealtimeInput({ text }))
-        .catch(console.error);
+      sessionRef.current.then((s: any) => s.sendRealtimeInput({ text })).catch(console.error);
     }
   }, [setIsThinking]);
 
   const sendFile = useCallback((base64Data: string, mimeType: string, prompt: string) => {
     if (sessionRef.current && isConnectedRef.current) {
       setIsThinking(true);
-      sessionRef.current.then(async (session: any) => {
-        await session.sendRealtimeInput({ video: { mimeType, data: base64Data } });
-        setTimeout(() => session.sendRealtimeInput({ text: prompt }), 300);
+      sessionRef.current.then(async (s: any) => {
+        await s.sendRealtimeInput({ video: { mimeType, data: base64Data } });
+        setTimeout(() => s.sendRealtimeInput({ text: prompt }), 300);
       }).catch(console.error);
     }
   }, [setIsThinking]);
 
   const disconnect = useCallback((isReconnecting = false) => {
-    sessionRef.current?.then((session: any) => session.close()).catch(console.error);
+    sessionRef.current?.then((s: any) => s.close()).catch(console.error);
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
     stopAudio(isReconnecting);
   }, [stopAudio]);
 
-  // ============================================================
-  // 📤 RETORNO DO HOOK
-  // ============================================================
-
   return {
-    isConnected,
-    isSpeaking,
-    isListening,
-    isThinking,
-    volume,
-    error,
-    history,
-    connect,
-    disconnect,
-    startScreenSharing,
-    sendMessage,
-    sendLiveMessage,
-    sendFile,
-    generateImage
+    isConnected, isSpeaking, isListening, isThinking, volume, error, history,
+    connect, disconnect, startScreenSharing,
+    sendMessage, sendLiveMessage, sendFile, generateImage
   };
 };
