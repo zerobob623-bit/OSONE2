@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Monitor, Power, Settings, X, Paperclip, MicOff, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, PhoneOff, Copy, Code, FileText, Volume2, VolumeX, Send } from 'lucide-react';
+import { Monitor, Power, Settings, X, Paperclip, MicOff, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, PhoneOff, Copy, Code, FileText, Volume2, VolumeX, Send, Cpu, Download } from 'lucide-react';
 import { VoiceOrb } from './components/VoiceOrb';
 import { Supernova } from './components/Supernova';
 import { Mascot } from './components/Mascot';
@@ -133,7 +133,7 @@ export default function App() {
   }, [setUser, setUserId]);
 
   const [isRestarting, setIsRestarting]             = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab]   = useState<'voice' | 'personality' | 'mascot' | 'integrations'>('voice');
+  const [activeSettingsTab, setActiveSettingsTab]   = useState<'voice' | 'personality' | 'mascot' | 'integrations' | 'system'>('voice');
   const [currentTime, setCurrentTime]               = useState(new Date());
   const [screen, setScreen]                         = useState<Screen>('main');
   const [lyrics, setLyrics]                         = useState<string[]>([]);
@@ -536,6 +536,44 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#101010] to-[#000000] text-[#f5f5f5] font-sans overflow-hidden flex flex-col relative select-none">
 
+      {/* PWA INSTALL BANNER */}
+      <AnimatePresence>
+        {showInstallBanner && installPrompt && !isInstalled && (
+          <motion.div
+            initial={{ y: -100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -100, opacity: 0 }}
+            className="fixed top-16 left-4 right-4 z-[60] p-4 rounded-3xl border backdrop-blur-xl shadow-2xl flex items-center justify-between gap-4"
+            style={{ backgroundColor: `${moodColor}15`, borderColor: `${moodColor}30` }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-xl" style={{ backgroundColor: `${moodColor}20` }}>
+                📱
+              </div>
+              <div>
+                <h3 className="text-xs font-medium">Instalar OSONE</h3>
+                <p className="text-[10px] text-white/40">Adicione à sua tela de início para acesso rápido.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowInstallBanner(false)}
+                className="px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest text-white/40 hover:text-white transition-all"
+              >
+                Agora não
+              </button>
+              <button
+                onClick={handleInstallApp}
+                className="px-4 py-2 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all shadow-lg"
+                style={{ backgroundColor: moodColor, color: '#000' }}
+              >
+                Instalar
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {onboardingStep === 'supernova' && <Supernova onComplete={() => { setOnboardingStep('completed'); connect(systemInstruction); setTimeout(() => sendLiveMessage("Oi, estou aqui."), 2500); }} />}
       <Mascot onToggleVoice={handleOrbClick} />
 
@@ -641,6 +679,9 @@ export default function App() {
               }`}
               style={{ backdropFilter: 'blur(5px)' }}>
                 {msg.text}
+                {msg.imageUrl && (
+                  <img src={msg.imageUrl} alt="Generated" className="mt-2 rounded-xl w-full max-w-[200px] border border-white/10" referrerPolicy="no-referrer" />
+                )}
               </span>
             </motion.div>
           ))}
@@ -1060,11 +1101,11 @@ export default function App() {
                 <button onClick={() => setIsSettingsOpen(false)} className="p-2 hover:bg-white/5 rounded-full"><X size={18} /></button>
               </div>
               <div className="flex border-b border-white/5 overflow-x-auto">
-                {(['voice', 'personality', 'mascot', 'integrations'] as const).map(tab => (
+                {(['voice', 'personality', 'mascot', 'integrations', 'system'] as const).map(tab => (
                   <button key={tab} onClick={() => setActiveSettingsTab(tab)}
                     className="flex-1 py-3 text-[10px] uppercase tracking-widest transition-all border-b-2 whitespace-nowrap px-2"
                     style={activeSettingsTab === tab ? { borderColor: moodColor, color: 'white' } : { borderColor: 'transparent', color: 'rgba(255,255,255,0.3)' }}>
-                    {tab === 'voice' ? 'Voz' : tab === 'personality' ? 'Humor' : tab === 'mascot' ? 'Mascote' : 'Integrações'}
+                    {tab === 'voice' ? 'Voz' : tab === 'personality' ? 'Humor' : tab === 'mascot' ? 'Mascote' : tab === 'integrations' ? 'Integrações' : 'Sistema'}
                   </button>
                 ))}
               </div>
@@ -1258,6 +1299,67 @@ export default function App() {
                             )}
                           </div>
                         </div>
+                      </div>
+                    </motion.div>
+                  )}
+                  {activeSettingsTab === 'system' && (
+                    <motion.div key="system" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 opacity-40">
+                          <Cpu size={14} />
+                          <span className="text-[10px] uppercase tracking-widest">Informações do Sistema</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                            <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">CPU</p>
+                            <p className="text-xl font-light">{systemMetrics.cpu}%</p>
+                          </div>
+                          <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                            <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">Memória</p>
+                            <p className="text-xl font-light">{systemMetrics.mem}%</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 opacity-40">
+                          <Download size={14} />
+                          <span className="text-[10px] uppercase tracking-widest">Aplicação PWA</span>
+                        </div>
+                        <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium">Status de Instalação</p>
+                              <p className="text-[10px] text-white/30">{isInstalled ? 'Instalado no dispositivo' : 'Disponível para instalação'}</p>
+                            </div>
+                            <div className={`w-2 h-2 rounded-full ${isInstalled ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                          </div>
+                          
+                          {!isInstalled && (
+                            <button
+                              onClick={handleInstallApp}
+                              disabled={!installPrompt}
+                              className={`w-full py-4 rounded-2xl text-xs uppercase tracking-widest font-medium transition-all flex items-center justify-center gap-2 ${installPrompt ? 'bg-white text-black hover:bg-white/90' : 'bg-white/5 text-white/20 cursor-not-allowed'}`}
+                              style={installPrompt ? { backgroundColor: moodColor, color: '#000' } : {}}
+                            >
+                              <Download size={14} />
+                              {installPrompt ? 'Instalar Agora' : 'Aguardando Navegador...'}
+                            </button>
+                          )}
+                          
+                          {isInstalled && (
+                            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-center">
+                              <p className="text-[10px] text-green-400 uppercase tracking-widest">Você já está usando a versão instalada</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="pt-4 border-t border-white/5">
+                        <button onClick={() => setIsRestarting(true)} className="w-full py-4 bg-red-500/10 text-red-500 rounded-2xl text-xs uppercase tracking-widest font-medium hover:bg-red-500/20 transition-all flex items-center justify-center gap-2">
+                          <Power size={14} />
+                          Reiniciar Sistema
+                        </button>
                       </div>
                     </motion.div>
                   )}
