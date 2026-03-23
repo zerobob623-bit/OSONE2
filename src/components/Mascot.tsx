@@ -12,8 +12,28 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
   const [isPointing, setIsPointing] = useState(false);
   const [isClicking, setIsClicking] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [message, setMessage] = useState(""); // 👈 NOVO
   
   const mascotRef = useRef<HTMLDivElement>(null);
+
+  // 👇 NOVO: escuta ações da IA e atualiza mensagem/estado visual
+  useEffect(() => {
+    switch (mascotAction) {
+      case 'thinking':
+        setMessage("🤔 Pensando...");
+        break;
+      case 'searching':
+        setMessage("🔎 Pesquisando...");
+        break;
+      case 'speaking':
+        setMessage("💬 Respondendo...");
+        break;
+      case 'idle':
+        // Limpa mensagem após 1.5s para não sumir abruptamente
+        const t = setTimeout(() => setMessage(""), 1500);
+        return () => clearTimeout(t);
+    }
+  }, [mascotAction]);
 
   const handleMascotClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -28,17 +48,13 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const oscillator = audioCtx.createOscillator();
       const gainNode = audioCtx.createGain();
-
       oscillator.type = 'sine';
       oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
       oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
-
       gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
       gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-
       oscillator.connect(gainNode);
       gainNode.connect(audioCtx.destination);
-
       oscillator.start();
       oscillator.stop(audioCtx.currentTime + 0.1);
     } catch (e) {
@@ -51,7 +67,6 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
       let targetX = 0;
       let targetY = 0;
 
-      // Check if target is coordinates (e.g., "x:500,y:300")
       if (mascotTarget.startsWith('x:')) {
         const coords = mascotTarget.split(',');
         targetX = parseInt(coords[0].split(':')[1]);
@@ -69,9 +84,7 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
         setIsRunning(true);
         setIsPointing(false);
         setIsClicking(false);
-        
-        // Move to the target
-        setPosition({ x: targetX, y: targetY + 40 }); // Position slightly below
+        setPosition({ x: targetX, y: targetY + 40 });
         
         const timer = setTimeout(() => {
           setIsRunning(false);
@@ -80,29 +93,22 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
             setIsClicking(true);
             playClickSound();
             
-            // Trigger real click on the underlying element
             setTimeout(() => {
               try {
                 if (mascotTarget.startsWith('x:')) {
                   const coords = mascotTarget.split(',');
                   const x = parseInt(coords[0].split(':')[1]);
                   const y = parseInt(coords[1].split(':')[1]);
-                  // Temporarily hide mascot or ensure it has pointer-events-none (it already does)
                   const el = document.elementFromPoint(x, y);
                   if (el instanceof HTMLElement) {
                     el.click();
-                    // Also try to focus if it's an input
-                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-                      el.focus();
-                    }
+                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.focus();
                   }
                 } else {
                   const el = document.getElementById(mascotTarget);
                   if (el) {
                     el.click();
-                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-                      el.focus();
-                    }
+                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.focus();
                   }
                 }
               } catch (e) {
@@ -110,23 +116,19 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
               }
             }, 100);
 
-            // Simulate click visually
             setTimeout(() => {
               setIsClicking(false);
               setMascotAction('idle');
               setMascotTarget(null);
-              // Return to corner
               setTimeout(() => {
                 setPosition({ x: window.innerWidth - 100, y: window.innerHeight - 100 });
               }, 1000);
             }, 500);
           } else {
             setIsPointing(true);
-            // Reset after pointing
             setTimeout(() => {
               setIsPointing(false);
               setMascotTarget(null);
-              // Return to corner
               setTimeout(() => {
                 setPosition({ x: window.innerWidth - 100, y: window.innerHeight - 100 });
               }, 2000);
@@ -141,9 +143,47 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
 
   if (!isMascotVisible) return null;
 
+  // 👇 NOVO: escala e animação mudam conforme o estado da IA
+  const getScaleForAction = () => {
+    if (isPointing) return 1.2;
+    if (isClicking) return 0.8;
+    if (mascotAction === 'thinking') return 1.05;
+    if (mascotAction === 'searching') return 1.1;
+    if (mascotAction === 'speaking') return 1.15;
+    return 1;
+  };
+
   const renderEyes = () => {
     const eyeColor = mascotAppearance.secondaryColor;
-    
+
+    // 👇 NOVO: olhos diferentes por estado
+    if (mascotAction === 'thinking') {
+      return (
+        <div className="flex gap-1.5">
+          <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: eyeColor }} />
+          <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: eyeColor, animationDelay: '0.3s' }} />
+        </div>
+      );
+    }
+
+    if (mascotAction === 'searching') {
+      return (
+        <div className="flex gap-1.5">
+          <div className="w-2 h-2 rounded-full border-2 animate-spin" style={{ borderColor: eyeColor, borderTopColor: 'transparent' }} />
+          <div className="w-2 h-2 rounded-full border-2 animate-spin" style={{ borderColor: eyeColor, borderTopColor: 'transparent', animationDelay: '0.15s' }} />
+        </div>
+      );
+    }
+
+    if (mascotAction === 'speaking') {
+      return (
+        <div className="flex gap-1.5">
+          <div className="w-1.5 h-1.5 border-t-2 rounded-t-full" style={{ borderColor: eyeColor }} />
+          <div className="w-1.5 h-1.5 border-t-2 rounded-t-full" style={{ borderColor: eyeColor }} />
+        </div>
+      );
+    }
+
     switch (mascotAppearance.eyeStyle) {
       case 'happy':
         return (
@@ -189,7 +229,7 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
       initial={{ opacity: 0, scale: 0, y: 100 }}
       animate={{ 
         opacity: isMascotVisible ? 1 : 0,
-        scale: isMascotVisible ? (isPointing ? 1.2 : isClicking ? 0.8 : 1) : 0,
+        scale: isMascotVisible ? getScaleForAction() : 0,
         x: position.x - 20, 
         y: position.y - 20 + (isRunning ? 0 : Math.sin(Date.now() / 500) * 5),
         rotate: isRunning ? [0, -10, 10, 0] : isClicking ? [0, 15, -15, 0] : 0
@@ -214,10 +254,8 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
             boxShadow: `0 4px 12px ${mascotAppearance.primaryColor}66`
           }}
         >
-          {/* Eyes */}
           {renderEyes()}
           
-          {/* Arms */}
           <motion.div 
             animate={isPointing ? { rotate: -45, scale: 1.5 } : { rotate: 0 }}
             className="absolute -top-2 right-0 w-4 h-1 rounded-full origin-left"
@@ -230,7 +268,23 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
           />
         </div>
         
-        {/* Speech Bubble / Indicator */}
+        {/* 👇 NOVO: balão de mensagem dinâmico (thinking/searching/speaking) */}
+        <AnimatePresence>
+          {message && !isPointing && !isClicking && (
+            <motion.div
+              key={message}
+              initial={{ opacity: 0, y: 8, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 4, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+              className="absolute -top-12 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-bold px-2 py-1 rounded-md whitespace-nowrap shadow-xl"
+            >
+              {message}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Balões existentes (pointing / clicking) */}
         <AnimatePresence>
           {isPointing && (
             <motion.div
@@ -249,7 +303,7 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
                 animate={{ opacity: 1, scale: 2 }}
                 exit={{ opacity: 0, scale: 3 }}
                 transition={{ duration: 0.4 }}
-                className="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-8 border-2 border-[#ff6b6b] rounded-full"
+                className="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-8 border-2 rounded-full"
                 style={{ borderColor: mascotAppearance.primaryColor }}
               />
               <motion.div
@@ -257,7 +311,7 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
                 animate={{ opacity: 0.5, scale: 1.5 }}
                 exit={{ opacity: 0, scale: 2.5 }}
                 transition={{ duration: 0.3, delay: 0.1 }}
-                className="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-8 bg-[#ff6b6b]/30 rounded-full"
+                className="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full"
                 style={{ backgroundColor: `${mascotAppearance.primaryColor}4D` }}
               />
               {[...Array(6)].map((_, i) => (
