@@ -14,7 +14,6 @@ interface VoiceOrbProps {
 export const VoiceOrb: React.FC<VoiceOrbProps> = ({ isSpeaking, isListening, isThinking, isConnected, isMuted, volume, moodColor }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const lerpPulse = useRef(0);
-  const lerpRadius = useRef(100);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -24,136 +23,102 @@ export const VoiceOrb: React.FC<VoiceOrbProps> = ({ isSpeaking, isListening, isT
 
     let animationFrameId: number;
 
+    const resize = () => {
+      const parent = canvas.parentElement;
+      if (parent) {
+        canvas.width = parent.clientWidth;
+        canvas.height = parent.clientHeight;
+      }
+    };
+    window.addEventListener('resize', resize);
+    resize();
+
     const render = (time: number) => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      
-      const targetRadius = isConnected ? 110 : 80;
-      lerpRadius.current += (targetRadius - lerpRadius.current) * 0.1;
       
       const effectiveVolume = isMuted ? 0 : volume;
-      const targetPulse = (isSpeaking || (isListening && !isMuted) ? effectiveVolume * 120 : 0) + (isThinking ? Math.sin(time * 0.01) * 15 : 0);
+      const targetPulse = (isSpeaking || (isListening && !isMuted) ? effectiveVolume * 80 : 0) + (isThinking ? Math.sin(time * 0.005) * 10 : 0);
       lerpPulse.current += (targetPulse - lerpPulse.current) * 0.15;
       
       const pulse = lerpPulse.current;
-      const baseRadius = lerpRadius.current;
       
-      // Draw multiple layers for a "Her" style glow
-      for (let i = 0; i < 6; i++) {
+      const width = canvas.width;
+      const height = canvas.height;
+      
+      // Draw multiple wave layers
+      for (let i = 0; i < 8; i++) {
         ctx.beginPath();
-        const layerTime = time * 0.0008 * (i + 1) * 0.4;
-        const radius = baseRadius + pulse * (i + 1) * 0.35;
-        const opacity = (isConnected ? 0.3 : 0.1) / (i + 1);
+        const layerTime = time * 0.0008 * (i + 1) * 0.7;
+        const amplitude = (20 + pulse * (i + 1) * 0.4) * (isConnected ? 1 : 0.2);
+        const frequency = 0.006 + i * 0.003;
         
-        if (!isConnected) {
-          ctx.fillStyle = `rgba(255, 255, 255, ${opacity * 0.1})`;
-        } else if (isMuted && !isSpeaking && !isThinking) {
-          ctx.fillStyle = `rgba(239, 68, 68, ${opacity * 0.6})`;
+        // Purple -> Cyan -> Blue Gradient for the wave
+        const gradient = ctx.createLinearGradient(0, 0, width, 0);
+        if (isConnected) {
+          gradient.addColorStop(0, '#6c34b6'); // Purple
+          gradient.addColorStop(0.5, '#00d2ff'); // Cyan
+          gradient.addColorStop(1, '#6c34b6'); // Purple
         } else {
-          ctx.fillStyle = isSpeaking 
-            ? `rgba(255, 107, 107, ${opacity})` 
-            : isListening 
-              ? (moodColor ? `${moodColor}${Math.floor(opacity * 255).toString(16).padStart(2, '0')}` : `rgba(254, 202, 87, ${opacity})`)
-              : isThinking
-                ? `rgba(167, 139, 250, ${opacity})`
-                : `rgba(255, 255, 255, ${opacity * 0.3})`;
-        }
-            
-        for (let angle = 0; angle < Math.PI * 2; angle += 0.03) {
-          const xOffset = Math.cos(angle + layerTime) * (pulse * 0.4);
-          const yOffset = Math.sin(angle * 2 + layerTime) * (pulse * 0.4);
-          
-          const harmonic1 = Math.sin(angle * 3 + layerTime * 2.5) * (pulse * 0.2);
-          const harmonic2 = Math.sin(angle * 8 - layerTime) * (pulse * 0.15);
-          
-          const r = radius + harmonic1 + harmonic2;
-          const x = centerX + Math.cos(angle) * r + xOffset;
-          const y = centerY + Math.sin(angle) * r + yOffset;
-          
-          if (angle === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+          gradient.addColorStop(0, 'rgba(255,255,255,0.1)');
+          gradient.addColorStop(1, 'rgba(255,255,255,0.1)');
         }
         
-        ctx.closePath();
-        ctx.fill();
+        ctx.strokeStyle = gradient;
+        
+        if (isConnected && !isMuted) {
+          // Add a shimmering glow effect
+          ctx.shadowBlur = 20 + (pulse * 0.4);
+          ctx.shadowColor = isSpeaking ? '#ffffff' : '#00d2ff';
+        } else if (isMuted) {
+          ctx.strokeStyle = `rgba(239, 68, 68, ${0.2 / (i + 1)})`;
+          ctx.shadowBlur = 0;
+        }
+        
+        ctx.lineWidth = 1.2 + (i * 0.6);
+        
+        // Start from left
+        ctx.moveTo(0, height / 2);
+        
+        for (let x = 0; x <= width; x += 2) {
+          // Create a more complex organic wave with multiple sine/cosine components
+          const edgeFactor = Math.sin((x / width) * Math.PI);
+          
+          const yOffset = Math.sin(x * frequency + layerTime) * amplitude * edgeFactor;
+          const harmonic1 = Math.sin(x * frequency * 1.8 - layerTime * 1.5) * (amplitude * 0.5) * edgeFactor;
+          const harmonic2 = Math.cos(x * frequency * 0.7 + layerTime * 1.1) * (amplitude * 0.3) * edgeFactor;
+          const noise = Math.sin(x * 0.05 + time * 0.01) * 2 * edgeFactor;
+          
+          const y = height / 2 + yOffset + harmonic1 + harmonic2 + noise;
+          ctx.lineTo(x, y);
+        }
+        
+        ctx.stroke();
       }
 
-      // Core orb with inner glow
-      ctx.beginPath();
-      const coreRadius = baseRadius * 0.85;
-      ctx.arc(centerX, centerY, coreRadius, 0, Math.PI * 2);
-      const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, coreRadius);
-      
-      if (!isConnected) {
-        gradient.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
-        gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.1)');
-        gradient.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
-      } else if (isMuted && !isSpeaking && !isThinking) {
-        gradient.addColorStop(0, '#fca5a5');
-        gradient.addColorStop(0.5, '#ef4444');
-        gradient.addColorStop(1, '#b91c1c');
-      } else if (isSpeaking) {
-        gradient.addColorStop(0, '#ff9f9f');
-        gradient.addColorStop(0.5, '#ff6b6b');
-        gradient.addColorStop(1, '#ee5253');
-      } else if (isListening) {
-        if (moodColor) {
-          gradient.addColorStop(0, '#ffffff');
-          gradient.addColorStop(0.5, moodColor);
-          gradient.addColorStop(1, moodColor);
-        } else {
-          gradient.addColorStop(0, '#ffeaa7');
-          gradient.addColorStop(0.5, '#feca57');
-          gradient.addColorStop(1, '#ff9f43');
-        }
-      } else if (isThinking) {
-        gradient.addColorStop(0, '#c4b5fd');
-        gradient.addColorStop(0.5, '#a78bfa');
-        gradient.addColorStop(1, '#8b5cf6');
-      } else {
-        gradient.addColorStop(0, '#ffffff');
-        gradient.addColorStop(0.5, '#f5f5f5');
-        gradient.addColorStop(1, '#dcdde1');
-      }
-      
-      ctx.fillStyle = gradient;
-      ctx.shadowBlur = isConnected ? 50 : 20;
-      ctx.shadowColor = !isConnected ? 'rgba(255, 255, 255, 0.05)' : isMuted && !isSpeaking && !isThinking 
-        ? 'rgba(239, 68, 68, 0.5)' 
-        : isSpeaking ? 'rgba(255, 107, 107, 0.5)' 
-        : isListening ? (moodColor || 'rgba(254, 202, 87, 0.5)') 
-        : isThinking ? 'rgba(167, 139, 250, 0.5)' 
-        : 'rgba(255, 255, 255, 0.2)';
-      ctx.fill();
+      // Add a central shimmering glow
+      ctx.shadowBlur = isConnected ? 50 + (pulse * 0.6) : 10;
+      ctx.shadowColor = isConnected 
+        ? (isSpeaking ? '#ffffff' : '#00d2ff')
+        : 'rgba(255, 255, 255, 0.1)';
 
       animationFrameId = requestAnimationFrame(render);
     };
 
     animationFrameId = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(animationFrameId);
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('resize', resize);
+    };
   }, [isSpeaking, isListening, isThinking, isConnected, isMuted, volume, moodColor]);
 
   return (
-    <div className="relative flex items-center justify-center w-64 h-64">
+    <div className="relative w-full h-full overflow-hidden">
       <canvas 
         ref={canvasRef} 
-        width={400} 
-        height={400} 
         className="w-full h-full"
       />
-      <motion.div
-        animate={{
-          scale: isSpeaking || isListening || isThinking ? [1, 1.05, 1] : 1,
-          rotate: isThinking ? 360 : 0
-        }}
-        transition={{
-          duration: isThinking ? 4 : 2,
-          repeat: Infinity,
-          ease: "easeInOut"
-        }}
-        className="absolute inset-0 rounded-full bg-transparent border border-white/10"
-      />
+      {/* Subtle overlay gradient to blend with the top edge */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-transparent pointer-events-none" />
     </div>
   );
 };
