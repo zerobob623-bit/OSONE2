@@ -150,7 +150,12 @@ export const useGeminiLive = ({
 
       const data = await res.json();
 
-      // Resposta estruturada com array de resultados (Jina ou DDG)
+      // ✅ Jina: usa o texto bruto completo (mais contexto para o modelo)
+      if (data.raw) {
+        return `🔍 Resultados para "${query}":\n\n${data.raw}`;
+      }
+
+      // Resultados estruturados (Jina parseado ou DuckDuckGo)
       if (data.results && Array.isArray(data.results)) {
         if (data.results.length === 0) {
           return `⚠️ Não encontrei resultados para "${query}". Tente reformular a pergunta.`;
@@ -161,20 +166,6 @@ export const useGeminiLive = ({
           )
           .join('\n\n');
         return `🔍 Resultados para "${query}":\n\n${formatted}`;
-      }
-
-      // Resposta em texto bruto (fallback do backend)
-      if (data.text) {
-        return `🔍 Resultados para "${query}":\n\n${data.text}`;
-      }
-
-      // Resposta do DuckDuckGo direto
-      if (data.abstract) {
-        let result = `🔍 Resultados para "${query}":\n\n📋 ${data.abstract}\nFonte: ${data.source}\n`;
-        if (data.topics?.length) {
-          result += '\n' + data.topics.map((t: any) => `• ${t.text}`).join('\n');
-        }
-        return result;
       }
 
       return `⚠️ Não encontrei resultados para "${query}".`;
