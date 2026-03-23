@@ -253,7 +253,6 @@ export const useAppStore = create<AppState>()(
       // Only persist certain fields
       partialize: (state) => ({ 
         voice: state.voice, 
-        history: state.history,
         systemMetrics: state.systemMetrics,
         onboardingStep: state.onboardingStep,
         userProfile: state.userProfile,
