@@ -39,6 +39,7 @@ export interface UserProfile {
 export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
+  imageUrl?: string;
 }
 
 export interface SystemMetrics {
