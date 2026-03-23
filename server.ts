@@ -7,6 +7,8 @@ import axios from "axios";
 import { convert } from "html-to-text";
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
+import { ImapFlow } from 'imapflow';
+import { simpleParser } from 'mailparser';
 
 dotenv.config();
 
@@ -101,6 +103,67 @@ app.post("/api/gmail/search", async (req, res) => {
   }
 });
 
+app.post("/api/email/search", async (req, res) => {
+  const { imapConfig, query } = req.body;
+  if (!imapConfig || !imapConfig.host || !imapConfig.user || !imapConfig.pass) {
+    return res.status(400).json({ error: "IMAP configuration is required" });
+  }
+
+  const client = new ImapFlow({
+    host: imapConfig.host,
+    port: imapConfig.port || 993,
+    secure: imapConfig.secure !== false,
+    auth: {
+      user: imapConfig.user,
+      pass: imapConfig.pass
+    },
+    logger: false
+  });
+
+  try {
+    await client.connect();
+    let lock = await client.getMailboxLock('INBOX');
+    try {
+      // If query is provided, search for it, otherwise get the latest 5 emails
+      let searchCriteria: any = query ? { or: [{ subject: query }, { body: query }] } : { all: true };
+      
+      // Get UIDs matching the search
+      let uids = await client.search(searchCriteria);
+      
+      const results = [];
+      if (Array.isArray(uids) && uids.length > 0) {
+        // Take the last 5 UIDs (most recent)
+        if (uids.length > 5) {
+          uids = uids.slice(-5);
+        }
+
+        // Fetch the messages
+        for await (let message of client.fetch(uids, { source: true, envelope: true })) {
+          if (message.source) {
+            const parsed = await simpleParser(message.source);
+            results.push({
+              id: message.uid.toString(),
+              subject: parsed.subject,
+              from: parsed.from?.text,
+              date: parsed.date?.toISOString(),
+              snippet: parsed.text ? parsed.text.substring(0, 200) : ''
+            });
+          }
+        }
+      }
+      
+      res.json({ results: results.reverse() }); // Return newest first
+    } finally {
+      lock.release();
+    }
+  } catch (error: any) {
+    console.error("Error searching IMAP email:", error.message);
+    res.status(500).json({ error: "Failed to search email" });
+  } finally {
+    client.logout().catch(() => {});
+  }
+});
+
 app.post("/api/read-url", async (req, res) => {
   const { url } = req.body;
   if (!url) {
@@ -131,6 +194,50 @@ app.post("/api/read-url", async (req, res) => {
   } catch (error: any) {
     console.error("Error reading URL:", error.message);
     res.status(500).json({ error: "Failed to read URL content" });
+  }
+});
+
+app.post("/api/chat", async (req, res) => {
+  const { messages, systemInstruction } = req.body;
+  
+  if (!messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: "Messages array is required" });
+  }
+
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: "Groq API Key not configured on server" });
+  }
+
+  try {
+    const formattedMessages = [
+      { role: "system", content: systemInstruction || "You are a helpful assistant." },
+      ...messages.map((msg: any) => ({
+        role: msg.role === "user" ? "user" : "assistant",
+        content: msg.content
+      }))
+    ];
+
+    const response = await axios.post(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        model: "llama-3.3-70b-versatile",
+        messages: formattedMessages,
+        temperature: 0.7,
+        max_tokens: 1024,
+      },
+      {
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    res.json({ text: response.data.choices[0].message.content });
+  } catch (error: any) {
+    console.error("Error calling Groq API:", error.response?.data || error.message);
+    res.status(500).json({ error: "Failed to generate response from Groq" });
   }
 });
 
