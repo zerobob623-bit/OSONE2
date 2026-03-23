@@ -1336,15 +1336,33 @@ export default function App() {
                           </div>
                           
                           {!isInstalled && (
-                            <button
-                              onClick={handleInstallApp}
-                              disabled={!installPrompt}
-                              className={`w-full py-4 rounded-2xl text-xs uppercase tracking-widest font-medium transition-all flex items-center justify-center gap-2 ${installPrompt ? 'bg-white text-black hover:bg-white/90' : 'bg-white/5 text-white/20 cursor-not-allowed'}`}
-                              style={installPrompt ? { backgroundColor: moodColor, color: '#000' } : {}}
-                            >
-                              <Download size={14} />
-                              {installPrompt ? 'Instalar Agora' : 'Aguardando Navegador...'}
-                            </button>
+                            <div className="space-y-4">
+                              {window.self !== window.top ? (
+                                <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl">
+                                  <p className="text-xs text-blue-400 mb-2">⚠️ Instalação bloqueada pelo AI Studio</p>
+                                  <p className="text-[10px] text-white/40 leading-relaxed">
+                                    O navegador não permite a instalação de PWAs dentro de um iframe. 
+                                    Para instalar o OSONE, abra o aplicativo em uma <strong>nova aba</strong> usando o botão no topo da página do AI Studio.
+                                  </p>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={handleInstallApp}
+                                  disabled={!installPrompt}
+                                  className={`w-full py-4 rounded-2xl text-xs uppercase tracking-widest font-medium transition-all flex items-center justify-center gap-2 ${installPrompt ? 'bg-white text-black hover:bg-white/90' : 'bg-white/5 text-white/20 cursor-not-allowed'}`}
+                                  style={installPrompt ? { backgroundColor: moodColor, color: '#000' } : {}}
+                                >
+                                  <Download size={14} />
+                                  {installPrompt ? 'Instalar Agora' : 'Aguardando Navegador...'}
+                                </button>
+                              )}
+                              
+                              {!installPrompt && window.self === window.top && (
+                                <p className="text-[9px] text-center text-white/20 px-4">
+                                  Se o botão não ativar, verifique se o seu navegador suporta PWA ou se o app já está instalado.
+                                </p>
+                              )}
+                            </div>
                           )}
                           
                           {isInstalled && (
