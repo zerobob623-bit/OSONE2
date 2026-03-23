@@ -61,6 +61,56 @@ body {
   animation: pulse-ring 3s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
 }
 
+/* HUD Container anchored at the top */
+#ai-hud-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: auto;
+  max-height: 300px;
+  z-index: 40; /* Lower than TOP BAR (50) */
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 10px;
+}
+
+/* The container of text that persists in the same place */
+.chat-transcript {
+  position: fixed;
+  bottom: 110px; /* Above the input area */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 92%;
+  max-width: 650px;
+  height: auto;
+  max-height: 220px; /* More space for messages */
+  overflow-y: auto;
+  pointer-events: auto;
+  z-index: 5;
+  padding: 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: linear-gradient(to top, rgba(5,5,5,0.8) 0%, transparent 100%);
+}
+
+.chat-transcript::-webkit-scrollbar {
+  display: none;
+}
+
+.transcript-line {
+  font-family: var(--font-sans);
+  font-size: 1.1rem;
+  color: #fff;
+  line-height: 1.5;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 4px;
