@@ -159,6 +159,13 @@ export default function App() {
 
   const { messages: firebaseMessages, addMessage: saveMessage, deleteAll: deleteAllMessages } = useConversationHistory();
 
+  // Clear history on mount as requested
+  useEffect(() => {
+    if (userId) {
+      deleteAllMessages();
+    }
+  }, [userId, deleteAllMessages]);
+
   // Auto-scroll transcript to bottom
   useEffect(() => {
     if (transcriptRef.current) {
