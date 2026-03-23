@@ -64,12 +64,14 @@ service cloud.firestore {
     }
 
     function isValidMemory(data) {
-      return hasOnlyAllowedFields(['userName', 'facts', 'preferences', 'importantDates', 'workspace']) &&
+      return hasOnlyAllowedFields(['userName', 'facts', 'preferences', 'importantDates', 'workspace', 'semanticMemory', 'summaries']) &&
              (!('userName' in data) || (data.userName is string && data.userName.size() <= 100)) &&
              (!('facts' in data) || (data.facts is list && data.facts.size() <= 100)) &&
              (!('preferences' in data) || (data.preferences is list && data.preferences.size() <= 100)) &&
              (!('importantDates' in data) || (data.importantDates is list && data.importantDates.size() <= 50)) &&
-             (!('workspace' in data) || (data.workspace is string && data.workspace.size() <= 50000));
+             (!('workspace' in data) || (data.workspace is string && data.workspace.size() <= 50000)) &&
+             (!('semanticMemory' in data) || (data.semanticMemory is list && data.semanticMemory.size() <= 200)) &&
+             (!('summaries' in data) || (data.summaries is list && data.summaries.size() <= 100));
     }
 
     function isValidDiaryEntry(data) {
