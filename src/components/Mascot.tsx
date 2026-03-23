@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+// Store global que gerencia as intenções da IA (alvo do clique, ações, visibilidade)
 import { useAppStore } from '../store/useAppStore';
 
 interface MascotProps {
@@ -7,16 +8,26 @@ interface MascotProps {
 }
 
 export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
-  const { isMascotVisible, mascotTarget, setMascotTarget, mascotAction, setMascotAction, mascotAppearance } = useAppStore();
+  // Extração de estados globais controlados pela IA
+  const { 
+    isMascotVisible, 
+    mascotTarget, 
+    setMascotTarget, 
+    mascotAction, 
+    setMascotAction, 
+    mascotAppearance 
+  } = useAppStore();
+
+  // Estados locais para controle de animação e UI
   const [position, setPosition] = useState({ x: window.innerWidth - 100, y: window.innerHeight - 100 });
   const [isPointing, setIsPointing] = useState(false);
   const [isClicking, setIsClicking] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
-  const [message, setMessage] = useState(""); // 👈 NOVO
+  const [message, setMessage] = useState(""); 
   
   const mascotRef = useRef<HTMLDivElement>(null);
 
-  // 👇 NOVO: escuta ações da IA e atualiza mensagem/estado visual
+  // Efeito que escuta o estado da IA (mascotAction) e atualiza o balão de mensagem
   useEffect(() => {
     switch (mascotAction) {
       case 'thinking':
@@ -29,12 +40,13 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
         setMessage("💬 Respondendo...");
         break;
       case 'idle':
-        // Limpa mensagem após 1.5s para não sumir abruptamente
+        // Limpa a mensagem com um pequeno atraso para transição suave
         const t = setTimeout(() => setMessage(""), 1500);
         return () => clearTimeout(t);
     }
   }, [mascotAction]);
 
+  // Interação manual do usuário com o mascote
   const handleMascotClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onToggleVoice) {
@@ -43,30 +55,36 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
     }
   };
 
+  // Sintetizador de áudio nativo para feedback tátil sonoro (evita dependência de arquivos mp3)
   const playClickSound = () => {
     try {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const oscillator = audioCtx.createOscillator();
       const gainNode = audioCtx.createGain();
+      
       oscillator.type = 'sine';
       oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
       oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+      
       gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
       gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+      
       oscillator.connect(gainNode);
       gainNode.connect(audioCtx.destination);
       oscillator.start();
       oscillator.stop(audioCtx.currentTime + 0.1);
     } catch (e) {
-      console.error('Error playing click sound:', e);
+      console.error('Erro ao reproduzir som de clique:', e);
     }
   };
 
+  // Núcleo do controle da IA sobre o "mouse" e interface
   useEffect(() => {
     if (mascotTarget) {
       let targetX = 0;
       let targetY = 0;
 
+      // Resolução do alvo: A IA pode enviar coordenadas diretas ou o ID de um elemento DOM
       if (mascotTarget.startsWith('x:')) {
         const coords = mascotTarget.split(',');
         targetX = parseInt(coords[0].split(':')[1]);
@@ -75,17 +93,20 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
         const targetElement = document.getElementById(mascotTarget);
         if (targetElement) {
           const rect = targetElement.getBoundingClientRect();
+          // Calcula o centro exato do elemento alvo
           targetX = rect.left + rect.width / 2;
           targetY = rect.top + rect.height / 2;
         }
       }
 
       if (targetX || targetY) {
+        // Inicia o deslocamento visual do mascote até o alvo
         setIsRunning(true);
         setIsPointing(false);
         setIsClicking(false);
-        setPosition({ x: targetX, y: targetY + 40 });
+        setPosition({ x: targetX, y: targetY + 40 }); // Offset para não cobrir o elemento
         
+        // Timeout para simular o tempo de viagem do mascote até o elemento
         const timer = setTimeout(() => {
           setIsRunning(false);
           
@@ -93,29 +114,33 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
             setIsClicking(true);
             playClickSound();
             
+            // Disparo de evento real no DOM guiado pela IA
             setTimeout(() => {
               try {
                 if (mascotTarget.startsWith('x:')) {
+                  // Clique via coordenadas
                   const coords = mascotTarget.split(',');
                   const x = parseInt(coords[0].split(':')[1]);
                   const y = parseInt(coords[1].split(':')[1]);
                   const el = document.elementFromPoint(x, y);
                   if (el instanceof HTMLElement) {
-                    el.click();
+                    el.click(); // Executa o clique real na página
                     if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.focus();
                   }
                 } else {
+                  // Clique via ID do elemento
                   const el = document.getElementById(mascotTarget);
                   if (el) {
-                    el.click();
+                    el.click(); // Executa o clique real na página
                     if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.focus();
                   }
                 }
               } catch (e) {
-                console.error('Error triggering real click:', e);
+                console.error('Erro ao disparar clique real:', e);
               }
             }, 100);
 
+            // Reseta a ação e faz o mascote voltar à posição de repouso (canto inferior direito)
             setTimeout(() => {
               setIsClicking(false);
               setMascotAction('idle');
@@ -124,7 +149,9 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
                 setPosition({ x: window.innerWidth - 100, y: window.innerHeight - 100 });
               }, 1000);
             }, 500);
+
           } else {
+            // Se a IA apenas quer apontar, e não clicar
             setIsPointing(true);
             setTimeout(() => {
               setIsPointing(false);
@@ -134,7 +161,7 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
               }, 2000);
             }, 3000);
           }
-        }, 1000);
+        }, 1000); // Fim do timer de "viagem"
         
         return () => clearTimeout(timer);
       }
@@ -143,20 +170,20 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
 
   if (!isMascotVisible) return null;
 
-  // 👇 NOVO: escala e animação mudam conforme o estado da IA
+  // Ajusta o tamanho (escala) do mascote dependendo da ação atual da IA
   const getScaleForAction = () => {
     if (isPointing) return 1.2;
-    if (isClicking) return 0.8;
+    if (isClicking) return 0.8; // Contrai ao clicar
     if (mascotAction === 'thinking') return 1.05;
     if (mascotAction === 'searching') return 1.1;
     if (mascotAction === 'speaking') return 1.15;
     return 1;
   };
 
+  // Renderização dinâmica dos "olhos" do mascote para expressar estados da IA
   const renderEyes = () => {
     const eyeColor = mascotAppearance.secondaryColor;
 
-    // 👇 NOVO: olhos diferentes por estado
     if (mascotAction === 'thinking') {
       return (
         <div className="flex gap-1.5">
@@ -184,6 +211,7 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
       );
     }
 
+    // Estilos base de olhos customizáveis
     switch (mascotAppearance.eyeStyle) {
       case 'happy':
         return (
@@ -226,12 +254,15 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
   return (
     <motion.div
       ref={mascotRef}
+      // Fisica de movimentação natural (efeito mola / spring)
       initial={{ opacity: 0, scale: 0, y: 100 }}
       animate={{ 
         opacity: isMascotVisible ? 1 : 0,
         scale: isMascotVisible ? getScaleForAction() : 0,
         x: position.x - 20, 
+        // Adiciona um pequeno efeito de flutuação (seno) apenas quando o mascote está parado
         y: position.y - 20 + (isRunning ? 0 : Math.sin(Date.now() / 500) * 5),
+        // Efeito de "sacudir" enquanto corre ou clica
         rotate: isRunning ? [0, -10, 10, 0] : isClicking ? [0, 15, -15, 0] : 0
       }}
       transition={{ 
@@ -246,7 +277,7 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
       onClick={handleMascotClick}
     >
       <div className="relative group">
-        {/* Mascot Body */}
+        {/* Corpo principal do Mascote */}
         <div 
           className="w-10 h-10 rounded-full shadow-lg flex items-center justify-center border-2 border-white/20"
           style={{ 
@@ -256,6 +287,7 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
         >
           {renderEyes()}
           
+          {/* Braços / Indicadores (usados para apontar visualmente) */}
           <motion.div 
             animate={isPointing ? { rotate: -45, scale: 1.5 } : { rotate: 0 }}
             className="absolute -top-2 right-0 w-4 h-1 rounded-full origin-left"
@@ -268,7 +300,7 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
           />
         </div>
         
-        {/* 👇 NOVO: balão de mensagem dinâmico (thinking/searching/speaking) */}
+        {/* Balão de mensagem (feedback textual da IA) */}
         <AnimatePresence>
           {message && !isPointing && !isClicking && (
             <motion.div
@@ -284,7 +316,7 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
           )}
         </AnimatePresence>
 
-        {/* Balões existentes (pointing / clicking) */}
+        {/* Efeitos Visuais (Apontando e Clicando) */}
         <AnimatePresence>
           {isPointing && (
             <motion.div
@@ -296,8 +328,10 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
               AQUI! ✨
             </motion.div>
           )}
+          
           {isClicking && (
             <>
+              {/* Efeito de Ondulação (Ripple) ao clicar em um elemento */}
               <motion.div
                 initial={{ opacity: 0, scale: 0.5 }}
                 animate={{ opacity: 1, scale: 2 }}
@@ -314,6 +348,7 @@ export const Mascot: React.FC<MascotProps> = ({ onToggleVoice }) => {
                 className="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full"
                 style={{ backgroundColor: `${mascotAppearance.primaryColor}4D` }}
               />
+              {/* Partículas de "fagulha" emitidas no momento do clique guiado pela IA */}
               {[...Array(6)].map((_, i) => (
                 <motion.div
                   key={i}
