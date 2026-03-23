@@ -399,41 +399,38 @@ export const useGeminiLive = ({
 
   // ============================================
   // 🌐 FUNÇÕES DE PESQUISA E LEITURA DA WEB
+  // ✅ CORRIGIDO: Usando proxy /api/web-search para evitar CORS
   // ============================================
 
   /**
-   * Pesquisa na web usando a API do Jina AI Search (Gratuita)
-   * Retorna resultados formatados com título, URL e resumo
+   * Pesquisa na web usando o proxy da API route (sem CORS)
+   * O arquivo pages/api/web-search.ts faz a chamada ao Jina AI pelo servidor
    */
   const performWebSearch = useCallback(async (query: string, numResults: number = 5): Promise<string> => {
     try {
-      const searchUrl = `https://s.jina.ai/${encodeURIComponent(query)}`;
-      
-      const response = await fetch(searchUrl, {
-        headers: {
-          'Accept': 'application/json',
-          'X-With-Generated-Alt': 'true',
-          'X-With-Links-Summary': 'true'
-        }
+      // ✅ CORRIGIDO: Chama o proxy backend em vez do Jina diretamente (evita CORS)
+      const response = await fetch('/api/web-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, num_results: numResults })
       });
-      
+
       if (!response.ok) {
         throw new Error(`Erro na busca: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
-      if (data.data && Array.isArray(data.data)) {
-        const results = data.data.slice(0, numResults).map((item: any, index: number) => {
+
+      if (data.results && Array.isArray(data.results)) {
+        const results = data.results.slice(0, numResults).map((item: any, index: number) => {
           return `[${index + 1}] ${item.title}\nURL: ${item.url}\nResumo: ${item.description || item.content?.substring(0, 300) || 'Sem descrição disponível'}\n`;
         }).join('\n---\n');
-        
+
         return `🔍 Resultados para "${query}":\n\n${results}\n\n💡 Dica: Use "read_url_content" para ler o conteúdo completo de qualquer URL listada acima.`;
       }
-      
-      const text = await response.text();
-      return text.substring(0, 2000);
-      
+
+      return data.text || `Nenhum resultado encontrado para "${query}".`;
+
     } catch (error) {
       console.error('Erro na pesquisa web:', error);
       return await fallbackDuckDuckGoSearch(query, numResults);
@@ -441,34 +438,39 @@ export const useGeminiLive = ({
   }, []);
 
   /**
-   * Fallback usando DuckDuckGo Instant Answer API
+   * Fallback usando DuckDuckGo via proxy
    */
   const fallbackDuckDuckGoSearch = useCallback(async (query: string, numResults: number = 5): Promise<string> => {
     try {
-      const response = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1`);
+      // ✅ CORRIGIDO: Chama o proxy backend para DuckDuckGo também (evita CORS)
+      const response = await fetch('/api/web-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, num_results: numResults, engine: 'duckduckgo' })
+      });
+
+      if (!response.ok) throw new Error(`Status ${response.status}`);
+
       const data = await response.json();
-      
       let result = `🔍 Resultados para "${query}":\n\n`;
-      
-      if (data.AbstractText) {
-        result += `📋 ${data.AbstractText}\nFonte: ${data.AbstractSource || 'DuckDuckGo'}\n\n`;
+
+      if (data.abstract) {
+        result += `📋 ${data.abstract}\nFonte: ${data.source || 'DuckDuckGo'}\n\n`;
       }
-      
-      if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {
-        const topics = data.RelatedTopics.slice(0, numResults).map((topic: any, i: number) => {
-          if (topic.Text) {
-            return `[${i + 1}] ${topic.Text}${topic.FirstURL ? `\nURL: ${topic.FirstURL}` : ''}`;
+
+      if (data.topics && Array.isArray(data.topics)) {
+        const topics = data.topics.slice(0, numResults).map((topic: any, i: number) => {
+          if (topic.text) {
+            return `[${i + 1}] ${topic.text}${topic.url ? `\nURL: ${topic.url}` : ''}`;
           }
           return null;
         }).filter(Boolean).join('\n\n');
-        
-        if (topics) {
-          result += `🔗 Tópicos relacionados:\n${topics}`;
-        }
+
+        if (topics) result += `🔗 Tópicos relacionados:\n${topics}`;
       }
-      
+
       return result.trim() || `Nenhum resultado encontrado para "${query}". Tente reformular sua busca.`;
-      
+
     } catch (error) {
       console.error('Erro no fallback DuckDuckGo:', error);
       return `⚠️ Não foi possível realizar a busca no momento. Verifique sua conexão com a internet e tente novamente.`;
@@ -476,62 +478,39 @@ export const useGeminiLive = ({
   }, []);
 
   /**
-   * Lê o conteúdo de uma URL usando a API do Jina AI Reader (Gratuita)
-   * Extrai texto limpo de artigos, notícias e páginas web
+   * Lê o conteúdo de uma URL usando proxy backend (sem CORS)
    */
   const readUrlContent = useCallback(async (url: string): Promise<string> => {
     try {
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
         url = 'https://' + url;
       }
-      
-      const readerUrl = `https://r.jina.ai/${url}`;
-      
-      const response = await fetch(readerUrl, {
-        headers: {
-          'Accept': 'application/json',
-          'X-With-Generated-Alt': 'true'
-        }
+
+      // ✅ CORRIGIDO: Chama o proxy backend em vez do Jina diretamente (evita CORS)
+      const response = await fetch('/api/web-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, action: 'read' })
       });
-      
+
       if (!response.ok) {
         if (response.status === 403) {
           throw new Error('Acesso negado. O site pode bloquear leitores automáticos.');
         }
         throw new Error(`Erro ao ler URL: ${response.status}`);
       }
-      
-      const contentType = response.headers.get('content-type');
-      if (contentType?.includes('application/json')) {
-        const data = await response.json();
-        if (data.content) {
-          const content = data.content.substring(0, 4000);
-          return `📄 Conteúdo de ${url}:\n\n${content}\n\n${data.content.length > 4000 ? '⚠️ Conteúdo truncado. Peça para ler seções específicas se necessário.' : ''}`;
-        }
+
+      const data = await response.json();
+
+      if (data.content) {
+        const content = data.content.substring(0, 4000);
+        return `📄 Conteúdo de ${url}:\n\n${content}\n\n${data.content.length > 4000 ? '⚠️ Conteúdo truncado. Peça para ler seções específicas se necessário.' : ''}`;
       }
-      
-      const text = await response.text();
-      const cleanText = text.substring(0, 4000);
-      return `📄 Conteúdo de ${url}:\n\n${cleanText}${text.length > 4000 ? '\n\n⚠️ Conteúdo truncado.' : ''}`;
-      
+
+      return `❌ Não foi possível extrair conteúdo de "${url}".`;
+
     } catch (error: any) {
       console.error('Erro ao ler URL:', error);
-      
-      try {
-        const response = await fetch(`https://r.jina.ai/${url}`, {
-          headers: {
-            'Accept': 'text/plain',
-            'X-With-Generated-Alt': 'true',
-            'X-With-Images-Summary': 'true'
-          }
-        });
-        
-        if (response.ok) {
-          const text = await response.text();
-          return `📄 Conteúdo de ${url} (modo alternativo):\n\n${text.substring(0, 3000)}`;
-        }
-      } catch {}
-      
       return `❌ Não foi possível ler o conteúdo de "${url}".\n\nMotivo possível:\n• O site bloqueia acesso automatizado\n• A URL está incorreta ou inacessível\n• Conteúdo requer login ou JavaScript\n\n💡 Dica: Tente usar "search_web" para encontrar informações sobre este tópico.`;
     }
   }, []);
@@ -549,9 +528,7 @@ export const useGeminiLive = ({
         throw new Error("Chave de API não encontrada. Por favor, configure-a nas Configurações.");
       }
 
-      const ai = new GoogleGenAI({ 
-        apiKey: apiKey,
-      });
+      const ai = new GoogleGenAI({ apiKey });
       
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
         audioContextRef.current = new AudioContext({ sampleRate: 24000 });
@@ -578,30 +555,29 @@ export const useGeminiLive = ({
         registerProcessor('audio-processor', AudioProcessor);
       `;
       const blob = new Blob([workletCode], { type: 'application/javascript' });
-      const url = URL.createObjectURL(blob);
-      await audioContextRef.current.audioWorklet.addModule(url);
+      const workletUrl = URL.createObjectURL(blob);
+      await audioContextRef.current.audioWorklet.addModule(workletUrl);
       
-      console.log("🚀 Iniciando conexão com Gemini 2.0 Flash native audio preview 12 2025 Live API...");
+      console.log("🚀 Iniciando conexão com Gemini Live API...");
 
       const sessionPromise = ai.live.connect({
-  // ✅ MODELO CORRETO PARA LIVE API
-  model: "gemini-2.5-flash-native-audio-preview-12-2025",
-  
-  config: {
-    responseModalities: [Modality.AUDIO],
-    systemInstruction: systemInstruction,
-    speechConfig: {
-      voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAPPING[voice] || 'Kore' } },
-    },
+        model: "gemini-2.5-flash-native-audio-preview-12-2025",
+        config: {
+          // ✅ CORRIGIDO: Adicionado TEXT para que respostas de busca sejam visíveis
+          responseModalities: [Modality.AUDIO, Modality.TEXT],
+          systemInstruction,
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAPPING[voice] || 'Kore' } },
+          },
           tools: [
             { functionDeclarations: [
-              toggleScreenSharingFunc, changeVoiceFunc, openUrlFunc, interactFunc, 
+              toggleScreenSharingFunc, changeVoiceFunc, openUrlFunc, interactFunc,
               mascotControlFunc, saveProfileInfoFunc, completeOnboardingFunc, showLyricsFunc,
               setMoodFunc, setFocusModeFunc, saveMemoryFunc, addImportantDateFunc,
               writeDiaryFunc, searchWebFunc, readUrlContentFunc, updateWorkspaceFunc,
               clearWorkspaceFunc, saveSemanticFactFunc, searchSemanticMemoryFunc,
               searchGmailFunc, saveConversationSummaryFunc
-            ] }
+            ]}
           ]
         },
         callbacks: {
@@ -611,6 +587,7 @@ export const useGeminiLive = ({
             isConnectedRef.current = true;
             setIsListening(true);
           },
+
           onmessage: async (message: any) => {
             if (message.serverContent?.modelTurn?.parts) {
               setIsThinking(false);
@@ -649,155 +626,144 @@ export const useGeminiLive = ({
               }
             }
 
+            // ============================================
+            // ✅ CORRIGIDO: Handler de tool calls sem dupla resposta
+            // ============================================
             if (message.toolCall) {
               setIsThinking(true);
-              const responses: any[] = [];
+
+              // Processamos todas as calls, separando as assíncronas (busca/leitura)
+              // das síncronas (todas as outras)
+              const syncResponses: any[] = [];
+              const asyncPromises: Promise<void>[] = [];
+
               for (const call of message.toolCall.functionCalls) {
                 const name = call.name;
                 const args = call.args || {};
-                let handled = false;
 
-                const newTools = ['show_lyrics', 'set_mood', 'set_focus_mode', 'save_memory', 'add_important_date', 'write_diary', 'update_workspace', 'clear_workspace', 'save_semantic_fact', 'search_semantic_memory', 'search_gmail', 'save_conversation_summary', 'save_profile_info'];
-                
-                if (newTools.includes(name)) {
+                // --- Ferramentas síncronas simples ---
+                const delegatedTools = [
+                  'show_lyrics', 'set_mood', 'set_focus_mode', 'save_memory',
+                  'add_important_date', 'write_diary', 'update_workspace',
+                  'clear_workspace', 'save_semantic_fact', 'search_semantic_memory',
+                  'search_gmail', 'save_conversation_summary', 'save_profile_info'
+                ];
+
+                if (delegatedTools.includes(name)) {
                   onToolCallRef.current?.(name, args);
-                  responses.push({ name, id: call.id, response: { success: true } });
-                  handled = true;
-                  
-                // === 🔍 IMPLEMENTAÇÃO: PESQUISA NA WEB ===
-                } else if (name === "search_web") {
-                  handled = true;
-                  try {
-                    const query = args.query as string;
-                    const numResults = args.num_results as number || 5;
-                    
-                    responses.push({ 
-                      name, 
-                      id: call.id, 
-                      response: { 
-                        success: true, 
-                        status: "searching",
-                        message: `🔍 Pesquisando por "${query}"...` 
-                      } 
-                    });
-                    
-                    const searchResult = await performWebSearch(query, numResults);
-                    
-                    sessionPromise.then((session: any) => {
-                      session.sendToolResponse({ 
-                        functionResponses: [{
-                          name,
-                          id: call.id,
-                          response: { 
-                            success: true, 
-                            content: searchResult,
-                            query: query
-                          }
-                        }]
-                      });
-                    });
-                    
-                    onToolCallRef.current?.(name, args);
-                    
-                  } catch (err: any) {
-                    console.error('Erro na tool search_web:', err);
-                    responses.push({ 
-                      name, 
-                      id: call.id, 
-                      response: { 
-                        success: false, 
-                        error: `Erro na busca: ${err.message || 'Erro desconhecido'}` 
-                      } 
-                    });
-                  }
-                  
-                // === 📖 IMPLEMENTAÇÃO: LEITURA DE URL ===
-                } else if (name === "read_url_content") {
-                  handled = true;
-                  try {
-                    const url = args.url as string;
-                    
-                    responses.push({ 
-                      name, 
-                      id: call.id, 
-                      response: { 
-                        success: true, 
-                        status: "reading",
-                        message: `📖 Lendo conteúdo de ${url}...` 
-                      } 
-                    });
-                    
-                    const content = await readUrlContent(url);
-                    
-                    sessionPromise.then((session: any) => {
-                      session.sendToolResponse({ 
-                        functionResponses: [{
-                          name,
-                          id: call.id,
-                          response: { 
-                            success: true, 
-                            content: content,
-                            url: url
-                          }
-                        }]
-                      });
-                    });
-                    
-                    onToolCallRef.current?.(name, args);
-                    
-                  } catch (err: any) {
-                    console.error('Erro na tool read_url_content:', err);
-                    responses.push({ 
-                      name, 
-                      id: call.id, 
-                      response: { 
-                        success: false, 
-                        error: `Erro ao ler URL: ${err.message || 'Erro desconhecido'}` 
-                      } 
-                    });
-                  }
-                  
+                  syncResponses.push({ name, id: call.id, response: { success: true } });
+
                 } else if (name === "toggle_screen_sharing") {
                   onToggleScreenSharingRef.current?.(args.enabled as boolean);
-                  responses.push({ name, id: call.id, response: { success: true, message: `Compartilhamento de tela ${args.enabled ? 'ativado' : 'desativado'}.` } });
-                  handled = true;
+                  syncResponses.push({ name, id: call.id, response: { success: true, message: `Compartilhamento de tela ${args.enabled ? 'ativado' : 'desativado'}.` } });
+
                 } else if (name === "open_url") {
                   onOpenUrlRef.current?.(args.url as string);
-                  responses.push({ name, id: call.id, response: { success: true, message: `Abrindo URL: ${args.url}` } });
-                  handled = true;
+                  syncResponses.push({ name, id: call.id, response: { success: true, message: `Abrindo URL: ${args.url}` } });
+
                 } else if (name === "change_voice") {
                   onChangeVoiceRef.current?.(args.voice_name as VoiceName);
-                  responses.push({ name, id: call.id, response: { success: true, message: `Voz alterada para ${args.voice_name}.` } });
-                  handled = true;
+                  syncResponses.push({ name, id: call.id, response: { success: true, message: `Voz alterada para ${args.voice_name}.` } });
+
                 } else if (name === "interact_with_screen") {
                   onInteractRef.current?.(args.action, args.x, args.y, args.text);
-                  responses.push({ name, id: call.id, response: { success: true } });
-                  handled = true;
+                  syncResponses.push({ name, id: call.id, response: { success: true } });
+
                 } else if (name === "mascot_control") {
                   setMascotAction(args.action === 'click' ? 'clicking' : 'pointing');
                   setMascotTarget(args.target);
-                  responses.push({ name, id: call.id, response: { success: true } });
-                  handled = true;
+                  syncResponses.push({ name, id: call.id, response: { success: true } });
+
                 } else if (name === "complete_onboarding") {
                   setOnboardingStep('completed');
-                  responses.push({ name, id: call.id, response: { success: true } });
-                  handled = true;
-                }
+                  syncResponses.push({ name, id: call.id, response: { success: true } });
 
-                if (!handled) {
-                  responses.push({ name, id: call.id, response: { success: false, error: "Ferramenta não implementada" } });
+                // ✅ CORRIGIDO: search_web — envia UMA única resposta com o resultado real
+                } else if (name === "search_web") {
+                  onToolCallRef.current?.(name, args);
+                  const query = args.query as string;
+                  const numResults = (args.num_results as number) || 5;
+
+                  // Executa a busca de forma assíncrona e envia a resposta quando terminar
+                  asyncPromises.push(
+                    performWebSearch(query, numResults)
+                      .then(searchResult => {
+                        sessionPromise.then((session: any) => {
+                          session.sendToolResponse({
+                            functionResponses: [{
+                              name,
+                              id: call.id,
+                              response: { success: true, content: searchResult, query }
+                            }]
+                          });
+                        });
+                      })
+                      .catch(err => {
+                        console.error('Erro na tool search_web:', err);
+                        sessionPromise.then((session: any) => {
+                          session.sendToolResponse({
+                            functionResponses: [{
+                              name,
+                              id: call.id,
+                              response: { success: false, error: `Erro na busca: ${err.message || 'Erro desconhecido'}` }
+                            }]
+                          });
+                        });
+                      })
+                  );
+
+                // ✅ CORRIGIDO: read_url_content — envia UMA única resposta com o conteúdo real
+                } else if (name === "read_url_content") {
+                  onToolCallRef.current?.(name, args);
+                  const url = args.url as string;
+
+                  asyncPromises.push(
+                    readUrlContent(url)
+                      .then(content => {
+                        sessionPromise.then((session: any) => {
+                          session.sendToolResponse({
+                            functionResponses: [{
+                              name,
+                              id: call.id,
+                              response: { success: true, content, url }
+                            }]
+                          });
+                        });
+                      })
+                      .catch(err => {
+                        console.error('Erro na tool read_url_content:', err);
+                        sessionPromise.then((session: any) => {
+                          session.sendToolResponse({
+                            functionResponses: [{
+                              name,
+                              id: call.id,
+                              response: { success: false, error: `Erro ao ler URL: ${err.message || 'Erro desconhecido'}` }
+                            }]
+                          });
+                        });
+                      })
+                  );
+
+                } else {
+                  // Ferramenta não reconhecida
+                  syncResponses.push({ name, id: call.id, response: { success: false, error: "Ferramenta não implementada" } });
                 }
               }
-              
-              const immediateResponses = responses.filter(r => 
-                !['search_web', 'read_url_content'].includes(r.name) || 
-                r.response?.status !== 'searching' && r.response?.status !== 'reading'
-              );
-              
-              if (immediateResponses.length > 0) {
-                sessionPromise.then(session => session.sendToolResponse({ functionResponses: immediateResponses }));
+
+              // ✅ CORRIGIDO: Envia as respostas síncronas todas de uma vez
+              if (syncResponses.length > 0) {
+                sessionPromise.then(session =>
+                  session.sendToolResponse({ functionResponses: syncResponses })
+                );
               }
-              setIsThinking(false);
+
+              // As assíncronas (busca/leitura) enviam as respostas individualmente quando terminam
+              // Não bloqueamos aqui — elas já estão rodando em paralelo
+              if (asyncPromises.length > 0) {
+                Promise.all(asyncPromises).finally(() => setIsThinking(false));
+              } else {
+                setIsThinking(false);
+              }
             }
 
             if (message.serverContent?.interrupted) {
@@ -810,11 +776,13 @@ export const useGeminiLive = ({
               setIsSpeaking(false);
             }
           },
+
           onclose: () => {
             setIsConnected(false);
             isConnectedRef.current = false;
             sessionRef.current = null;
           },
+
           onerror: (err: any) => {
             console.error("Live API Error Details:", err);
             setError(`Erro na API Live: ${err.message || 'Erro desconhecido'}`);
@@ -835,14 +803,14 @@ export const useGeminiLive = ({
       const inputCtx = new AudioContext({ sampleRate: 16000 });
       inputAudioContextRef.current = inputCtx;
       const source = inputCtx.createMediaStreamSource(stream);
-      await inputCtx.audioWorklet.addModule(url);
+      await inputCtx.audioWorklet.addModule(workletUrl);
       const inputWorklet = new AudioWorkletNode(inputCtx, 'audio-processor');
       audioWorkletNodeRef.current = inputWorklet;
       source.connect(inputWorklet);
       
       let audioBuffer: Int16Array[] = [];
       let currentBufferSize = 0;
-      const TARGET_BUFFER_SIZE = 2048; 
+      const TARGET_BUFFER_SIZE = 2048;
 
       inputWorklet.port.onmessage = (event) => {
         const int16Data = event.data;
@@ -864,7 +832,9 @@ export const useGeminiLive = ({
           if (!isMutedRef.current && sessionRef.current && isConnectedRef.current) {
             try {
               sessionRef.current.then((session: any) => {
-                session.sendRealtimeInput({ audio: { data: toBase64(combined.buffer), mimeType: 'audio/pcm;rate=16000' } });
+                session.sendRealtimeInput({
+                  audio: { data: toBase64(combined.buffer), mimeType: 'audio/pcm;rate=16000' }
+                });
               });
             } catch (e) {
               console.error("Error sending audio:", e);
@@ -882,6 +852,10 @@ export const useGeminiLive = ({
       isConnectedRef.current = false;
     }
   }, [voice, stopAudio, playNextChunk, toBase64, setError, storedApiKey, setIsConnected, setIsListening, addMessage, setMascotAction, setMascotTarget, setOnboardingStep, setVolume, performWebSearch, readUrlContent]);
+
+  // ============================================
+  // 📺 COMPARTILHAMENTO DE TELA
+  // ============================================
 
   const startScreenSharing = useCallback(async () => {
     try {
