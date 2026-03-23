@@ -7,6 +7,7 @@ export interface Message {
   id?: string;
   role: 'user' | 'model';
   text: string;
+  imageUrl?: string;
   createdAt?: Timestamp;
   userId: string;
 }
@@ -53,7 +54,7 @@ export function useConversationHistory() {
     };
   }, [userId]);
 
-  const addMessage = useCallback(async (msg: { role: 'user' | 'model'; text: string }) => {
+  const addMessage = useCallback(async (msg: { role: 'user' | 'model'; text: string; imageUrl?: string }) => {
     if (!userId) return;
 
     const path = `users/${userId}/messages`;
