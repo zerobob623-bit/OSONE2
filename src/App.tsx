@@ -383,17 +383,9 @@ export default function App() {
     }, safeTempo);
   }, []);
 
-  const handleWebSearch = useCallback(async (query: string) => {
-    setWebSearchResult('Pesquisando...');
-    try {
-      const searchUrl = query.startsWith('http') ? query : `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-      window.open(searchUrl, '_blank');
-      setWebSearchResult(`Abri "${query}" em uma nova aba.`);
-      setTimeout(() => setWebSearchResult(null), 4000);
-    } catch (e) {
-      setWebSearchResult(null);
-    }
-  }, []);
+  // handleWebSearch foi removida — a busca agora é feita inteiramente
+  // dentro do useGeminiLive (Jina AI Search) e o resultado volta ao modelo
+  // automaticamente via sendToolResponse. Não precisa mais abrir nova aba.
 
   const handleVoiceChange = async (newVoice: VoiceName, connected: boolean, disconnectFn: (r?: boolean) => void, connectFn: (si: string) => Promise<void>) => {
     setVoice(newVoice);
@@ -471,8 +463,11 @@ export default function App() {
       if (toolName === 'save_conversation_summary' && args.summary && args.topics) {
         handleSaveSummary(args.summary, args.topics);
       }
-      if (toolName === 'search_web' && args.query) {
-        handleWebSearch(args.query);
+      // ✅ CORRIGIDO: o hook já fez a busca real (Jina AI) e devolveu
+      // o resultado ao modelo via sendToolResponse. Aqui só atualizamos a UI.
+      if (toolName === 'search_web' && args.result) {
+        setWebSearchResult(`🔍 Pesquisei por "${args.query}"`);
+        setTimeout(() => setWebSearchResult(null), 4000);
       }
     }
   });
