@@ -105,6 +105,19 @@ export const useGeminiLive = ({
     }
   };
 
+  const generateImageFunc: FunctionDeclaration = {
+    name: "generate_image",
+    description: "Gera uma imagem a partir de uma descrição textual (prompt).",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        prompt: { type: Type.STRING, description: "A descrição detalhada da imagem que o usuário deseja criar." },
+        aspect_ratio: { type: Type.STRING, description: "O formato da imagem (1:1, 16:9, 9:16). Padrão: 1:1", enum: ["1:1", "16:9", "9:16"] }
+      },
+      required: ["prompt"]
+    }
+  };
+
   const interactFunc: FunctionDeclaration = {
     name: "interact_with_screen",
     description: "Simula uma interação na tela (clique, scroll, digitar, etc).",
@@ -400,6 +413,27 @@ export const useGeminiLive = ({
       }));
       
       const messages = [...contextHistory, { role: 'user', content: text }];
+      
+      // Detect image generation intent in chat
+      const imageKeywords = ['gere uma imagem', 'crie uma imagem', 'gerar imagem', 'criar imagem', 'desenhe', 'faça uma imagem'];
+      const lowerText = text.toLowerCase();
+      const isImageRequest = imageKeywords.some(kw => lowerText.includes(kw));
+
+      if (isImageRequest) {
+        // Extract prompt - simple heuristic: remove the keyword
+        let prompt = text;
+        for (const kw of imageKeywords) {
+          if (lowerText.includes(kw)) {
+            const index = lowerText.indexOf(kw);
+            prompt = text.substring(index + kw.length).trim();
+            break;
+          }
+        }
+        if (prompt) {
+          await generateImage(prompt);
+          return;
+        }
+      }
 
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -456,6 +490,52 @@ export const useGeminiLive = ({
       });
     }
   }, [setIsThinking]);
+
+  const generateImage = useCallback(async (prompt: string, aspectRatio: "1:1" | "16:9" | "9:16" = "1:1") => {
+    setIsThinking(true);
+    try {
+      const apiKey = storedApiKey || process.env.GEMINI_API_KEY;
+      if (!apiKey) throw new Error("API Key not found");
+
+      const genAI = new GoogleGenAI({ apiKey });
+      const response = await genAI.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [{ text: prompt }],
+        },
+        config: {
+          imageConfig: {
+            aspectRatio: aspectRatio,
+          },
+        },
+      });
+
+      let imageUrl = '';
+      if (response.candidates?.[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
+          if (part.inlineData) {
+            const base64Data = part.inlineData.data;
+            imageUrl = `data:image/png;base64,${base64Data}`;
+            break;
+          }
+        }
+      }
+
+      if (imageUrl) {
+        addMessage({ role: 'model', text: `Aqui está a imagem que você pediu: "${prompt}"`, imageUrl });
+        onMessageRef.current?.({ role: 'model', text: `Gerada imagem para: ${prompt}`, imageUrl });
+      } else {
+        throw new Error("Nenhuma imagem foi gerada pelo modelo.");
+      }
+    } catch (err: any) {
+      console.error("Error generating image:", err);
+      const errorMsg = "Desculpe, não consegui gerar a imagem no momento. Verifique se sua chave API suporta geração de imagens.";
+      addMessage({ role: 'model', text: errorMsg });
+      onMessageRef.current?.({ role: 'model', text: errorMsg });
+    } finally {
+      setIsThinking(false);
+    }
+  }, [storedApiKey, addMessage, setIsThinking]);
 
   // ============================================
   // 🌐 FUNÇÕES DE PESQUISA E LEITURA DA WEB
@@ -620,7 +700,8 @@ export const useGeminiLive = ({
               setMoodFunc, setFocusModeFunc, saveMemoryFunc, addImportantDateFunc,
               writeDiaryFunc, searchWebFunc, readUrlContentFunc, updateWorkspaceFunc,
               clearWorkspaceFunc, saveSemanticFactFunc, searchSemanticMemoryFunc,
-              searchGmailFunc, searchEmailFunc, saveConversationSummaryFunc
+              searchGmailFunc, searchEmailFunc, saveConversationSummaryFunc,
+              generateImageFunc
             ] }
           ]
         },
@@ -777,6 +858,37 @@ export const useGeminiLive = ({
                     });
                   }
                   
+                } else if (name === "generate_image") {
+                  handled = true;
+                  try {
+                    const prompt = args.prompt as string;
+                    const aspectRatio = args.aspect_ratio as any || "1:1";
+                    
+                    responses.push({ 
+                      name, 
+                      id: call.id, 
+                      response: { 
+                        success: true, 
+                        status: "generating",
+                        message: `🎨 Gerando imagem para "${prompt}"...` 
+                      } 
+                    });
+                    
+                    await generateImage(prompt, aspectRatio);
+                    
+                    onToolCallRef.current?.(name, args);
+                    
+                  } catch (err: any) {
+                    console.error('Erro na tool generate_image:', err);
+                    responses.push({ 
+                      name, 
+                      id: call.id, 
+                      response: { 
+                        success: false, 
+                        error: `Erro na geração: ${err.message || 'Erro desconhecido'}` 
+                      } 
+                    });
+                  }
                 } else if (name === "toggle_screen_sharing") {
                   onToggleScreenSharingRef.current?.(args.enabled as boolean);
                   responses.push({ name, id: call.id, response: { success: true, message: `Compartilhamento de tela ${args.enabled ? 'ativado' : 'desativado'}.` } });
@@ -976,6 +1088,7 @@ export const useGeminiLive = ({
     history,
     sendMessage,
     sendLiveMessage,
-    sendFile
+    sendFile,
+    generateImage
   };
 };
