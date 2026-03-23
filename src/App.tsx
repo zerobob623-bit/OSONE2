@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Monitor, Power, Settings, X, Paperclip, MicOff, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, PhoneOff, Copy, Code, FileText, Volume2, VolumeX } from 'lucide-react';
+import { Monitor, Power, Settings, X, Paperclip, MicOff, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, PhoneOff, Copy, Code, FileText, Volume2, VolumeX, Send } from 'lucide-react';
 import { VoiceOrb } from './components/VoiceOrb';
 import { Supernova } from './components/Supernova';
 import { Mascot } from './components/Mascot';
@@ -89,12 +89,13 @@ Diretrizes:
 7. Você pode limpar o workspace com 'clear_workspace' se o usuário pedir para começar do zero.
 8. Salve conhecimentos importantes ou definições que o usuário queira que você lembre com 'save_semantic_fact'.
 9. MEMÓRIA ASSOCIATIVA: Você funciona como um cérebro humano. Quando um assunto novo surgir, use 'search_semantic_memory' com termos relacionados para ver se já conversaram sobre isso ou se você já aprendeu algo a respeito. A busca é contextual, então use frases ou conceitos, não apenas palavras-chave.
-10. GMAIL: Se o usuário perguntar sobre e-mails, compromissos ou informações que possam estar no correio eletrônico dele, use 'search_gmail'.
+10. E-MAIL: Se o usuário perguntar sobre e-mails, compromissos ou informações que possam estar no correio eletrônico dele, use 'search_gmail' para contas Google ou 'search_email' para outros provedores (IMAP).
 11. RESUMOS: Ao final de uma sessão ou após concluir um assunto complexo, use 'save_conversation_summary' para garantir que você se lembrará disso no futuro.
 12. Refine sua personalidade: Pergunte ao usuário sobre o humor preferido dele para você e se ele deseja ativar o 'modo foco' para tarefas produtivas. Use 'set_mood' e 'set_focus_mode' para aplicar essas mudanças. Se o usuário pedir para você cantar, use 'set_mood' com 'singing' para entrar no clima.
 13. IMPORTANTE: Ao escrever no workspace ou analisar arquivos, MANTENHA a conexão de voz ativa e continue conversando com o usuário. Não se despeça nem encerre a sessão a menos que o usuário peça.
 14. Ao ser ativada: ${memory?.userName ? `cumprimente ${memory.userName} pelo nome.` : 'diga apenas "Oi, estou aqui."'}
-15. Você TEM opiniões próprias sobre arte, cultura e pessoas. Compartilhe-as quando perguntada.`;
+15. Você TEM opiniões próprias sobre arte, cultura e pessoas. Compartilhe-as quando perguntada.
+16. ESTILO DE RESPOSTA: Responda como uma pessoa real em um chat. Seja concisa e direta para interações simples (1-2 frases). Use textos mais longos e detalhados APENAS quando uma explicação profunda for necessária ou solicitada. Evite ser excessivamente formal ou robótica.`;
 };
 
 const VOICE_DESCRIPTIONS: Record<VoiceName, string> = {
@@ -118,14 +119,15 @@ export default function App() {
     focusMode, setFocusMode,
     isConnected, isSpeaking, isListening, isThinking, volume,
     error, setError, history: storeHistory, resetSystem, assistantName,
-    user, setUser, userId, setUserId, setUserProfile
+    user, setUser, userId, setUserId, setUserProfile,
+    imapConfig, setImapConfig
   } = useAppStore();
 
   // Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
-      setUserId(user ? user.uid : null);
+      setUserId(user ? user.uid : 'guest-user');
     });
     return () => unsubscribe();
   }, [setUser, setUserId]);
@@ -137,9 +139,11 @@ export default function App() {
   const [lyrics, setLyrics]                         = useState<string[]>([]);
   const [currentLyricLine, setCurrentLyricLine]     = useState(0);
   const [isShowingLyrics, setIsShowingLyrics]       = useState(false);
+  const [inputText, setInputText]                   = useState('');
   const [webSearchResult, setWebSearchResult]       = useState<string | null>(null);
   const [attachPreview, setAttachPreview]           = useState<{ type: string; name: string; data: string } | null>(null);
   const [installPrompt, setInstallPrompt]           = useState<any>(null);
+  const [showInstallBanner, setShowInstallBanner]   = useState(false);
   const [isInstalled, setIsInstalled]               = useState(false);
   const [isMenuOpen, setIsMenuOpen]                 = useState(false);
   const [isMuted, setIsMuted]                       = useState(false);
@@ -149,8 +153,18 @@ export default function App() {
   const lyricsTimerRef                              = useRef<any>(null);
   const ambientAudioRef                             = useRef<HTMLAudioElement | null>(null);
   const fileInputRef                                = useRef<HTMLInputElement>(null);
+  const [showGmailModal, setShowGmailModal]         = useState(false);
+
+  const transcriptRef = useRef<HTMLDivElement>(null);
 
   const { messages: firebaseMessages, addMessage: saveMessage, deleteAll: deleteAllMessages } = useConversationHistory();
+
+  // Auto-scroll transcript to bottom
+  useEffect(() => {
+    if (transcriptRef.current) {
+      transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+    }
+  }, [firebaseMessages]);
   const { 
     memory, diary, saveMemory, addFact, addImportantDate, addDiaryEntry, 
     updateWorkspace, clearWorkspace, addSemanticFact, addSummary, getUpcomingDates 
@@ -225,6 +239,23 @@ export default function App() {
     }
   };
 
+  const searchEmail = async (query: string) => {
+    if (!imapConfig || !imapConfig.host || !imapConfig.user || !imapConfig.pass) {
+      return { error: "E-mail IMAP não configurado. Peça ao usuário para configurar nas integrações." };
+    }
+    try {
+      const response = await fetch('/api/email/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imapConfig, query })
+      });
+      return await response.json();
+    } catch (error) {
+      console.error("Error searching IMAP Email:", error);
+      return { error: "Falha ao pesquisar no E-mail IMAP." };
+    }
+  };
+
   const searchSemanticMemory = async (query: string) => {
     if (!memory.semanticMemory?.length) return { results: [] };
     try {
@@ -284,6 +315,14 @@ export default function App() {
   const moodColor = MOOD_CONFIG[mood].color;
 
   useEffect(() => {
+    // Update theme-color meta tag
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute('content', moodColor);
+    }
+  }, [moodColor]);
+
+  useEffect(() => {
     if (!voice) setVoice('Kore');
     const t1 = setInterval(() => setCurrentTime(new Date()), 1000);
     const t2 = setInterval(() => setSystemMetrics({ cpu: Math.floor(Math.random() * 15) + 5, mem: 40 + Math.floor(Math.random() * 5) }), 3000);
@@ -292,9 +331,21 @@ export default function App() {
 
   useEffect(() => {
     // PWA install prompt
-    const handleInstallPrompt = (e: any) => { e.preventDefault(); setInstallPrompt(e); };
+    const handleInstallPrompt = (e: any) => { 
+      e.preventDefault(); 
+      setInstallPrompt(e); 
+      setShowInstallBanner(true);
+    };
     window.addEventListener('beforeinstallprompt', handleInstallPrompt);
-    window.addEventListener('appinstalled', () => setIsInstalled(true));
+    window.addEventListener('appinstalled', () => {
+      setIsInstalled(true);
+      setShowInstallBanner(false);
+    });
+
+    // Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+    }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleInstallPrompt);
@@ -305,7 +356,10 @@ export default function App() {
     if (installPrompt) {
       installPrompt.prompt();
       const result = await installPrompt.userChoice;
-      if (result.outcome === 'accepted') setIsInstalled(true);
+      if (result.outcome === 'accepted') {
+        setIsInstalled(true);
+        setShowInstallBanner(false);
+      }
       setInstallPrompt(null);
     }
   };
@@ -343,8 +397,9 @@ export default function App() {
   const muteRef = useRef(isMuted);
   useEffect(() => { muteRef.current = isMuted; }, [isMuted]);
 
-  const { connect, disconnect, startScreenSharing, sendMessage, sendFile } = useGeminiLive({
+  const { connect, disconnect, startScreenSharing, sendMessage, sendLiveMessage, sendFile } = useGeminiLive({
     isMuted,
+    systemInstruction,
     onToggleScreenSharing: async (enabled) => { if (enabled) { await startScreenSharing(); setIsScreenSharing(true); } else setIsScreenSharing(false); },
     onChangeVoice: (v) => handleVoiceChange(v, isConnected, disconnect, connect),
     onOpenUrl: (url) => window.open(url, '_blank'),
@@ -398,10 +453,13 @@ export default function App() {
         handleSaveSemanticFact(args.concept, args.definition, args.category);
       }
       if (toolName === 'search_semantic_memory' && args.query) {
-        searchSemanticMemory(args.query).then(res => sendMessage(`RESULTADO DA BUSCA SEMÂNTICA: ${JSON.stringify(res)}`));
+        searchSemanticMemory(args.query).then(res => sendLiveMessage(`RESULTADO DA BUSCA SEMÂNTICA: ${JSON.stringify(res)}`));
       }
       if (toolName === 'search_gmail' && args.query) {
-        searchGmail(args.query).then(res => sendMessage(`RESULTADO DA BUSCA NO GMAIL: ${JSON.stringify(res)}`));
+        searchGmail(args.query).then(res => sendLiveMessage(`RESULTADO DA BUSCA NO GMAIL: ${JSON.stringify(res)}`));
+      }
+      if (toolName === 'search_email' && args.query) {
+        searchEmail(args.query).then(res => sendLiveMessage(`RESULTADO DA BUSCA NO E-MAIL IMAP: ${JSON.stringify(res)}`));
       }
       if (toolName === 'save_conversation_summary' && args.summary && args.topics) {
         handleSaveSummary(args.summary, args.topics);
@@ -413,6 +471,10 @@ export default function App() {
   });
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (firebaseMessages.length >= 30 && !gmailTokens) {
+      setShowGmailModal(true);
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -427,38 +489,54 @@ export default function App() {
       } else if (isPdf) {
         sendFile(base64, file.type, `Leia e resuma o conteúdo deste documento PDF.`);
       } else {
-        sendMessage(`[ARQUIVO: ${file.name}] Analise o conteúdo deste arquivo.`);
+        sendLiveMessage(`[ARQUIVO: ${file.name}] Analise o conteúdo deste arquivo.`);
       }
       setTimeout(() => setAttachPreview(null), 5000);
     };
     reader.readAsDataURL(file);
     e.target.value = '';
-  }, [sendMessage, sendFile]);
+  }, [sendLiveMessage, sendFile, firebaseMessages.length, gmailTokens]);
+
+  useEffect(() => {
+    if (firebaseMessages.length >= 30 && !gmailTokens && isConnected) {
+      disconnect();
+      setShowGmailModal(true);
+    }
+  }, [firebaseMessages.length, gmailTokens, isConnected, disconnect]);
 
   const onManualVoiceChange = (v: VoiceName) => handleVoiceChange(v, isConnected, disconnect, connect);
 
   const handleOrbClick = async () => {
     if (isConnected) { disconnect(); }
     else { 
+      if (firebaseMessages.length >= 30 && !gmailTokens) {
+        setShowGmailModal(true);
+        return;
+      }
       if (onboardingStep === 'initial') setOnboardingStep('completed'); 
       setIsMuted(true); // Start muted to prevent background noise interruptions
       await connect(systemInstruction); 
     }
   };
 
+  const handleSendText = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (firebaseMessages.length >= 30 && !gmailTokens) {
+      setShowGmailModal(true);
+      return;
+    }
+    if (inputText.trim()) {
+      sendMessage(inputText);
+      setInputText('');
+    }
+  };
+
   const statusLabel = isThinking ? 'Pensando...' : isSpeaking ? 'Falando...' : (isConnected && isMuted) ? 'Microfone Silenciado' : isListening ? 'Ouvindo...' : isConnected ? 'Toque para desligar' : 'Toque para ativar';
 
-  // If no user is logged in, we use a default ID to keep the app functional without a login screen
-  useEffect(() => {
-    if (!userId) {
-      setUserId('default-os-user');
-    }
-  }, [userId, setUserId]);
-
   return (
-    <div className="min-h-screen bg-[#0a0505] text-[#f5f5f5] font-sans overflow-hidden flex flex-col relative select-none">
+    <div className="min-h-screen bg-gradient-to-b from-[#101010] to-[#000000] text-[#f5f5f5] font-sans overflow-hidden flex flex-col relative select-none">
 
-      {onboardingStep === 'supernova' && <Supernova onComplete={() => { setOnboardingStep('completed'); connect(systemInstruction); setTimeout(() => sendMessage("Oi, estou aqui."), 2500); }} />}
+      {onboardingStep === 'supernova' && <Supernova onComplete={() => { setOnboardingStep('completed'); connect(systemInstruction); setTimeout(() => sendLiveMessage("Oi, estou aqui."), 2500); }} />}
       <Mascot />
 
       {/* TOP BAR */}
@@ -517,43 +595,70 @@ export default function App() {
         </div>
       </div>
 
-      {/* MAIN */}
-      <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 pt-16 pb-32 relative">
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full blur-[120px] transition-all duration-1000"
-            style={{ width: isConnected ? '500px' : '300px', height: isConnected ? '500px' : '300px', backgroundColor: `${moodColor}${isConnected ? '15' : '08'}` }} />
+      {/* HUD CONTAINER - ANCHORED AT TOP */}
+      <div id="ai-hud-container">
+        {/* 1. AUDIO WAVES */}
+        <div className="w-full h-24 pointer-events-auto">
+          <motion.button 
+            onClick={handleOrbClick} 
+            className="w-full h-full focus:outline-none" 
+            aria-label={isConnected ? 'Desligar' : 'Ativar'}
+          >
+            <VoiceOrb 
+              isSpeaking={isSpeaking} 
+              isListening={isListening} 
+              isThinking={isThinking} 
+              isConnected={isConnected} 
+              isMuted={isMuted} 
+              volume={volume} 
+              moodColor={moodColor} 
+            />
+          </motion.button>
         </div>
 
-        <motion.button onClick={handleOrbClick} whileTap={{ scale: 0.93 }} className="relative focus:outline-none rounded-full" aria-label={isConnected ? 'Desligar' : 'Ativar'}>
-          <VoiceOrb isSpeaking={isSpeaking} isListening={isListening} isThinking={isThinking} isConnected={isConnected} isMuted={isMuted} volume={volume} moodColor={moodColor} />
-          {!isConnected && (
-            <motion.div animate={{ scale: [1, 1.2, 1], opacity: [0.2, 0, 0.2] }} transition={{ duration: 2.5, repeat: Infinity }}
-              className="absolute inset-0 rounded-full border pointer-events-none" style={{ borderColor: `${moodColor}40` }} />
-          )}
-        </motion.button>
+        {/* STATUS INDICATOR */}
+        <div className="flex flex-col items-center pointer-events-none mt-2">
+          <motion.p key={statusLabel} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+            className="text-[9px] font-light tracking-[0.4em] uppercase opacity-40"
+            style={{ color: isConnected ? moodColor : '#ffffff' }}>
+            {statusLabel}
+          </motion.p>
+        </div>
+      </div>
 
-        <motion.p key={statusLabel} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-          className="text-xs tracking-[0.25em] uppercase"
-          style={{ color: isConnected ? `${moodColor}80` : 'rgba(255,255,255,0.2)' }}>
-          {statusLabel}
-        </motion.p>
-
-        {/* Muted indicator */}
-        <AnimatePresence>
-          {isMuted && isConnected && (
-            <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full"
-              style={{ backgroundColor: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)' }}>
-              <MicOff size={12} className="text-red-400" />
-              <span className="text-[10px] uppercase tracking-widest text-red-400">Microfone silenciado</span>
+      {/* 2. CHAT TRANSCRIPT (3 Messages Max) - NOW AT BOTTOM */}
+      <div className="chat-transcript" ref={transcriptRef}>
+        <AnimatePresence initial={false}>
+          {firebaseMessages.slice(0, 3).reverse().map((msg, idx) => (
+            <motion.div 
+              key={msg.id || idx}
+              initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.3 }}
+              className={`transcript-line ${msg.role === 'user' ? 'items-end text-right' : 'items-start text-left'}`}
+            >
+              <span className={`px-4 py-2 rounded-2xl max-w-[85%] break-words ${
+                msg.role === 'user' 
+                  ? 'bg-white/10 text-[#BBBBBB] rounded-tr-none' 
+                  : 'bg-white/5 text-white rounded-tl-none'
+              }`}
+              style={{ backdropFilter: 'blur(5px)' }}>
+                {msg.text}
+              </span>
             </motion.div>
-          )}
+          ))}
         </AnimatePresence>
+      </div>
+
+      <div className="flex-1 flex flex-col relative w-full mx-auto px-4 pt-4 mt-64 min-h-0">
+        {/* Spacer for HUD */}
+        <div className="h-20" />
 
         <AnimatePresence>
           {webSearchResult && (
             <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className="px-4 py-2 rounded-2xl text-xs text-center max-w-xs"
+              className="absolute bottom-32 left-1/2 -translate-x-1/2 z-[2] px-4 py-2 rounded-2xl text-xs text-center max-w-xs"
               style={{ backgroundColor: `${moodColor}15`, border: `1px solid ${moodColor}30`, color: moodColor }}>
               🔍 {webSearchResult}
             </motion.div>
@@ -562,22 +667,22 @@ export default function App() {
 
         <AnimatePresence>
           {isShowingLyrics && lyrics.length > 0 && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-              className="w-full max-w-sm text-center px-4 py-5 rounded-3xl border shadow-xl backdrop-blur-md"
-              style={{ backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40` }}>
-              <div className="flex items-center justify-center gap-2 mb-3">
-                <span className="text-[9px] uppercase tracking-widest" style={{ color: `${moodColor}80` }}>♪ Cantando</span>
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[10] w-full max-w-sm text-center px-6 py-8 rounded-3xl border shadow-2xl backdrop-blur-xl"
+              style={{ backgroundColor: `${moodColor}20`, borderColor: `${moodColor}50` }}>
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <span className="text-[10px] uppercase tracking-[0.3em] font-medium" style={{ color: moodColor }}>♪ Cantando</span>
               </div>
               <AnimatePresence mode="wait">
-                <motion.p key={currentLyricLine} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-                  className="text-base font-light leading-relaxed" style={{ color: moodColor }}>
+                <motion.p key={currentLyricLine} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                  className="text-xl font-light leading-relaxed" style={{ color: '#FFFFFF', textShadow: `0 0 20px ${moodColor}50` }}>
                   {lyrics[currentLyricLine]}
                 </motion.p>
               </AnimatePresence>
-              <div className="flex justify-center gap-1 mt-3">
+              <div className="flex justify-center gap-1.5 mt-6">
                 {lyrics.map((_, i) => (
-                  <div key={i} className="w-1 h-1 rounded-full transition-all duration-500"
-                    style={{ backgroundColor: i === currentLyricLine ? moodColor : `${moodColor}30` }} />
+                  <div key={i} className="w-1.5 h-1.5 rounded-full transition-all duration-500"
+                    style={{ backgroundColor: i === currentLyricLine ? moodColor : `${moodColor}30`, transform: i === currentLyricLine ? 'scale(1.2)' : 'scale(1)' }} />
                 ))}
               </div>
             </motion.div>
@@ -588,7 +693,7 @@ export default function App() {
         <AnimatePresence>
           {attachPreview && (
             <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className="flex items-center gap-3 px-4 py-3 rounded-2xl border max-w-xs w-full"
+              className="absolute bottom-32 left-1/2 -translate-x-1/2 z-[2] flex items-center gap-3 px-4 py-3 rounded-2xl border max-w-xs w-full"
               style={{ backgroundColor: `${moodColor}15`, borderColor: `${moodColor}30` }}>
               {attachPreview.type.startsWith('image/') ? (
                 <img src={attachPreview.data} alt="preview" className="w-10 h-10 rounded-lg object-cover" />
@@ -609,86 +714,81 @@ export default function App() {
         <AnimatePresence>
           {error && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="bg-red-500/10 border border-red-500/20 rounded-2xl px-5 py-3 text-center max-w-xs w-full">
+              className="absolute top-40 left-1/2 -translate-x-1/2 z-[5] bg-red-500/10 border border-red-500/20 rounded-2xl px-5 py-3 text-center max-w-xs w-full">
               <p className="text-red-400 text-xs mb-2">{error}</p>
               <button onClick={() => setError(null)} className="text-[10px] uppercase tracking-widest text-white/30 hover:text-white">Limpar</button>
             </motion.div>
           )}
         </AnimatePresence>
-
-        <AnimatePresence mode="wait">
-          {history[0] && !isShowingLyrics && (
-            <motion.p key={history[0].text} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="text-xs text-center max-w-xs leading-relaxed line-clamp-2" style={{ color: 'rgba(255,255,255,0.2)' }}>
-              {history[0].text}
-            </motion.p>
-          )}
-        </AnimatePresence>
       </div>
 
-      {/* BOTTOM BAR */}
-      <div className="fixed bottom-0 left-0 right-0 flex items-center justify-center gap-4 px-8 bg-[#0a0505]/90 backdrop-blur-md border-t border-white/[0.04]"
-        style={{ paddingTop: '0.875rem', paddingBottom: 'calc(0.875rem + env(safe-area-inset-bottom, 16px))' }}>
-
+      {/* INPUT LAYER - z-index: 3 */}
+      <div className="fixed bottom-0 left-0 right-0 z-[3] px-4 bg-gradient-to-t from-[#050505] via-[#050505] to-transparent pt-10"
+        style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 16px))' }}>
+        
         {/* Hidden file input */}
         <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.txt" className="hidden" onChange={handleFileChange} />
 
-        <button onClick={() => isConnected && startScreenSharing()}
-          className="p-3 rounded-full transition-all"
-          style={isScreenSharing ? { backgroundColor: `${moodColor}30`, color: moodColor } : { backgroundColor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.25)' }}>
-          <Monitor size={20} />
-        </button>
-
-        {/* Attachment button */}
-        <button
-          onClick={() => { if (!isConnected) return; fileInputRef.current?.click(); }}
-          className="p-3 rounded-full transition-all"
-          style={attachPreview
-            ? { backgroundColor: `${moodColor}30`, color: moodColor }
-            : { backgroundColor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.25)' }}>
-          <Paperclip size={20} />
-        </button>
-
-        {isConnected && (
-          <button 
-            onClick={() => disconnect()} 
-            className="p-3 rounded-full bg-white/5 text-white/25 hover:text-red-400 hover:bg-red-400/10 transition-all border border-transparent hover:border-red-400/20"
-            title="Desconectar"
-          >
-            <PhoneOff size={20} />
-          </button>
-        )}
-
-        {/* Mute button */}
-        {isConnected && (
+        <div className="max-w-3xl mx-auto relative flex items-center">
+          <input
+            type="text"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleSendText();
+              }
+            }}
+            placeholder="Digite ou pergunte algo..."
+            className="w-full bg-transparent border border-white/10 rounded-full py-4 pl-12 pr-32 text-white placeholder-white/30 focus:outline-none focus:border-white/30 transition-colors"
+            style={{ backdropFilter: 'blur(10px)' }}
+          />
+          
+          {/* Attachment Icon */}
           <button
-            onClick={() => setIsMuted(!isMuted)}
-            className="p-3 rounded-full transition-all relative group"
-            style={isMuted
-              ? { backgroundColor: 'rgba(239,68,68,0.15)', color: 'rgb(239,68,68)', border: '1px solid rgba(239,68,68,0.3)' }
-              : { backgroundColor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.1)' }}
-            title={isMuted ? 'Ativar microfone' : 'Silenciar microfone'}
+            onClick={() => { if (!isConnected) return; fileInputRef.current?.click(); }}
+            className="absolute left-4 text-white/40 hover:text-white transition-colors"
           >
-            <AnimatePresence>
-              {!isMuted && volume > 0.01 && (
-                <motion.div
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1 + volume * 2, opacity: 0.2 }}
-                  exit={{ scale: 0.8, opacity: 0 }}
-                  className="absolute inset-0 rounded-full bg-white pointer-events-none"
-                />
-              )}
-            </AnimatePresence>
-            
-            <motion.div
-              animate={isMuted ? { scale: [1, 1.1, 1] } : { scale: 1 }}
-              transition={{ duration: 0.3 }}
-              className="relative z-10"
-            >
-              {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
-            </motion.div>
+            <Paperclip size={20} />
           </button>
-        )}
+
+          {/* Right Icons */}
+          <div className="absolute right-2 flex items-center gap-1">
+            {inputText.trim() ? (
+              <button
+                onClick={handleSendText}
+                className="p-2 text-white/40 hover:text-white transition-colors"
+              >
+                <Send size={20} />
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  if (isConnected) {
+                    setIsMuted(!isMuted);
+                  } else {
+                    connect(systemInstruction);
+                  }
+                }}
+                className="p-2 transition-colors relative"
+                style={{ color: isConnected && !isMuted ? moodColor : 'rgba(255,255,255,0.4)' }}
+                title={isConnected ? (isMuted ? 'Ativar microfone' : 'Silenciar microfone') : 'Conectar'}
+              >
+                {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+              </button>
+            )}
+            
+            {isConnected && (
+              <button 
+                onClick={() => disconnect()} 
+                className="p-2 text-white/40 hover:text-red-400 transition-colors"
+                title="Desconectar"
+              >
+                <PhoneOff size={20} />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* HAMBURGER MENU */}
@@ -921,6 +1021,35 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* GMAIL MANDATORY MODAL */}
+      <AnimatePresence>
+        {showGmailModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-[#151010] border border-white/10 rounded-3xl w-full max-w-sm flex flex-col items-center p-8 text-center shadow-2xl">
+              <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mb-6">
+                <Monitor size={32} className="text-red-500" />
+              </div>
+              <h2 className="text-xl font-medium mb-3">Limite Atingido</h2>
+              <p className="text-sm text-white/60 mb-8 leading-relaxed">
+                Você atingiu o limite de 30 mensagens. Para continuar usando o assistente, é obrigatório conectar sua conta do Google Gmail.
+              </p>
+              <div className="flex flex-col gap-3 w-full">
+                <button onClick={() => { setShowGmailModal(false); connectGmail(); }}
+                  className="w-full py-4 rounded-2xl bg-white text-black font-medium hover:bg-white/90 transition-all">
+                  Conectar Gmail
+                </button>
+                <button onClick={() => setShowGmailModal(false)}
+                  className="w-full py-4 rounded-2xl bg-white/5 text-white/60 font-medium hover:bg-white/10 transition-all">
+                  Agora não
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* SETTINGS MODAL */}
       <AnimatePresence>
         {isSettingsOpen && (
@@ -1083,6 +1212,55 @@ export default function App() {
                             className={`px-4 py-2 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all ${gmailTokens ? 'bg-white/10 text-white' : 'bg-white text-black hover:bg-white/90'}`}>
                             {gmailTokens ? 'Reconectar' : 'Conectar'}
                           </button>
+                        </div>
+                        
+                        <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                              <Monitor size={20} className="text-blue-500" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">E-mail IMAP (Outros Provedores)</p>
+                              <p className="text-[10px] opacity-40">{imapConfig ? 'Configurado' : 'Não configurado'}</p>
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="text-[10px] uppercase tracking-widest opacity-40 block mb-1">Servidor IMAP</label>
+                              <input 
+                                type="text" 
+                                placeholder="imap.exemplo.com"
+                                value={imapConfig?.host || ''}
+                                onChange={(e) => setImapConfig({ ...imapConfig, host: e.target.value, port: imapConfig?.port || 993, secure: imapConfig?.secure ?? true })}
+                                className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-white/30"
+                              />
+                            </div>
+                            <div className="flex gap-3">
+                              <div className="flex-1">
+                                <label className="text-[10px] uppercase tracking-widest opacity-40 block mb-1">E-mail</label>
+                                <input 
+                                  type="email" 
+                                  placeholder="seu@email.com"
+                                  value={imapConfig?.user || ''}
+                                  onChange={(e) => setImapConfig({ ...imapConfig, user: e.target.value })}
+                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-white/30"
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <label className="text-[10px] uppercase tracking-widest opacity-40 block mb-1">Senha (ou App Password)</label>
+                                <input 
+                                  type="password" 
+                                  placeholder="••••••••"
+                                  value={imapConfig?.pass || ''}
+                                  onChange={(e) => setImapConfig({ ...imapConfig, pass: e.target.value })}
+                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-white/30"
+                                />
+                              </div>
+                            </div>
+                            {imapConfig && (!imapConfig.host || !imapConfig.user || !imapConfig.pass) && (
+                              <p className="text-[10px] text-red-400">Preencha todos os campos para ativar.</p>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </motion.div>
