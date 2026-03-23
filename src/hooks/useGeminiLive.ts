@@ -581,11 +581,11 @@ export const useGeminiLive = ({
       const url = URL.createObjectURL(blob);
       await audioContextRef.current.audioWorklet.addModule(url);
       
-      console.log("🚀 Iniciando conexão com Gemini 2.0 Flash native audio preview 12 2025 Live API...");
+      console.log("🚀 Iniciando conexão com Gemini 3.1 Flash-Lite Live API...");
 
       const sessionPromise = ai.live.connect({
   // ✅ MODELO CORRETO PARA LIVE API
-  model: "gemini-2.5-flash-native-audio-preview-12-2025",
+  model: "Gemini 3.1 Flash-Lite",
   
   config: {
     responseModalities: [Modality.AUDIO],
