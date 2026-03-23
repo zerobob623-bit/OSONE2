@@ -135,88 +135,67 @@ export const useGeminiLive = ({
   // ============================================================
 
   /**
-   * COMO FUNCIONA AGORA:
-   * 1. Jina AI Search (s.jina.ai) — retorna resultados reais com título, URL e resumo
-   * 2. Fallback: DuckDuckGo Instant Answer se Jina falhar
-   * 3. O resultado é enviado DE VOLTA ao modelo via sendToolResponse
-   *    para que ele possa responder com base nas informações reais.
-   *
-   * ANTES (com bug): o App.tsx abria o Google.com em nova aba e o modelo
-   * nunca recebia o conteúdo da busca, causando alucinações.
+   * Busca via backend /api/web-search — resolve CORS e usa Jina AI Search
+   * com fallback automático para DuckDuckGo no servidor.
    */
   const performWebSearch = useCallback(async (query: string, numResults = 5): Promise<string> => {
-    // --- Tentativa 1: Jina AI Search (resultados reais) ---
     try {
-      const res = await fetch(`https://s.jina.ai/${encodeURIComponent(query)}`, {
-        headers: {
-          'Accept': 'application/json',
-          'X-Retain-Images': 'none',
-        }
+      const res = await fetch('/api/web-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, num_results: numResults })
       });
 
-      if (!res.ok) throw new Error(`Jina Search HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`web-search API retornou ${res.status}`);
 
-      const text = await res.text();
-
-      if (text && text.length > 100) {
-        const trimmed = text.length > 6000
-          ? text.substring(0, 6000) + '\n\n[Resultados truncados]'
-          : text;
-        return `🔍 Resultados de busca para "${query}":\n\n${trimmed}`;
-      }
-      throw new Error('Resposta vazia');
-
-    } catch (jinaErr) {
-      console.warn('Jina Search falhou, usando DuckDuckGo:', jinaErr);
-    }
-
-    // --- Tentativa 2: DuckDuckGo Instant Answer ---
-    try {
-      const res = await fetch(
-        `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1`
-      );
-      if (!res.ok) throw new Error(`DDG HTTP ${res.status}`);
       const data = await res.json();
 
-      let result = `🔍 Resultados para "${query}":\n\n`;
-
-      if (data.Answer) result += `✅ Resposta direta: ${data.Answer}\n\n`;
-
-      if (data.AbstractText) {
-        result += `📋 Resumo: ${data.AbstractText}\n`;
-        if (data.AbstractURL) result += `Fonte: ${data.AbstractURL}\n\n`;
+      // Resposta estruturada com array de resultados (Jina ou DDG)
+      if (data.results && Array.isArray(data.results)) {
+        if (data.results.length === 0) {
+          return `⚠️ Não encontrei resultados para "${query}". Tente reformular a pergunta.`;
+        }
+        const formatted = data.results
+          .map((r: any, i: number) =>
+            `[${i + 1}] ${r.title}\n${r.description}${r.url ? `\nURL: ${r.url}` : ''}`
+          )
+          .join('\n\n');
+        return `🔍 Resultados para "${query}":\n\n${formatted}`;
       }
 
-      const topics: string[] = (data.RelatedTopics ?? [])
-        .slice(0, numResults)
-        .flatMap((t: any) => {
-          if (t.Topics) return t.Topics.slice(0, 2).map((s: any) => s.Text ? `• ${s.Text}` : null);
-          return t.Text ? [`• ${t.Text}${t.FirstURL ? `\n  URL: ${t.FirstURL}` : ''}`] : [];
-        })
-        .filter(Boolean);
-
-      if (topics.length) result += `📚 Tópicos relacionados:\n${topics.join('\n')}`;
-
-      const trimmed = result.trim();
-      if (trimmed.length < 80) {
-        return `⚠️ Não encontrei resultados detalhados para "${query}". Tente reformular a pergunta.`;
+      // Resposta em texto bruto (fallback do backend)
+      if (data.text) {
+        return `🔍 Resultados para "${query}":\n\n${data.text}`;
       }
-      return trimmed;
 
-    } catch (ddgErr) {
-      console.error('DuckDuckGo também falhou:', ddgErr);
-      return `❌ Não foi possível realizar a busca por "${query}". Verifique sua conexão.`;
+      // Resposta do DuckDuckGo direto
+      if (data.abstract) {
+        let result = `🔍 Resultados para "${query}":\n\n📋 ${data.abstract}\nFonte: ${data.source}\n`;
+        if (data.topics?.length) {
+          result += '\n' + data.topics.map((t: any) => `• ${t.text}`).join('\n');
+        }
+        return result;
+      }
+
+      return `⚠️ Não encontrei resultados para "${query}".`;
+
+    } catch (err: any) {
+      console.error('performWebSearch error:', err);
+      return `❌ Não foi possível realizar a busca por "${query}". Erro: ${err.message}`;
     }
   }, []);
 
   const readUrlContent = useCallback(async (rawUrl: string): Promise<string> => {
     const url = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
     try {
-      const res = await fetch(`https://r.jina.ai/${url}`, {
-        headers: { 'Accept': 'text/plain', 'X-Retain-Images': 'none' }
+      const res = await fetch('/api/web-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, action: 'read' })
       });
-      if (!res.ok) throw new Error(`Jina Reader HTTP ${res.status}`);
-      const text = await res.text();
+      if (!res.ok) throw new Error(`web-search API retornou ${res.status}`);
+      const data = await res.json();
+      const text = data.content || '';
       const trimmed = text.length > 5000 ? text.substring(0, 5000) + '\n\n⚠️ Conteúdo truncado.' : text;
       return `📄 Conteúdo de ${url}:\n\n${trimmed}`;
     } catch (err: any) {
