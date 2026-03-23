@@ -22,6 +22,10 @@
         "userId": {
           "type": "string",
           "description": "The ID of the user who owns this message"
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Optional URL of an image generated for this message"
         }
       },
       "required": ["role", "text", "createdAt", "userId"]
