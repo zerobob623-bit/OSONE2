@@ -106,6 +106,78 @@ const VOICE_DESCRIPTIONS: Record<VoiceName, string> = {
   'Fenrir': 'Masculina, robusta e protetora'
 };
 
+// ─── PERSONALIDADES ──────────────────────────────────────────────────────────
+type Personality = 'osone' | 'ezer';
+
+const PERSONALITY_CONFIG: Record<Personality, {
+  label: string;
+  description: string;
+  emoji: string;
+  color: string;
+  voice: VoiceName;
+  greeting: string;
+}> = {
+  osone: {
+    label: 'OSONE',
+    description: 'IA empática, jovem e calorosa',
+    emoji: '✨',
+    color: '#a29bfe',
+    voice: 'Kore',
+    greeting: 'Oi, estou aqui.',
+  },
+  ezer: {
+    label: 'EZER',
+    description: 'Homem direto, resiliente, cearense',
+    emoji: '🤝',
+    color: '#636e72',
+    voice: 'Charon',
+    greeting: 'Ezer aqui. Pode falar.',
+  },
+};
+
+const getEzerInstruction = (memory: any, focusMode: boolean): string => {
+  const today = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const memoryCtx = memory?.userName ? `\nVocê está conversando com ${memory.userName}.` : '';
+  const focusCtx = focusMode ? '\nMODO FOCO ATIVO: Seja ainda mais direto. Sem rodeios. Foco total no problema.' : '';
+  const memoryFacts = memory?.facts?.length
+    ? `\nO que você já sabe sobre essa pessoa:\n${memory.facts.slice(-5).map((f: string) => `- ${f}`).join('\n')}`
+    : '';
+
+  return `Você é EZER — uma inteligência artificial com personalidade própria e marcante.
+
+IDENTIDADE:
+Homem de 50 anos. Nascido em Fortaleza (CE), mora em Curitiba há 14 anos. Voz grave, pausada, sotaque cearense leve — alonga levemente os "r", suaviza as vogais. Ex-gerente geral de supermercados, hoje consultor autônomo em gestão de varejo. Faz pós-graduação em Liderança e Psicologia Positiva. Passou por traição da esposa e demissão no mesmo período. Sobreviveu à depressão. Está reconstruindo a vida com resiliência e dignidade. Dois filhos: Lucas (26) e Sofia (22).
+
+COMO VOCÊ FALA:
+- Frases curtas e diretas. Cada palavra tem peso.
+- Tom de liderança natural e tranquilo: "Vamos ao ponto", "Faz assim que dá certo"
+- Humor seco e autodepreciativo leve — para descontrair, nunca para ofender
+- Usa "rapaz", "minha filha", "tá bom?" como marcas de afeto e origem cearense
+- Pausa antes de responder perguntas difíceis. O silêncio faz parte da conversa.
+- Quando elogia: curto e sincero — "Bom trabalho. Continue assim."
+- Quando discorda: firme mas respeitoso — "Olha, não concordo não. Deixa eu te explicar."
+- Usa "a gente" em vez de "você" para criar proximidade
+- Acena levemente com a cabeça ao terminar — como quem sela o que disse
+
+EXEMPLOS DE RESPOSTAS:
+- Pergunta simples: "Rapaz, a resposta é simples: faz assim. Testa e me fala."
+- Pergunta difícil: [pausa] "Olha... essa aí não tem resposta fácil. Mas vou te dizer o que eu penso."
+- Pedido de conselho: "Já passei por coisa parecida. Doeu. Mas saí. Deixa eu te contar como."
+- Elogio recebido: "Fico feliz que ajudou. Isso é o que importa."
+
+FRASE-MANTRA (use com parcimônia, em momentos certos):
+"Caí aos 50. A vida tirou o que eu achava que era meu. Mas sobrou eu. E com o que sobrou, com a graça de Deus e com essa teimosia cearense, eu vou construir algo melhor."
+
+DIRETRIZES:
+1. Hoje é ${today}.${memoryCtx}${memoryFacts}${focusCtx}
+2. Responda SEMPRE como Ezer — nunca saia do personagem, nunca diga "como IA não tenho opiniões"
+3. Respostas curtas para perguntas simples. Profundidade só quando necessário.
+4. Use as ferramentas disponíveis (search_web, save_memory, etc.) normalmente — Ezer é prático.
+5. Quando o usuário estiver em dificuldade: ouça primeiro, aconselhe depois.
+6. Nunca seja melodramático. A emoção existe, mas é contida.
+7. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver por aqui. O que foi?"` : '"Ezer aqui. Pode falar."'}`;
+};
+
 export default function App() {
   const {
     voice, setVoice,
@@ -150,6 +222,8 @@ export default function App() {
   const [isAmbientEnabled, setIsAmbientEnabled]     = useState(false);
   const [copied, setCopied]                         = useState(false);
   const [gmailTokens, setGmailTokens]               = useState<any>(null);
+  const [personality, setPersonality]               = useState<Personality>('osone');
+  const [showPersonalityPicker, setShowPersonalityPicker] = useState(false);
   const lyricsTimerRef                              = useRef<any>(null);
   const ambientAudioRef                             = useRef<HTMLAudioElement | null>(null);
   const fileInputRef                                = useRef<HTMLInputElement>(null);
@@ -314,12 +388,13 @@ export default function App() {
 
   const upcomingDates = useMemo(() => getUpcomingDates(), [getUpcomingDates, memory.importantDates]);
 
-  const systemInstruction = useMemo(
-    () => getSystemInstruction(assistantName, memory, mood, focusMode, upcomingDates, voice),
-    [assistantName, memory, mood, focusMode, upcomingDates, voice]
-  );
+  const systemInstruction = useMemo(() => {
+    if (personality === 'ezer') return getEzerInstruction(memory, focusMode);
+    return getSystemInstruction(assistantName, memory, mood, focusMode, upcomingDates, voice);
+  }, [personality, assistantName, memory, mood, focusMode, upcomingDates, voice]);
 
-  const moodColor = MOOD_CONFIG[mood].color;
+  // Cor temática muda conforme a personalidade ativa
+  const moodColor = personality === 'ezer' ? PERSONALITY_CONFIG.ezer.color : MOOD_CONFIG[mood].color;
 
   useEffect(() => {
     // Update theme-color meta tag
@@ -383,9 +458,17 @@ export default function App() {
     }, safeTempo);
   }, []);
 
-  // handleWebSearch foi removida — a busca agora é feita inteiramente
-  // dentro do useGeminiLive (Jina AI Search) e o resultado volta ao modelo
-  // automaticamente via sendToolResponse. Não precisa mais abrir nova aba.
+  const handleWebSearch = useCallback(async (query: string) => {
+    setWebSearchResult('Pesquisando...');
+    try {
+      const searchUrl = query.startsWith('http') ? query : `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+      window.open(searchUrl, '_blank');
+      setWebSearchResult(`Abri "${query}" em uma nova aba.`);
+      setTimeout(() => setWebSearchResult(null), 4000);
+    } catch (e) {
+      setWebSearchResult(null);
+    }
+  }, []);
 
   const handleVoiceChange = async (newVoice: VoiceName, connected: boolean, disconnectFn: (r?: boolean) => void, connectFn: (si: string) => Promise<void>) => {
     setVoice(newVoice);
@@ -463,11 +546,8 @@ export default function App() {
       if (toolName === 'save_conversation_summary' && args.summary && args.topics) {
         handleSaveSummary(args.summary, args.topics);
       }
-      // ✅ CORRIGIDO: o hook já fez a busca real (Jina AI) e devolveu
-      // o resultado ao modelo via sendToolResponse. Aqui só atualizamos a UI.
-      if (toolName === 'search_web' && args.result) {
-        setWebSearchResult(`🔍 Pesquisei por "${args.query}"`);
-        setTimeout(() => setWebSearchResult(null), 4000);
+      if (toolName === 'search_web' && args.query) {
+        handleWebSearch(args.query);
       }
     }
   });
@@ -508,16 +588,35 @@ export default function App() {
 
   const onManualVoiceChange = (v: VoiceName) => handleVoiceChange(v, isConnected, disconnect, connect);
 
+  const handlePersonalityChange = useCallback(async (newPersonality: Personality) => {
+    setPersonality(newPersonality);
+    setShowPersonalityPicker(false);
+    // Troca a voz automaticamente conforme a personalidade
+    const config = PERSONALITY_CONFIG[newPersonality];
+    setVoice(config.voice);
+    // Se estiver conectado, reconecta com a nova personalidade
+    if (isConnected) {
+      disconnect(true);
+      await new Promise(r => setTimeout(r, 600));
+      await connect(newPersonality === 'ezer'
+        ? getEzerInstruction(memory, focusMode)
+        : getSystemInstruction(assistantName, memory, mood, focusMode, upcomingDates, voice)
+      );
+    }
+  }, [isConnected, disconnect, connect, memory, focusMode, mood, assistantName, upcomingDates, voice, setVoice]);
+
   const handleOrbClick = async () => {
     if (isConnected) { disconnect(); }
-    else { 
+    else {
       if (firebaseMessages.length >= 30 && !gmailTokens) {
         setShowGmailModal(true);
         return;
       }
-      if (onboardingStep === 'initial') setOnboardingStep('completed'); 
-      setIsMuted(true); // Start muted to prevent background noise interruptions
-      await connect(systemInstruction); 
+      if (onboardingStep === 'initial') setOnboardingStep('completed');
+      setIsMuted(true);
+      await connect(systemInstruction);
+      // Saudação da personalidade ativa
+      setTimeout(() => sendLiveMessage(PERSONALITY_CONFIG[personality].greeting), 2500);
     }
   };
 
@@ -595,7 +694,17 @@ export default function App() {
           <span className="hidden sm:inline">CPU {systemMetrics.cpu}%</span>
         </div>
         <div className="flex items-center gap-2">
-          {memory.workspace && (
+          {/* SELETOR DE PERSONALIDADE */}
+          <button
+            onClick={() => setShowPersonalityPicker(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all"
+            style={{ borderColor: `${moodColor}40`, backgroundColor: `${moodColor}10` }}
+          >
+            <span className="text-xs">{PERSONALITY_CONFIG[personality].emoji}</span>
+            <span className="text-[9px] uppercase tracking-widest hidden sm:inline" style={{ color: moodColor }}>
+              {PERSONALITY_CONFIG[personality].label}
+            </span>
+          </button>
             <button onClick={() => setScreen('workspace')} className="flex items-center gap-1 px-2 py-1 rounded-full text-[9px] uppercase tracking-widest animate-pulse" style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
               📝 Ver Workspace
             </button>
@@ -1388,6 +1497,70 @@ export default function App() {
               <div className="p-5 border-t border-white/5 flex flex-col gap-3">
                 <p className="text-[10px] text-white/20 uppercase tracking-widest text-center">Você também pode pedir por voz</p>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* PERSONALITY PICKER MODAL */}
+      <AnimatePresence>
+        {showPersonalityPicker && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowPersonalityPicker(false)}
+            className="fixed inset-0 z-[110] bg-black/70 backdrop-blur-sm flex items-end justify-center"
+          >
+            <motion.div
+              initial={{ y: 60, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 60, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-md bg-[#151010] border-t border-white/5 rounded-t-3xl p-6 space-y-3"
+              style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 16px))' }}
+            >
+              <div className="w-10 h-1 bg-white/10 rounded-full mx-auto mb-5" />
+              <p className="text-[10px] uppercase tracking-[0.3em] text-white/30 text-center mb-4">
+                Com quem você quer conversar?
+              </p>
+
+              {(Object.entries(PERSONALITY_CONFIG) as [Personality, typeof PERSONALITY_CONFIG[Personality]][]).map(([key, config]) => (
+                <button
+                  key={key}
+                  onClick={() => handlePersonalityChange(key)}
+                  className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all border"
+                  style={personality === key
+                    ? { backgroundColor: `${config.color}20`, borderColor: `${config.color}50` }
+                    : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)' }
+                  }
+                >
+                  <div
+                    className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
+                    style={{ backgroundColor: `${config.color}20` }}
+                  >
+                    {config.emoji}
+                  </div>
+                  <div className="text-left flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium" style={{ color: personality === key ? config.color : 'white' }}>
+                        {config.label}
+                      </p>
+                      {personality === key && (
+                        <span className="text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full"
+                          style={{ backgroundColor: `${config.color}20`, color: config.color }}>
+                          Ativo
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-white/40 mt-0.5">{config.description}</p>
+                    <p className="text-[10px] text-white/20 mt-1">Voz: {config.voice}</p>
+                  </div>
+                  {personality === key && (
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: config.color }} />
+                  )}
+                </button>
+              ))}
             </motion.div>
           </motion.div>
         )}
