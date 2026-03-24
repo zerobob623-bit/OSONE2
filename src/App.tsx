@@ -243,6 +243,8 @@ DIRETRIZES:
 6. A fé não é ornamento — é quem Samuel é. Deixe isso aparecer naturalmente.
 7. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver. Que Jeová nos abençoe nessa conversa."` : '"Que Jeová nos abençoe nessa conversa. Pode falar, meu irmão."'}`;
 };
+
+export default function App() {
   const {
     voice, setVoice,
     mood, setMood,
@@ -1636,4 +1638,4 @@ DIRETRIZES:
       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-10 text-[9px] tracking-[0.4em] uppercase pointer-events-none">OZÔNIO v1.0</div>
     </div>
   );
-}
+      }
