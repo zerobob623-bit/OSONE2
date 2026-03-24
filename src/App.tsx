@@ -5,7 +5,7 @@ import { VoiceOrb } from './components/VoiceOrb';
 import { Supernova } from './components/Supernova';
 import { Mascot } from './components/Mascot';
 import { useGeminiLive } from './hooks/useGeminiLive';
-import { useAppStore, VoiceName, MascotEyeStyle, Mood } from './store/useAppStore';
+import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey } from './store/useAppStore';
 import { useConversationHistory } from './hooks/useConversationHistory';
 import { useUserMemory, ImportantDate, SemanticFact, ConversationSummary } from './hooks/useUserMemory';
 import { auth, loginWithGoogle, logout, onAuthStateChanged } from './firebase';
@@ -99,11 +99,18 @@ Diretrizes:
 };
 
 const VOICE_DESCRIPTIONS: Record<VoiceName, string> = {
-  'Kore': 'Feminina, acolhedora e equilibrada',
-  'Zephyr': 'Feminina, suave e etérea',
-  'Puck': 'Masculina, jovem e curiosa',
-  'Charon': 'Masculina, profunda e calma',
-  'Fenrir': 'Masculina, robusta e protetora'
+  // Femininas
+  'Kore':         'Feminina, acolhedora e equilibrada',
+  'Zephyr':       'Feminina, suave e etérea',
+  'Leda':         'Feminina, clara e expressiva',
+  'Callirrhoe':   'Feminina, suave e fluente',
+  'Vindemiatrix': 'Feminina, elegante e distinta',
+  // Masculinas
+  'Puck':         'Masculina, jovem e curiosa',
+  'Charon':       'Masculina, profunda e calma',
+  'Fenrir':       'Masculina, robusta e protetora',
+  'Orus':         'Masculina, firme e confiante',
+  'Aoede':        'Masculina, suave e melódica',
 };
 
 // ─── PERSONALIDADES ──────────────────────────────────────────────────────────
@@ -319,7 +326,8 @@ export default function App() {
     isConnected, isSpeaking, isListening, isThinking, volume,
     error, setError, history: storeHistory, resetSystem, assistantName,
     user, setUser, userId, setUserId, setUserProfile,
-    imapConfig, setImapConfig
+    imapConfig, setImapConfig,
+    personalityMemories, addPersonalityFact, setPersonalityUserName, getPersonalityMemory,
   } = useAppStore();
 
   // Auth Listener
@@ -496,12 +504,36 @@ export default function App() {
 
   const upcomingDates = useMemo(() => getUpcomingDates(), [getUpcomingDates, memory.importantDates]);
 
+  // ✅ Memória do personagem ativo
+  const activePersonalityMemory = useMemo(
+    () => getPersonalityMemory(personality as PersonalityKey),
+    [personality, personalityMemories]
+  );
+
+  // ✅ systemInstruction separado do workspace para não recalcular tudo quando workspace muda
   const systemInstruction = useMemo(() => {
-    if (personality === 'ezer') return getEzerInstruction(memory, focusMode);
-    if (personality === 'samuel') return getSamuelInstruction(memory, focusMode);
-    if (personality === 'jonas') return getJonasInstruction(memory, focusMode);
-    return getSystemInstruction(assistantName, memory, mood, focusMode, upcomingDates, voice);
-  }, [personality, assistantName, memory, mood, focusMode, upcomingDates, voice]);
+    // Memória sem workspace para evitar recalcular ao editar texto
+    const memoryWithoutWorkspace = { ...memory, workspace: undefined };
+    let base = '';
+    if (personality === 'ezer') base = getEzerInstruction(memory, focusMode);
+    else if (personality === 'samuel') base = getSamuelInstruction(memory, focusMode);
+    else if (personality === 'jonas') base = getJonasInstruction(memory, focusMode);
+    else base = getSystemInstruction(assistantName, memoryWithoutWorkspace, mood, focusMode, upcomingDates, voice);
+
+    // Adiciona workspace separadamente
+    const workspaceCtx = memory.workspace
+      ? `\n\nCONTEÚDO DA ÁREA DE TRABALHO ATUAL:\n${memory.workspace}\nUse 'update_workspace' para atualizar.`
+      : '';
+
+    // Adiciona memória específica do personagem ativo
+    const personalityCtx = activePersonalityMemory.facts?.length
+      ? `\n\nMemória desta conversa:\n${activePersonalityMemory.facts.slice(-5).map(f => `- ${f}`).join('\n')}`
+      : '';
+
+    return base + workspaceCtx + personalityCtx;
+  }, [personality, assistantName, memory.userName, memory.facts, memory.preferences,
+      memory.semanticMemory, memory.importantDates, memory.workspace,
+      mood, focusMode, upcomingDates, voice, activePersonalityMemory]);
 
   // Cor temática muda conforme a personalidade ativa
   const moodColor = personality === 'ezer' ? PERSONALITY_CONFIG.ezer.color : MOOD_CONFIG[mood].color;
@@ -605,7 +637,6 @@ export default function App() {
       }
     },
     onMessage: (msg) => {
-      // Skip messages that are entirely internal reasoning
       const isInternalReasoning = /^\*\*[A-Z]/.test(msg.text.trim());
       if (!isInternalReasoning) {
         const cleanText = msg.text.replace(/\*\*[^*]+\*\*\s*/g, '').trim();
@@ -613,7 +644,11 @@ export default function App() {
       }
       if (msg.role === 'user') {
         const match = msg.text.match(/meu nome é (\w+)/i);
-        if (match) saveMemory({ userName: match[1] });
+        if (match) {
+          saveMemory({ userName: match[1] });
+          // ✅ Salva também na memória do personagem ativo
+          setPersonalityUserName(personality as PersonalityKey, match[1]);
+        }
       }
     },
     
@@ -625,8 +660,15 @@ export default function App() {
         setUserProfile({ [args.field]: args.value });
       }
       if (toolName === 'save_memory') {
-        if (args.userName) saveMemory({ userName: args.userName });
-        if (args.fact) addFact(args.fact);
+        if (args.userName) {
+          saveMemory({ userName: args.userName });
+          setPersonalityUserName(personality as PersonalityKey, args.userName);
+        }
+        if (args.fact) {
+          addFact(args.fact);
+          // ✅ Salva também na memória específica do personagem
+          addPersonalityFact(personality as PersonalityKey, args.fact);
+        }
       }
       if (toolName === 'add_important_date' && args.label && args.date) {
         addImportantDate({ label: args.label, date: args.date, year: args.year });
@@ -1294,11 +1336,11 @@ export default function App() {
                           <label className="text-[9px] uppercase tracking-[0.2em]">Feminino</label>
                         </div>
                         <div className="grid grid-cols-1 gap-2">
-                          {(['Kore', 'Zephyr'] as VoiceName[]).map(v => (
+                          {(['Kore', 'Zephyr', 'Leda', 'Callirrhoe', 'Vindemiatrix'] as VoiceName[]).map(v => (
                             <button key={v} onClick={() => onManualVoiceChange(v)}
                               className="w-full p-4 rounded-2xl text-left transition-all border"
-                              style={voice === v 
-                                ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' } 
+                              style={voice === v
+                                ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' }
                                 : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
                               <div className="flex items-center justify-between">
                                 <span className="text-sm font-medium">{v}</span>
@@ -1316,11 +1358,11 @@ export default function App() {
                           <label className="text-[9px] uppercase tracking-[0.2em]">Masculino</label>
                         </div>
                         <div className="grid grid-cols-1 gap-2">
-                          {(['Charon', 'Puck', 'Fenrir'] as VoiceName[]).map(v => (
+                          {(['Charon', 'Puck', 'Fenrir', 'Orus', 'Aoede'] as VoiceName[]).map(v => (
                             <button key={v} onClick={() => onManualVoiceChange(v)}
                               className="w-full p-4 rounded-2xl text-left transition-all border"
-                              style={voice === v 
-                                ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' } 
+                              style={voice === v
+                                ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' }
                                 : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
                               <div className="flex items-center justify-between">
                                 <span className="text-sm font-medium">{v}</span>
@@ -1617,4 +1659,4 @@ export default function App() {
       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-10 text-[9px] tracking-[0.4em] uppercase pointer-events-none">OZÔNIO v1.0</div>
     </div>
   );
-        }
+}
