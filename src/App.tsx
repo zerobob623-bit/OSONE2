@@ -705,6 +705,7 @@ export default function App() {
               {PERSONALITY_CONFIG[personality].label}
             </span>
           </button>
+          {memory.workspace && (
             <button onClick={() => setScreen('workspace')} className="flex items-center gap-1 px-2 py-1 rounded-full text-[9px] uppercase tracking-widest animate-pulse" style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
               📝 Ver Workspace
             </button>
@@ -1569,4 +1570,4 @@ export default function App() {
       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-10 text-[9px] tracking-[0.4em] uppercase pointer-events-none">OZÔNIO v1.0</div>
     </div>
   );
-}
+                 }
