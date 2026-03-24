@@ -2,7 +2,11 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { User } from '../firebase';
 
-export type VoiceName = 'Charon' | 'Kore' | 'Puck' | 'Zephyr' | 'Fenrir';
+// ✅ 10 vozes completas do Gemini Live
+export type VoiceName = 
+  | 'Charon' | 'Kore' | 'Puck' | 'Zephyr' | 'Fenrir'
+  | 'Leda' | 'Callirrhoe' | 'Vindemiatrix' | 'Orus' | 'Aoede';
+
 export type Mood = 'happy' | 'calm' | 'focused' | 'playful' | 'melancholic' | 'angry' | 'singing';
 
 export const VOICE_MAPPING: Record<VoiceName, string> = {
@@ -10,13 +14,16 @@ export const VOICE_MAPPING: Record<VoiceName, string> = {
   'Kore': 'Kore',
   'Puck': 'Puck',
   'Zephyr': 'Zephyr',
-  'Fenrir': 'Fenrir'
+  'Fenrir': 'Fenrir',
+  'Leda': 'Leda',
+  'Callirrhoe': 'Callirrhoe',
+  'Vindemiatrix': 'Vindemiatrix',
+  'Orus': 'Orus',
+  'Aoede': 'Aoede',
 };
 
 export type OnboardingStep = 'initial' | 'boot' | 'active' | 'supernova' | 'completed';
-
 export type PersonalityType = 'brother' | 'uncle' | 'best_friend' | 'partner' | 'father' | 'mother' | 'none';
-
 export type MascotEyeStyle = 'normal' | 'happy' | 'cool' | 'wink' | 'heart';
 export type MascotAction = 'idle' | 'pointing' | 'clicking';
 
@@ -47,6 +54,15 @@ export interface SystemMetrics {
   mem: number;
 }
 
+// ✅ Memória separada por personagem
+export type PersonalityKey = 'osone' | 'ezer' | 'samuel' | 'jonas';
+
+export interface PersonalityMemory {
+  facts: string[];
+  preferences: string[];
+  userName?: string;
+}
+
 interface AppState {
   // User
   user: User | null;
@@ -61,16 +77,16 @@ interface AppState {
   setMood: (mood: Mood) => void;
   isSettingsOpen: boolean;
   setIsSettingsOpen: (isOpen: boolean) => void;
-  
+
   // Conversation History
   history: ChatMessage[];
   addMessage: (message: ChatMessage) => void;
   clearHistory: () => void;
-  
+
   // System Metrics
   systemMetrics: SystemMetrics;
   setSystemMetrics: (metrics: SystemMetrics) => void;
-  
+
   // Connection and Status
   isConnected: boolean;
   setIsConnected: (connected: boolean) => void;
@@ -84,7 +100,7 @@ interface AppState {
   setIsScreenSharing: (sharing: boolean) => void;
   focusMode: boolean;
   setFocusMode: (enabled: boolean) => void;
-  
+
   // Mascot
   isMascotVisible: boolean;
   setIsMascotVisible: (visible: boolean) => void;
@@ -94,7 +110,7 @@ interface AppState {
   setMascotAction: (action: MascotAction) => void;
   mascotAppearance: MascotAppearance;
   setMascotAppearance: (appearance: Partial<MascotAppearance>) => void;
-  
+
   // Onboarding
   onboardingStep: OnboardingStep;
   setOnboardingStep: (step: OnboardingStep) => void;
@@ -104,15 +120,15 @@ interface AppState {
   setAssistantName: (name: string) => void;
   bootPhase: number;
   setBootPhase: (phase: number) => void;
-  
+
   // Audio
   volume: number;
   setVolume: (volume: number) => void;
-  
+
   // Error
   error: string | null;
   setError: (error: string | null) => void;
-  
+
   // API Key
   apiKey: string;
   setApiKey: (key: string) => void;
@@ -127,13 +143,24 @@ interface AppState {
   } | null;
   setImapConfig: (config: any) => void;
 
+  // ✅ Memória por personagem
+  personalityMemories: Record<PersonalityKey, PersonalityMemory>;
+  addPersonalityFact: (personality: PersonalityKey, fact: string) => void;
+  setPersonalityUserName: (personality: PersonalityKey, name: string) => void;
+  getPersonalityMemory: (personality: PersonalityKey) => PersonalityMemory;
+
   // Reset
   resetSystem: () => void;
 }
 
+const defaultPersonalityMemory = (): PersonalityMemory => ({
+  facts: [],
+  preferences: [],
+});
+
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       // User
       user: null,
       setUser: (user) => set({ user }),
@@ -147,18 +174,18 @@ export const useAppStore = create<AppState>()(
       setMood: (mood) => set({ mood }),
       isSettingsOpen: false,
       setIsSettingsOpen: (isSettingsOpen) => set({ isSettingsOpen }),
-      
+
       // Conversation History
       history: [],
-      addMessage: (message) => set((state) => ({ 
-        history: [message, ...state.history].slice(0, 50) 
+      addMessage: (message) => set((state) => ({
+        history: [message, ...state.history].slice(0, 50)
       })),
       clearHistory: () => set({ history: [] }),
-      
+
       // System Metrics
       systemMetrics: { cpu: 0, mem: 0 },
       setSystemMetrics: (systemMetrics) => set({ systemMetrics }),
-      
+
       // Connection and Status
       isConnected: false,
       setIsConnected: (isConnected) => set({ isConnected }),
@@ -172,7 +199,7 @@ export const useAppStore = create<AppState>()(
       setIsScreenSharing: (isScreenSharing) => set({ isScreenSharing }),
       focusMode: false,
       setFocusMode: (focusMode) => set({ focusMode }),
-      
+
       // Mascot
       isMascotVisible: false,
       setIsMascotVisible: (isMascotVisible) => set({ isMascotVisible }),
@@ -188,7 +215,7 @@ export const useAppStore = create<AppState>()(
       setMascotAppearance: (appearance) => set((state) => ({
         mascotAppearance: { ...state.mascotAppearance, ...appearance }
       })),
-      
+
       // Onboarding
       onboardingStep: 'initial',
       setOnboardingStep: (onboardingStep) => set({ onboardingStep }),
@@ -201,18 +228,18 @@ export const useAppStore = create<AppState>()(
         socialLevel: '',
         motherRelationship: ''
       },
-      setUserProfile: (profile) => set((state) => ({ 
-        userProfile: { ...state.userProfile, ...profile } 
+      setUserProfile: (profile) => set((state) => ({
+        userProfile: { ...state.userProfile, ...profile }
       })),
       assistantName: 'OSONE',
       setAssistantName: (assistantName) => set({ assistantName }),
       bootPhase: 0,
       setBootPhase: (bootPhase) => set({ bootPhase }),
-      
+
       // Audio
       volume: 0,
       setVolume: (volume) => set({ volume }),
-      
+
       // Error
       error: null,
       setError: (error) => set({ error }),
@@ -225,7 +252,36 @@ export const useAppStore = create<AppState>()(
       imapConfig: null,
       setImapConfig: (imapConfig) => set({ imapConfig }),
 
-      // Reset System
+      // ✅ Memória por personagem
+      personalityMemories: {
+        osone:  defaultPersonalityMemory(),
+        ezer:   defaultPersonalityMemory(),
+        samuel: defaultPersonalityMemory(),
+        jonas:  defaultPersonalityMemory(),
+      },
+      addPersonalityFact: (personality, fact) => set((state) => ({
+        personalityMemories: {
+          ...state.personalityMemories,
+          [personality]: {
+            ...state.personalityMemories[personality],
+            facts: [...(state.personalityMemories[personality]?.facts || []), fact].slice(-20),
+          }
+        }
+      })),
+      setPersonalityUserName: (personality, name) => set((state) => ({
+        personalityMemories: {
+          ...state.personalityMemories,
+          [personality]: {
+            ...state.personalityMemories[personality],
+            userName: name,
+          }
+        }
+      })),
+      getPersonalityMemory: (personality) => {
+        return get().personalityMemories[personality] || defaultPersonalityMemory();
+      },
+
+      // Reset
       resetSystem: () => set({
         onboardingStep: 'initial',
         history: [],
@@ -250,9 +306,8 @@ export const useAppStore = create<AppState>()(
     {
       name: 'her-os-storage',
       storage: createJSONStorage(() => localStorage),
-      // Only persist certain fields
-      partialize: (state) => ({ 
-        voice: state.voice, 
+      partialize: (state) => ({
+        voice: state.voice,
         systemMetrics: state.systemMetrics,
         onboardingStep: state.onboardingStep,
         userProfile: state.userProfile,
@@ -262,7 +317,8 @@ export const useAppStore = create<AppState>()(
         apiKey: state.apiKey,
         imapConfig: state.imapConfig,
         focusMode: state.focusMode,
-        mood: state.mood
+        mood: state.mood,
+        personalityMemories: state.personalityMemories, // ✅ persiste memória por personagem
       }),
     }
   )
