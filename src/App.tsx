@@ -348,13 +348,11 @@ export default function App() {
   const [isMuted, setIsMuted]                       = useState(false);
   const [isAmbientEnabled, setIsAmbientEnabled]     = useState(false);
   const [copied, setCopied]                         = useState(false);
-  const [gmailTokens, setGmailTokens]               = useState<any>(null);
   const [personality, setPersonality]               = useState<Personality>('osone');
   const [showPersonalityPicker, setShowPersonalityPicker] = useState(false);
   const lyricsTimerRef                              = useRef<any>(null);
   const ambientAudioRef                             = useRef<HTMLAudioElement | null>(null);
   const fileInputRef                                = useRef<HTMLInputElement>(null);
-  const [showGmailModal, setShowGmailModal]         = useState(false);
 
   const transcriptRef = useRef<HTMLDivElement>(null);
 
@@ -413,24 +411,7 @@ export default function App() {
     }
   }, [isAmbientEnabled, mood]);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'GOOGLE_AUTH_SUCCESS') {
-        setGmailTokens(event.data.tokens);
-        localStorage.setItem('gmail_tokens', JSON.stringify(event.data.tokens));
-      }
-    };
-    window.addEventListener('message', handleMessage);
-    const savedTokens = localStorage.getItem('gmail_tokens');
-    if (savedTokens) setGmailTokens(JSON.parse(savedTokens));
-    return () => window.removeEventListener('message', handleMessage);
-  }, []);
-
-  const connectGmail = async () => {
-    const response = await fetch('/api/auth/google/url');
-    const { url } = await response.json();
-    window.open(url, 'google_auth', 'width=600,height=700');
-  };
+  // Gmail tokens removidos — o OAuth separado do Gmail conflitava com o login Firebase
 
   const searchGmail = async (query: string) => {
     if (!gmailTokens) return { error: "Gmail não conectado. Peça ao usuário para conectar o Gmail nas configurações." };
@@ -682,10 +663,6 @@ export default function App() {
   });
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (firebaseMessages.length >= 30 && !gmailTokens) {
-      setShowGmailModal(true);
-      return;
-    }
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -706,14 +683,7 @@ export default function App() {
     };
     reader.readAsDataURL(file);
     e.target.value = '';
-  }, [sendLiveMessage, sendFile, firebaseMessages.length, gmailTokens]);
-
-  useEffect(() => {
-    if (firebaseMessages.length >= 30 && !gmailTokens && isConnected) {
-      disconnect();
-      setShowGmailModal(true);
-    }
-  }, [firebaseMessages.length, gmailTokens, isConnected, disconnect]);
+  }, [sendLiveMessage, sendFile]);
 
   const onManualVoiceChange = (v: VoiceName) => handleVoiceChange(v, isConnected, disconnect, connect);
 
@@ -739,24 +709,15 @@ export default function App() {
   const handleOrbClick = async () => {
     if (isConnected) { disconnect(); }
     else {
-      if (firebaseMessages.length >= 30 && !gmailTokens) {
-        setShowGmailModal(true);
-        return;
-      }
       if (onboardingStep === 'initial') setOnboardingStep('completed');
       setIsMuted(true);
       await connect(systemInstruction);
-      // Saudação da personalidade ativa
       setTimeout(() => sendLiveMessage(PERSONALITY_CONFIG[personality].greeting), 2500);
     }
   };
 
   const handleSendText = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (firebaseMessages.length >= 30 && !gmailTokens) {
-      setShowGmailModal(true);
-      return;
-    }
     if (inputText.trim()) {
       sendMessage(inputText);
       setInputText('');
@@ -1301,35 +1262,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* GMAIL MANDATORY MODAL */}
-      <AnimatePresence>
-        {showGmailModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-[#151010] border border-white/10 rounded-3xl w-full max-w-sm flex flex-col items-center p-8 text-center shadow-2xl">
-              <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mb-6">
-                <Monitor size={32} className="text-red-500" />
-              </div>
-              <h2 className="text-xl font-medium mb-3">Limite Atingido</h2>
-              <p className="text-sm text-white/60 mb-8 leading-relaxed">
-                Você atingiu o limite de 30 mensagens. Para continuar usando o assistente, é obrigatório conectar sua conta do Google Gmail.
-              </p>
-              <div className="flex flex-col gap-3 w-full">
-                <button onClick={() => { setShowGmailModal(false); connectGmail(); }}
-                  className="w-full py-4 rounded-2xl bg-white text-black font-medium hover:bg-white/90 transition-all">
-                  Conectar Gmail
-                </button>
-                <button onClick={() => setShowGmailModal(false)}
-                  className="w-full py-4 rounded-2xl bg-white/5 text-white/60 font-medium hover:bg-white/10 transition-all">
-                  Agora não
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* SETTINGS MODAL */}
       <AnimatePresence>
         {isSettingsOpen && (
@@ -1478,22 +1410,6 @@ export default function App() {
                           <Monitor size={14} />
                           <span className="text-[10px] uppercase tracking-widest">Serviços Externos</span>
                         </div>
-                        <div className="p-4 bg-white/5 rounded-2xl border border-white/5 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">
-                              <Monitor size={20} className="text-red-500" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium">Google Gmail</p>
-                              <p className="text-[10px] opacity-40">{gmailTokens ? 'Conectado' : 'Não conectado'}</p>
-                            </div>
-                          </div>
-                          <button onClick={connectGmail}
-                            className={`px-4 py-2 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all ${gmailTokens ? 'bg-white/10 text-white' : 'bg-white text-black hover:bg-white/90'}`}>
-                            {gmailTokens ? 'Reconectar' : 'Conectar'}
-                          </button>
-                        </div>
-                        
                         <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
                           <div className="flex items-center gap-3 mb-4">
                             <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
@@ -1701,4 +1617,4 @@ export default function App() {
       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-10 text-[9px] tracking-[0.4em] uppercase pointer-events-none">OZÔNIO v1.0</div>
     </div>
   );
-}
+        }
