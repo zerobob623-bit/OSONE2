@@ -1,5 +1,6 @@
 // src/hooks/useGeminiLive.ts
-// ✅ Busca web corrigida: Jina AI Search (resultados reais) + fallback DuckDuckGo
+// ✅ + Análise automática de tela (a cada troca de app)
+// ✅ + Fala espontânea após 30s de silêncio
 
 import { useCallback, useEffect, useRef } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
@@ -15,6 +16,32 @@ export interface UseGeminiLiveProps {
   onToolCall?: (toolName: string, args: any) => void;
   isMuted?: boolean;
   systemInstruction?: string;
+}
+
+// ─── Constantes ──────────────────────────────────────────────────────────────
+const SILENCE_TIMEOUT_MS = 30_000;       // 30s de silêncio → fala espontânea
+const SCREEN_ANALYSIS_INTERVAL_MS = 1_000; // captura frame a cada 1s
+const SCREEN_HASH_SAMPLE = 32;           // pixels amostrados para hash de tela
+
+// Frases de iniciativa espontânea
+const SPONTANEOUS_PROMPTS = [
+  "Estou aqui se você precisar de algo.",
+  "Posso te ajudar com alguma coisa agora?",
+  "Você está bem? Já faz um tempo que não conversa.",
+  "Se quiser pensar em voz alta, estou ouvindo.",
+  "Tem algo em que eu possa ajudar?",
+];
+
+// Utilitário: similaridade entre hashes de frame
+function computeHashSimilarity(hashA: string, hashB: string): number {
+  const partsA = hashA.split(';').filter(Boolean);
+  const partsB = hashB.split(';').filter(Boolean);
+  if (partsA.length === 0 || partsB.length !== partsA.length) return 0;
+  let matches = 0;
+  for (let i = 0; i < partsA.length; i++) {
+    if (partsA[i] === partsB[i]) matches++;
+  }
+  return matches / partsA.length;
 }
 
 export const useGeminiLive = ({
@@ -53,6 +80,11 @@ export const useGeminiLive = ({
   const nextStartTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const isMutedRef = useRef(isMuted);
+
+  // ─── Refs para silêncio e análise de tela ────────────────────────────────
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastScreenHashRef = useRef<string>('');
+  const screenAnalysisActiveRef = useRef(false);
 
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
 
@@ -117,7 +149,9 @@ export const useGeminiLive = ({
     setIsSpeaking(true);
     source.onended = () => {
       activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== source);
-      if (activeSourcesRef.current.length === 0 && audioQueue.current.length === 0) setIsSpeaking(false);
+      if (activeSourcesRef.current.length === 0 && audioQueue.current.length === 0) {
+        setIsSpeaking(false);
+      }
     };
   }, [setIsSpeaking]);
 
@@ -131,13 +165,41 @@ export const useGeminiLive = ({
   }, []);
 
   // ============================================================
-  // 🌐 BUSCA WEB — CORRIGIDA
+  // 🔕 SILÊNCIO → FALA ESPONTÂNEA
+  // Reinicia o timer toda vez que há atividade
+  // Após 30s sem atividade, a IA inicia conversa sozinha
   // ============================================================
 
-  /**
-   * Busca via backend /api/web-search — resolve CORS e usa Jina AI Search
-   * com fallback automático para DuckDuckGo no servidor.
-   */
+  const stopSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  }, []);
+
+  const resetSilenceTimer = useCallback(() => {
+    stopSilenceTimer();
+    silenceTimerRef.current = setTimeout(() => {
+      if (!isConnectedRef.current || !sessionRef.current) return;
+      // Não interrompe se a IA já está falando
+      if (activeSourcesRef.current.length > 0) {
+        resetSilenceTimer(); // tenta novamente depois
+        return;
+      }
+      const prompt = SPONTANEOUS_PROMPTS[Math.floor(Math.random() * SPONTANEOUS_PROMPTS.length)];
+      console.log(`[silêncio] ${SILENCE_TIMEOUT_MS / 1000}s — iniciando fala espontânea`);
+      sessionRef.current.then((session: any) => {
+        session.sendRealtimeInput({
+          text: `[SISTEMA: O usuário está em silêncio há ${SILENCE_TIMEOUT_MS / 1000} segundos. Inicie a conversa naturalmente. Sugestão: "${prompt}" — mas use seu próprio estilo e personalidade.]`
+        });
+      }).catch(console.error);
+    }, SILENCE_TIMEOUT_MS);
+  }, [stopSilenceTimer]);
+
+  // ============================================================
+  // 🌐 BUSCA WEB
+  // ============================================================
+
   const performWebSearch = useCallback(async (query: string, numResults = 5): Promise<string> => {
     try {
       const res = await fetch('/api/web-search', {
@@ -145,33 +207,17 @@ export const useGeminiLive = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, num_results: numResults })
       });
-
       if (!res.ok) throw new Error(`web-search API retornou ${res.status}`);
-
       const data = await res.json();
-
-      // ✅ Jina: usa o texto bruto completo (mais contexto para o modelo)
-      if (data.raw) {
-        return `🔍 Resultados para "${query}":\n\n${data.raw}`;
-      }
-
-      // Resultados estruturados (Jina parseado ou DuckDuckGo)
-      if (data.results && Array.isArray(data.results)) {
-        if (data.results.length === 0) {
-          return `⚠️ Não encontrei resultados para "${query}". Tente reformular a pergunta.`;
-        }
+      if (data.raw) return `🔍 Resultados para "${query}":\n\n${data.raw}`;
+      if (data.results?.length) {
         const formatted = data.results
-          .map((r: any, i: number) =>
-            `[${i + 1}] ${r.title}\n${r.description}${r.url ? `\nURL: ${r.url}` : ''}`
-          )
+          .map((r: any, i: number) => `[${i + 1}] ${r.title}\n${r.description}${r.url ? `\nURL: ${r.url}` : ''}`)
           .join('\n\n');
         return `🔍 Resultados para "${query}":\n\n${formatted}`;
       }
-
       return `⚠️ Não encontrei resultados para "${query}".`;
-
     } catch (err: any) {
-      console.error('performWebSearch error:', err);
       return `❌ Não foi possível realizar a busca por "${query}". Erro: ${err.message}`;
     }
   }, []);
@@ -189,8 +235,8 @@ export const useGeminiLive = ({
       const text = data.content || '';
       const trimmed = text.length > 5000 ? text.substring(0, 5000) + '\n\n⚠️ Conteúdo truncado.' : text;
       return `📄 Conteúdo de ${url}:\n\n${trimmed}`;
-    } catch (err: any) {
-      return `❌ Não foi possível ler "${url}". Dica: tente "search_web" para encontrar informações sobre o tópico.`;
+    } catch {
+      return `❌ Não foi possível ler "${url}".`;
     }
   }, []);
 
@@ -214,7 +260,7 @@ export const useGeminiLive = ({
       const imageUrl = `data:image/png;base64,${imagePart.inlineData.data}`;
       addMessage({ role: 'model', text: `Imagem gerada para: "${prompt}"`, imageUrl });
       onMessageRef.current?.({ role: 'model', text: `Imagem gerada para: "${prompt}"`, imageUrl });
-    } catch (err: any) {
+    } catch {
       const msg = "Não consegui gerar a imagem. Verifique se sua chave API suporta geração de imagens.";
       addMessage({ role: 'model', text: msg });
       onMessageRef.current?.({ role: 'model', text: msg });
@@ -228,6 +274,7 @@ export const useGeminiLive = ({
   // ============================================================
 
   const sendMessage = useCallback(async (text: string) => {
+    resetSilenceTimer();
     addMessage({ role: 'user', text });
     onMessageRef.current?.({ role: 'user', text });
     setIsThinking(true);
@@ -266,7 +313,7 @@ export const useGeminiLive = ({
     } finally {
       setIsThinking(false);
     }
-  }, [history, addMessage, setIsThinking, systemInstruction, generateImage]);
+  }, [history, addMessage, setIsThinking, systemInstruction, generateImage, resetSilenceTimer]);
 
   // ============================================================
   // 🔌 CONEXÃO COM GEMINI LIVE
@@ -306,12 +353,14 @@ export const useGeminiLive = ({
             setIsConnected(true);
             isConnectedRef.current = true;
             setIsListening(true);
+            resetSilenceTimer(); // ✅ inicia timer ao conectar
           },
 
           onmessage: async (message: any) => {
             const modelParts = message.serverContent?.modelTurn?.parts;
             if (modelParts) {
               setIsThinking(false);
+              resetSilenceTimer(); // ✅ IA falou → reinicia timer
               const textContent = modelParts.filter((p: any) => p.text).map((p: any) => p.text).join('');
               if (textContent) {
                 addMessage({ role: 'model', text: textContent });
@@ -332,6 +381,7 @@ export const useGeminiLive = ({
             if (userParts) {
               const userText = userParts.filter((p: any) => p.text).map((p: any) => p.text).join('');
               if (userText) {
+                resetSilenceTimer(); // ✅ usuário falou → reinicia timer
                 addMessage({ role: 'user', text: userText });
                 onMessageRef.current?.({ role: 'user', text: userText });
               }
@@ -351,25 +401,17 @@ export const useGeminiLive = ({
                   continue;
                 }
 
-                // ✅ BUSCA WEB CORRIGIDA:
-                // O resultado da busca volta para o modelo via sendToolResponse.
-                // O App.tsx é notificado via onToolCall SOMENTE para atualizar a UI,
-                // mas NÃO deve mais abrir o Google ou interferir no fluxo.
                 if (name === "search_web") {
                   performWebSearch(args.query, args.num_results ?? 5)
                     .then(content => {
-                      // Notifica App para mostrar resultado na UI (opcional)
                       onToolCallRef.current?.(name, { ...args, result: content });
-                      // Envia resultado ao modelo para ele responder com base nele
                       session.sendToolResponse({
                         functionResponses: [{ name, id, response: { success: true, content, query: args.query } }]
                       });
                     })
-                    .catch(err => {
-                      session.sendToolResponse({
-                        functionResponses: [{ name, id, response: { success: false, error: String(err) } }]
-                      });
-                    });
+                    .catch(err => session.sendToolResponse({
+                      functionResponses: [{ name, id, response: { success: false, error: String(err) } }]
+                    }));
                   continue;
                 }
 
@@ -381,11 +423,9 @@ export const useGeminiLive = ({
                         functionResponses: [{ name, id, response: { success: true, content, url: args.url } }]
                       });
                     })
-                    .catch(err => {
-                      session.sendToolResponse({
-                        functionResponses: [{ name, id, response: { success: false, error: String(err) } }]
-                      });
-                    });
+                    .catch(err => session.sendToolResponse({
+                      functionResponses: [{ name, id, response: { success: false, error: String(err) } }]
+                    }));
                   continue;
                 }
 
@@ -408,7 +448,7 @@ export const useGeminiLive = ({
                     break;
                   case "open_url":
                     onOpenUrlRef.current?.(args.url);
-                    syncResponses.push({ name, id, response: { success: true, message: `Abrindo: ${args.url}` } });
+                    syncResponses.push({ name, id, response: { success: true } });
                     break;
                   case "change_voice":
                     onChangeVoiceRef.current?.(args.voice_name);
@@ -452,6 +492,7 @@ export const useGeminiLive = ({
             setIsConnected(false);
             isConnectedRef.current = false;
             sessionRef.current = null;
+            stopSilenceTimer();
           },
 
           onerror: (err: any) => {
@@ -460,6 +501,7 @@ export const useGeminiLive = ({
             setIsConnected(false);
             isConnectedRef.current = false;
             sessionRef.current = null;
+            stopSilenceTimer();
           }
         }
       });
@@ -494,6 +536,8 @@ export const useGeminiLive = ({
           let sum = 0;
           for (let i = 0; i < combined.length; i++) sum += Math.abs(combined[i] / 0x7FFF);
           setVolume(sum / combined.length);
+          // ✅ Detecta fala pelo volume para reiniciar timer
+          if (sum / combined.length > 0.01) resetSilenceTimer();
           if (!isMutedRef.current && sessionRef.current && isConnectedRef.current) {
             sessionRef.current.then((session: any) => {
               session.sendRealtimeInput({ audio: { data: toBase64(combined.buffer), mimeType: 'audio/pcm;rate=16000' } });
@@ -514,8 +558,15 @@ export const useGeminiLive = ({
     voice, storedApiKey, stopAudio, playNextChunk, toBase64,
     setError, setIsConnected, setIsListening, setVolume,
     addMessage, setMascotAction, setMascotTarget, setOnboardingStep,
-    performWebSearch, readUrlContent, generateImage
+    performWebSearch, readUrlContent, generateImage,
+    resetSilenceTimer, stopSilenceTimer
   ]);
+
+  // ============================================================
+  // 📺 COMPARTILHAMENTO DE TELA — com análise automática
+  // Detecta troca de tela comparando hash de pixels
+  // Avisa a IA quando o usuário muda de app
+  // ============================================================
 
   const startScreenSharing = useCallback(async () => {
     if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
@@ -525,21 +576,70 @@ export const useGeminiLive = ({
     try {
       const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true });
       screenStreamRef.current = stream;
+      screenAnalysisActiveRef.current = true;
+      lastScreenHashRef.current = '';
+
       const video = document.createElement('video');
       video.srcObject = stream;
       await video.play();
+
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d')!;
+
+      // Avisa a IA que o compartilhamento começou
+      if (sessionRef.current && isConnectedRef.current) {
+        sessionRef.current.then((session: any) => {
+          session.sendRealtimeInput({
+            text: '[SISTEMA: Compartilhamento de tela iniciado. Você pode ver a tela do usuário. Analise o que está sendo exibido e comente proativamente: descreva o que vê, sugira ações, alerte sobre erros, e quando o usuário trocar de app/tela analise o novo contexto automaticamente.]'
+          });
+        }).catch(console.error);
+      }
+
       const sendFrame = async () => {
-        if (!screenStreamRef.current?.active || !sessionRef.current) return;
+        if (!screenStreamRef.current?.active || !sessionRef.current || !screenAnalysisActiveRef.current) return;
+
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0);
+
+        // Envia frame para o modelo ver
         const base64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-        sessionRef.current.then((s: any) => s.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } })).catch(console.error);
-        setTimeout(sendFrame, 1000);
+        sessionRef.current.then((session: any) => {
+          session.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } });
+        }).catch(console.error);
+
+        // ✅ Detecta troca de tela/app por hash dos pixels
+        const currentHash = computeCurrentHash(canvas, ctx);
+        if (currentHash && lastScreenHashRef.current) {
+          const similarity = computeHashSimilarity(lastScreenHashRef.current, currentHash);
+          // Mudança > 40% → troca de tela
+          if (similarity < 0.6) {
+            console.log('[tela] Troca detectada — solicitando análise automática');
+            sessionRef.current?.then((session: any) => {
+              session.sendRealtimeInput({
+                text: '[SISTEMA: O usuário acabou de trocar de tela ou abrir outro aplicativo. Analise o novo contexto que está sendo exibido e comente o que você vê. Se houver algo relevante, útil ou que mereça atenção, diga proativamente.]'
+              });
+            }).catch(console.error);
+          }
+        }
+        if (currentHash) lastScreenHashRef.current = currentHash;
+
+        setTimeout(sendFrame, SCREEN_ANALYSIS_INTERVAL_MS);
       };
+
       sendFrame();
+
+      // Para ao encerrar stream
+      stream.getVideoTracks()[0].addEventListener('ended', () => {
+        screenAnalysisActiveRef.current = false;
+        lastScreenHashRef.current = '';
+        if (sessionRef.current && isConnectedRef.current) {
+          sessionRef.current.then((session: any) => {
+            session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela encerrado.]' });
+          }).catch(console.error);
+        }
+      });
+
     } catch (e: any) {
       const msgs: Record<string, string> = {
         NotAllowedError: "Permissão negada. Verifique as configurações do navegador.",
@@ -551,10 +651,11 @@ export const useGeminiLive = ({
 
   const sendLiveMessage = useCallback((text: string) => {
     if (sessionRef.current && isConnectedRef.current) {
+      resetSilenceTimer();
       setIsThinking(true);
       sessionRef.current.then((s: any) => s.sendRealtimeInput({ text })).catch(console.error);
     }
-  }, [setIsThinking]);
+  }, [setIsThinking, resetSilenceTimer]);
 
   const sendFile = useCallback((base64Data: string, mimeType: string, prompt: string) => {
     if (sessionRef.current && isConnectedRef.current) {
@@ -567,10 +668,13 @@ export const useGeminiLive = ({
   }, [setIsThinking]);
 
   const disconnect = useCallback((isReconnecting = false) => {
+    screenAnalysisActiveRef.current = false;
+    lastScreenHashRef.current = '';
+    stopSilenceTimer();
     sessionRef.current?.then((s: any) => s.close()).catch(console.error);
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
     stopAudio(isReconnecting);
-  }, [stopAudio]);
+  }, [stopAudio, stopSilenceTimer]);
 
   return {
     isConnected, isSpeaking, isListening, isThinking, volume, error, history,
@@ -578,3 +682,19 @@ export const useGeminiLive = ({
     sendMessage, sendLiveMessage, sendFile, generateImage
   };
 };
+
+// ─── Computa hash rápido de um canvas para detectar troca de tela ────────────
+function computeCurrentHash(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): string {
+  const w = canvas.width;
+  const h = canvas.height;
+  if (w === 0 || h === 0) return '';
+  const step = Math.max(1, Math.floor(Math.min(w, h) / SCREEN_HASH_SAMPLE));
+  let hash = '';
+  for (let y = 0; y < h; y += step * 4) {
+    for (let x = 0; x < w; x += step * 4) {
+      const d = ctx.getImageData(x, y, 1, 1).data;
+      hash += `${d[0]},${d[1]},${d[2]};`;
+    }
+  }
+  return hash;
+}
