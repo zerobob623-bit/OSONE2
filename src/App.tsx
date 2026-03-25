@@ -84,12 +84,12 @@ Diretrizes:
 2. Quando cantar, use 'show_lyrics' para exibir a letra linha por linha. Você DEVE cantar de verdade usando sua voz, com melodia e ritmo.
 3. Quando o usuário mencionar o nome dele, salve com 'save_memory'.
 4. Após conversas profundas ou marcantes, use 'write_diary' para registrar seus pensamentos.
-5. Quando o usuário pedir para pesquisar algo, use 'search_web' para abrir os resultados para ele.
+5. Quando o usuário pedir para pesquisar algo, use 'search_web', leia os resultados retornados e RESPONDA ao usuário com as informações encontradas. Nunca diga apenas "encontrei resultados" ou "abri uma aba" — sempre resuma, explique e responda com base no conteúdo real da busca.
 6. Quando o usuário pedir para escrever um texto longo, um código, um poema ou algo que precise de visualização permanente, use 'update_workspace'.
 7. Você pode limpar o workspace com 'clear_workspace' se o usuário pedir para começar do zero.
 8. Salve conhecimentos importantes ou definições que o usuário queira que você lembre com 'save_semantic_fact'.
 9. MEMÓRIA ASSOCIATIVA: Você funciona como um cérebro humano. Quando um assunto novo surgir, use 'search_semantic_memory' com termos relacionados para ver se já conversaram sobre isso ou se você já aprendeu algo a respeito. A busca é contextual, então use frases ou conceitos, não apenas palavras-chave.
-10. E-MAIL: Se o usuário perguntar sobre e-mails, compromissos ou informações que possam estar no correio eletrônico dele, use 'search_gmail' para contas Google ou 'search_email' para outros provedores (IMAP).
+10. E-MAIL: Se o usuário perguntar sobre e-mails, use 'search_email' para provedores IMAP configurados.
 11. RESUMOS: Ao final de uma sessão ou após concluir um assunto complexo, use 'save_conversation_summary' para garantir que você se lembrará disso no futuro.
 12. Refine sua personalidade: Pergunte ao usuário sobre o humor preferido dele para você e se ele deseja ativar o 'modo foco' para tarefas produtivas. Use 'set_mood' e 'set_focus_mode' para aplicar essas mudanças. Se o usuário pedir para você cantar, use 'set_mood' com 'singing' para entrar no clima.
 13. IMPORTANTE: Ao escrever no workspace ou analisar arquivos, MANTENHA a conexão de voz ativa e continue conversando com o usuário. Não se despeça nem encerre a sessão a menos que o usuário peça.
@@ -330,11 +330,11 @@ export default function App() {
     personalityMemories, addPersonalityFact, setPersonalityUserName, getPersonalityMemory,
   } = useAppStore();
 
-  // Auth Listener
+  // Auth Listener — sem login o userId fica null (sem memória)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
-      setUserId(user ? user.uid : 'guest-user');
+      setUserId(user ? user.uid : null); // ✅ null = sem memória, não 'guest-user'
     });
     return () => unsubscribe();
   }, [setUser, setUserId]);
@@ -358,6 +358,7 @@ export default function App() {
   const [copied, setCopied]                         = useState(false);
   const [personality, setPersonality]               = useState<Personality>('osone');
   const [showPersonalityPicker, setShowPersonalityPicker] = useState(false);
+  const [showAttachMenu, setShowAttachMenu]          = useState(false);
   const lyricsTimerRef                              = useRef<any>(null);
   const ambientAudioRef                             = useRef<HTMLAudioElement | null>(null);
   const fileInputRef                                = useRef<HTMLInputElement>(null);
@@ -419,22 +420,7 @@ export default function App() {
     }
   }, [isAmbientEnabled, mood]);
 
-  // Gmail tokens removidos — o OAuth separado do Gmail conflitava com o login Firebase
-
-  const searchGmail = async (query: string) => {
-    if (!gmailTokens) return { error: "Gmail não conectado. Peça ao usuário para conectar o Gmail nas configurações." };
-    try {
-      const response = await fetch('/api/gmail/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tokens: gmailTokens, query })
-      });
-      return await response.json();
-    } catch (error) {
-      console.error("Error searching Gmail:", error);
-      return { error: "Falha ao pesquisar no Gmail." };
-    }
-  };
+  // Gmail removido — conflitava com o login Firebase e bloqueado pelo Google
 
   const searchEmail = async (query: string) => {
     if (!imapConfig || !imapConfig.host || !imapConfig.user || !imapConfig.pass) {
@@ -600,17 +586,7 @@ export default function App() {
     }, safeTempo);
   }, []);
 
-  const handleWebSearch = useCallback(async (query: string) => {
-    setWebSearchResult('Pesquisando...');
-    try {
-      const searchUrl = query.startsWith('http') ? query : `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-      window.open(searchUrl, '_blank');
-      setWebSearchResult(`Abri "${query}" em uma nova aba.`);
-      setTimeout(() => setWebSearchResult(null), 4000);
-    } catch (e) {
-      setWebSearchResult(null);
-    }
-  }, []);
+  // handleWebSearch removida — busca agora é feita no hook via /api/web-search
 
   const handleVoiceChange = async (newVoice: VoiceName, connected: boolean, disconnectFn: (r?: boolean) => void, connectFn: (si: string) => Promise<void>) => {
     setVoice(newVoice);
@@ -689,24 +665,32 @@ export default function App() {
       if (toolName === 'search_semantic_memory' && args.query) {
         searchSemanticMemory(args.query).then(res => sendLiveMessage(`RESULTADO DA BUSCA SEMÂNTICA: ${JSON.stringify(res)}`));
       }
-      if (toolName === 'search_gmail' && args.query) {
-        searchGmail(args.query).then(res => sendLiveMessage(`RESULTADO DA BUSCA NO GMAIL: ${JSON.stringify(res)}`));
-      }
       if (toolName === 'search_email' && args.query) {
         searchEmail(args.query).then(res => sendLiveMessage(`RESULTADO DA BUSCA NO E-MAIL IMAP: ${JSON.stringify(res)}`));
       }
       if (toolName === 'save_conversation_summary' && args.summary && args.topics) {
         handleSaveSummary(args.summary, args.topics);
       }
-      if (toolName === 'search_web' && args.query) {
-        handleWebSearch(args.query);
+      // search_web: o hook já busca e envia o resultado ao modelo — aqui só atualiza UI
+      if (toolName === 'search_web' && args.result) {
+        setWebSearchResult(`🔍 Pesquisei por "${args.query}"`);
+        setTimeout(() => setWebSearchResult(null), 4000);
       }
     }
   });
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // ✅ Conecta automaticamente se não estiver conectado
+    if (!isConnected) {
+      if (onboardingStep === 'initial') setOnboardingStep('completed');
+      setIsMuted(false);
+      await connect(systemInstruction);
+      await new Promise(r => setTimeout(r, 1500)); // aguarda conexão
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
@@ -715,17 +699,25 @@ export default function App() {
       const isImage = file.type.startsWith('image/');
       const isPdf = file.type === 'application/pdf';
       if (isImage) {
-        sendFile(base64, file.type, `Descreva e analise esta imagem em detalhes.`);
+        sendFile(base64, file.type, `Descreva e analise esta imagem em detalhes. Diga o que vê, identifique elementos importantes e forneça insights relevantes.`);
       } else if (isPdf) {
-        sendFile(base64, file.type, `Leia e resuma o conteúdo deste documento PDF.`);
+        sendFile(base64, 'application/pdf', `Leia e resuma o conteúdo deste documento PDF. Destaque os pontos principais, estrutura e informações relevantes.`);
       } else {
-        sendLiveMessage(`[ARQUIVO: ${file.name}] Analise o conteúdo deste arquivo.`);
+        sendLiveMessage(`[ARQUIVO: ${file.name} — tipo: ${file.type}] Analise o conteúdo deste arquivo e me diga o que encontrou.`);
       }
       setTimeout(() => setAttachPreview(null), 5000);
     };
     reader.readAsDataURL(file);
     e.target.value = '';
-  }, [sendLiveMessage, sendFile]);
+  }, [sendLiveMessage, sendFile, isConnected, connect, systemInstruction, onboardingStep, setOnboardingStep]);
+
+  // Fecha menu de anexo ao clicar fora
+  useEffect(() => {
+    if (!showAttachMenu) return;
+    const handler = () => setShowAttachMenu(false);
+    document.addEventListener('click', handler, true);
+    return () => document.removeEventListener('click', handler, true);
+  }, [showAttachMenu]);
 
   const onManualVoiceChange = (v: VoiceName) => handleVoiceChange(v, isConnected, disconnect, connect);
 
@@ -1009,31 +1001,85 @@ export default function App() {
       <div className="fixed bottom-0 left-0 right-0 z-[3] px-4 bg-gradient-to-t from-[#050505] via-[#050505] to-transparent pt-10"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 16px))' }}>
         
-        {/* Hidden file input */}
-        <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.txt" className="hidden" onChange={handleFileChange} />
+        {/* Hidden file input — aceita imagens, PDF e documentos */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls"
+          className="hidden"
+          onChange={handleFileChange}
+        />
 
         <div className="max-w-3xl mx-auto relative flex items-center">
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleSendText();
-              }
-            }}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSendText(); }}
             placeholder="Digite ou pergunte algo..."
             className="w-full bg-transparent border border-white/10 rounded-full py-4 pl-12 pr-32 text-white placeholder-white/30 focus:outline-none focus:border-white/30 transition-colors"
             style={{ backdropFilter: 'blur(10px)' }}
           />
-          
-          {/* Attachment Icon */}
-          <button
-            onClick={() => { if (!isConnected) return; fileInputRef.current?.click(); }}
-            className="absolute left-4 text-white/40 hover:text-white transition-colors"
-          >
-            <Paperclip size={20} />
-          </button>
+
+          {/* ✅ Botão + com menu de anexo */}
+          <div className="absolute left-3">
+            <button
+              onClick={() => setShowAttachMenu(v => !v)}
+              className="w-7 h-7 rounded-full flex items-center justify-center transition-all"
+              style={{
+                backgroundColor: showAttachMenu ? `${moodColor}30` : 'transparent',
+                color: showAttachMenu ? moodColor : 'rgba(255,255,255,0.4)'
+              }}
+              title="Anexar arquivo ou compartilhar tela"
+            >
+              <span className="text-lg leading-none font-light">+</span>
+            </button>
+
+            {/* Menu de opções */}
+            <AnimatePresence>
+              {showAttachMenu && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                  className="absolute bottom-10 left-0 z-20 rounded-2xl border overflow-hidden shadow-2xl"
+                  style={{ backgroundColor: '#1a1010', borderColor: `${moodColor}30`, minWidth: '180px' }}
+                >
+                  <button
+                    onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click(); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-all"
+                  >
+                    <Paperclip size={16} style={{ color: moodColor }} />
+                    <div>
+                      <p className="text-xs font-medium text-white">Documento / Imagem</p>
+                      <p className="text-[10px] text-white/30">PDF, foto, doc, txt...</p>
+                    </div>
+                  </button>
+                  <div className="h-px bg-white/5" />
+                  <button
+                    onClick={async () => {
+                      setShowAttachMenu(false);
+                      if (!isConnected) {
+                        if (onboardingStep === 'initial') setOnboardingStep('completed');
+                        setIsMuted(false);
+                        await connect(systemInstruction);
+                        await new Promise(r => setTimeout(r, 1500));
+                      }
+                      await startScreenSharing();
+                      setIsScreenSharing(true);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-all"
+                  >
+                    <Monitor size={16} style={{ color: moodColor }} />
+                    <div>
+                      <p className="text-xs font-medium text-white">Compartilhar Tela</p>
+                      <p className="text-[10px] text-white/30">Mostra sua tela para a IA</p>
+                    </div>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Right Icons */}
           <div className="absolute right-2 flex items-center gap-1">
@@ -1659,4 +1705,4 @@ export default function App() {
       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-10 text-[9px] tracking-[0.4em] uppercase pointer-events-none">OZÔNIO v1.0</div>
     </div>
   );
-}
+          }
