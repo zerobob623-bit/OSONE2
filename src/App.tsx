@@ -1705,4 +1705,4 @@ export default function App() {
       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-10 text-[9px] tracking-[0.4em] uppercase pointer-events-none">OZÔNIO v1.0</div>
     </div>
   );
-          }
+}
