@@ -1,0 +1,16 @@
+{
+    "buildCommand": "npm run build",
+    "devCommand": "tsx server.ts",
+    "installCommand": "npm install",
+    "framework": "vite",
+    "outputDirectory": "dist",
+    "env": {
+          "NODE_ENV": "production"
+    },
+    "rewrites": [
+          {
+                  "source": "/(.*)",
+                  "destination": "/"
+          }
+    ]
+}
