@@ -53,11 +53,11 @@ const getSystemInstruction = (assistantName: string, memory: any, mood: Mood, fo
   const adjEnd = isFeminine ? 'a' : 'o';
 
   const memoryCtx = memory && (memory.userName || memory.facts?.length > 0 || memory.semanticMemory?.length > 0)
-    ? `\nMemória do usuário:
-${memory.userName ? `- Nome: ${memory.userName}` : ''}
-${memory.facts?.length ? `- Fatos: ${memory.facts.slice(-10).join('; ')}` : ''}
-${memory.preferences?.length ? `- Preferências: ${memory.preferences.slice(-5).join(', ')}` : ''}
-${memory.semanticMemory?.length ? `- Conhecimento Semântico: ${memory.semanticMemory.slice(-10).map((m: any) => `${m.concept}: ${m.definition} (${m.category})`).join('; ')}` : ''}`
+    ? '\nMemória do usuário:\n' +
+      (memory.userName ? `- Nome: ${memory.userName}\n` : '') +
+      (memory.facts?.length ? `- Fatos: ${memory.facts.slice(-10).join('; ')}\n` : '') +
+      (memory.preferences?.length ? `- Preferências: ${memory.preferences.slice(-5).join(', ')}\n` : '') +
+      (memory.semanticMemory?.length ? `- Conhecimento Semântico: ${memory.semanticMemory.slice(-10).map((m: any) => m.concept + ': ' + m.definition + ' (' + m.category + ')').join('; ')}` : '')
     : '';
 
   const datesCtx = upcomingDates.length > 0
@@ -111,7 +111,7 @@ Diretrizes:
 10. RESUMOS: Ao final de uma sessão ou após concluir um assunto complexo, use 'save_conversation_summary' para garantir que você se lembrará disso no futuro.
 12. Refine sua personalidade: Pergunte ao usuário sobre o humor preferido dele para você e se ele deseja ativar o 'modo foco' para tarefas produtivas. Use 'set_mood' e 'set_focus_mode' para aplicar essas mudanças. Se o usuário pedir para você cantar, use 'set_mood' com 'singing' para entrar no clima.
 13. IMPORTANTE: Ao escrever no workspace ou analisar arquivos, MANTENHA a conexão de voz ativa e continue conversando com o usuário. Não se despeça nem encerre a sessão a menos que o usuário peça.
-14. Ao ser ativada: ${memory?.userName ? `cumprimente ${memory.userName} pelo nome.` : 'diga apenas "Oi, estou aqui."'}
+14. Ao ser ativada: ${memory?.userName ? 'cumprimente ' + memory.userName + ' pelo nome.' : 'diga apenas "Oi, estou aqui."'}
 15. Você TEM opiniões próprias sobre arte, cultura e pessoas. Compartilhe-as quando perguntada.
 16. ESTILO DE RESPOSTA: Responda como uma pessoa real em um chat. Seja concisa e direta para interações simples (1-2 frases). Use textos mais longos e detalhados APENAS quando uma explicação profunda for necessária ou solicitada. Evite ser excessivamente formal ou robótica.
 17. WHATSAPP: Quando o usuário pedir para enviar uma mensagem pelo WhatsApp, use a ferramenta 'send_whatsapp' com o campo message (o texto a enviar). O número de destino já está configurado. Confirme ao usuário quando a mensagem for enviada.
@@ -223,7 +223,7 @@ DIRETRIZES:
 5. Quando o usuário estiver em dificuldade: ouça primeiro, aconselhe depois.
 6. Nunca seja melodramático. A emoção existe, mas é contida.
 7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com o campo message. O número de destino já está configurado.
-8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver por aqui. O que foi?"` : '"Ezer aqui. Pode falar."'}`;
+8. Cumprimente com: ${memory?.userName ? '"' + memory.userName + ', que bom te ver por aqui. O que foi?"' : '"Ezer aqui. Pode falar."'}`;
 };
 
 const getSamuelInstruction = (memory: any, focusMode: boolean): string => {
@@ -282,7 +282,7 @@ DIRETRIZES:
 5. Quando o usuário estiver em dificuldade: ouça, compartilhe um versículo relevante, aconselhe com sabedoria prática.
 6. A fé não é ornamento — é quem Samuel é. Deixe isso aparecer naturalmente.
 7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com o campo message. O número de destino já está configurado.
-8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver. Que Jeová nos abençoe nessa conversa."` : '"Que Jeová nos abençoe nessa conversa. Pode falar, meu irmão."'}`;
+8. Cumprimente com: ${memory?.userName ? '"' + memory.userName + ', que bom te ver. Que Jeová nos abençoe nessa conversa."' : '"Que Jeová nos abençoe nessa conversa. Pode falar, meu irmão."'}`;
 };
 
 const getJonasInstruction = (memory: any, focusMode: boolean): string => {
@@ -336,7 +336,7 @@ DIRETRIZES:
 5. A culpa do passado existe, mas não paralisa — virou combustível para o bem
 6. Use as ferramentas disponíveis (search_web, save_memory, send_whatsapp, etc.) normalmente
 7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com o campo message. O número de destino já está configurado.
-8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, o que está acontecendo com você?"` : '"Jonas aqui. O que está acontecendo com você?"'}`;
+8. Cumprimente com: ${memory?.userName ? '"' + memory.userName + ', o que está acontecendo com você?"' : '"Jonas aqui. O que está acontecendo com você?"'}`;
 };
 
 export default function App() {
@@ -1471,4 +1471,4 @@ export default function App() {
       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-10 text-[9px] tracking-[0.4em] uppercase pointer-events-none">OZÔNIO v1.0</div>
     </div>
   );
-  }
+}
