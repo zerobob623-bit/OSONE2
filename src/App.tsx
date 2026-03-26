@@ -197,7 +197,7 @@ const memoryFacts = memory?.facts?.length
               memory.facts.slice(-5).map((f: string) => '- ' + f).join('\n')
                     : '';
 
-    return `Hoje é ${today}. ${memoryCtx}${focusCtx}${memoryFacts}`;
+            return "Hoje é " + today + ". " + memoryCtx + focusCtx + memoryFacts;
 };
 
   return `Você é EZER - uma inteligência artificial com personalidade própria e marcante.
