@@ -106,7 +106,8 @@ Diretrizes:
 14. Ao ser ativada: ${memory?.userName ? `cumprimente ${memory.userName} pelo nome.` : 'diga apenas "Oi, estou aqui."'}
 15. Você TEM opiniões próprias sobre arte, cultura e pessoas. Compartilhe-as quando perguntada.
 16. ESTILO DE RESPOSTA: Responda como uma pessoa real em um chat. Seja concisa e direta para interações simples (1-2 frases). Use textos mais longos e detalhados APENAS quando uma explicação profunda for necessária ou solicitada. Evite ser excessivamente formal ou robótica.
-17. WHATSAPP: Quando o usuário pedir para enviar uma mensagem pelo WhatsApp, use a ferramenta 'send_whatsapp' com o campo message (o texto a enviar). O número de destino já está configurado. Confirme ao usuário quando a mensagem for enviada.`;
+17. WHATSAPP: Quando o usuário pedir para enviar uma mensagem pelo WhatsApp, use a ferramenta 'send_whatsapp' com o campo message (o texto a enviar). O número de destino já está configurado. Confirme ao usuário quando a mensagem for enviada.
+18. CASA INTELIGENTE: Quando o usuário pedir para ligar/desligar lâmpadas, tomadas ou outros dispositivos da casa, use 'control_device'. Para listar os dispositivos disponíveis use action='list'. Exemplos: "liga a lâmpada da sala" → device_name="sala", action="on". "apaga tudo" → chame control_device para cada cômodo. Confirme após executar.`;
 };
 
 const VOICE_DESCRIPTIONS: Record<VoiceName, string> = {
@@ -342,6 +343,9 @@ export default function App() {
     userId, setUserId, setUserProfile,
     personalityMemories, addPersonalityFact, setPersonalityUserName, getPersonalityMemory,
     myWhatsappNumber, setMyWhatsappNumber,
+    tuyaClientId, setTuyaClientId,
+    tuyaSecret, setTuyaSecret,
+    tuyaRegion, setTuyaRegion,
   } = useAppStore();
 
   const [isRestarting, setIsRestarting]             = useState(false);
@@ -376,6 +380,9 @@ export default function App() {
   const [showAttachMenu, setShowAttachMenu]          = useState(false);
   // ✅ NOVO: estado para feedback do WhatsApp
   const [whatsappStatus, setWhatsappStatus]         = useState<string | null>(null);
+  const [smartHomeStatus, setSmartHomeStatus]       = useState<string | null>(null);
+  const [tuyaDevices, setTuyaDevices]               = useState<any[]>([]);
+  const [tuyaLoading, setTuyaLoading]               = useState(false);
   const lyricsTimerRef                              = useRef<any>(null);
   const ambientAudioRef                             = useRef<HTMLAudioElement | null>(null);
   const fileInputRef                                = useRef<HTMLInputElement>(null);
@@ -647,6 +654,19 @@ export default function App() {
         setWebSearchResult(`🔍 Pesquisei por "${args.query}"`);
         setTimeout(() => setWebSearchResult(null), 4000);
       }
+      // ✅ SMART HOME — feedback visual
+      if (toolName === 'control_device' && args.result) {
+        const { success, device, devices, error } = args.result;
+        if (success) {
+          const label = args.action === 'list'
+            ? `🏠 ${devices}`
+            : `🏠 ${device}: ${args.action === 'on' ? 'ligado ✓' : args.action === 'off' ? 'desligado ✓' : args.action + ' ✓'}`;
+          setSmartHomeStatus(label);
+        } else {
+          setSmartHomeStatus(`❌ ${error}`);
+        }
+        setTimeout(() => setSmartHomeStatus(null), 5000);
+      }
       // ✅ WHATSAPP — handler completo
       if (toolName === 'send_whatsapp' && args.message) {
         const phone = (myWhatsappNumber || '').replace(/\D/g, '');
@@ -864,6 +884,17 @@ export default function App() {
 
       <div className="flex-1 flex flex-col relative w-full mx-auto px-4 pt-4 mt-64 min-h-0">
         <div className="h-20" />
+
+        {/* ✅ TOAST SMART HOME */}
+        <AnimatePresence>
+          {smartHomeStatus && (
+            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="absolute bottom-44 left-1/2 -translate-x-1/2 z-[2] px-4 py-2 rounded-2xl text-xs text-center max-w-xs"
+              style={{ backgroundColor: '#4ecdc415', border: '1px solid #4ecdc430', color: '#4ecdc4' }}>
+              {smartHomeStatus}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ✅ TOAST WHATSAPP STATUS */}
         <AnimatePresence>
@@ -1343,6 +1374,88 @@ export default function App() {
                           className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30"
                         />
                         <p className="text-[10px] text-white/20 pl-1">DDD + número, sem espaços. Ex: 5584999259368</p>
+                      </div>
+
+                      {/* ✅ TUYA SMART HOME */}
+                      <div className="p-4 rounded-2xl border space-y-4" style={{ backgroundColor: '#4ecdc410', borderColor: '#4ecdc430' }}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: '#4ecdc420' }}>🏠</div>
+                          <div>
+                            <p className="text-sm font-medium">Casa Inteligente</p>
+                            <p className="text-[10px] opacity-40">Tuya IoT • Positivo, SmartLife e outros</p>
+                          </div>
+                          <div className={`ml-auto w-2 h-2 rounded-full ${tuyaClientId && tuyaSecret ? 'bg-green-500 animate-pulse' : 'bg-zinc-600'}`} />
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase tracking-widest opacity-40">Client ID</label>
+                            <input
+                              type="text"
+                              placeholder="xxxxxxxxxxxxxxxx"
+                              value={tuyaClientId}
+                              onChange={(e) => setTuyaClientId(e.target.value.trim())}
+                              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase tracking-widest opacity-40">Client Secret</label>
+                            <input
+                              type="password"
+                              placeholder="••••••••••••••••"
+                              value={tuyaSecret}
+                              onChange={(e) => setTuyaSecret(e.target.value.trim())}
+                              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase tracking-widest opacity-40">Região</label>
+                            <select
+                              value={tuyaRegion}
+                              onChange={(e) => setTuyaRegion(e.target.value)}
+                              className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-white/30">
+                              <option value="us">América (us)</option>
+                              <option value="eu">Europa (eu)</option>
+                              <option value="cn">China (cn)</option>
+                              <option value="in">Índia (in)</option>
+                            </select>
+                          </div>
+                          <button
+                            disabled={!tuyaClientId || !tuyaSecret || tuyaLoading}
+                            onClick={async () => {
+                              setTuyaLoading(true);
+                              setTuyaDevices([]);
+                              try {
+                                const r = await fetch(`/api/tuya/devices?clientId=${encodeURIComponent(tuyaClientId)}&secret=${encodeURIComponent(tuyaSecret)}&region=${tuyaRegion}`);
+                                const d = await r.json();
+                                if (d.success) setTuyaDevices(d.devices);
+                                else setSmartHomeStatus(`❌ ${d.error}`);
+                              } catch (e: any) {
+                                setSmartHomeStatus(`❌ Erro: ${e.message}`);
+                              } finally {
+                                setTuyaLoading(false);
+                              }
+                            }}
+                            className="w-full py-2.5 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all disabled:opacity-30"
+                            style={{ backgroundColor: '#4ecdc420', color: '#4ecdc4', border: '1px solid #4ecdc440' }}>
+                            {tuyaLoading ? 'Buscando...' : 'Testar e ver dispositivos'}
+                          </button>
+                          {tuyaDevices.length > 0 && (
+                            <div className="space-y-1 mt-1">
+                              {tuyaDevices.map((d: any) => (
+                                <div key={d.id} className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded-xl text-xs">
+                                  <span>{d.category === 'dj' || d.category === 'dd' ? '💡' : '🔌'}</span>
+                                  <span className="flex-1">{d.name}</span>
+                                  <span className={`text-[10px] ${d.online ? 'text-green-400' : 'text-white/20'}`}>{d.online ? 'online' : 'offline'}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <p className="text-[10px] text-white/20 leading-relaxed">
+                          Crie um projeto em <span className="text-white/40">iot.tuya.com</span>, vincule o app Positivo/SmartLife e copie o Client ID e Secret.
+                        </p>
                       </div>
 
                     </motion.div>
