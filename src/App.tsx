@@ -616,6 +616,18 @@ export default function App() {
     onToolCall: (toolName: string, args: any) => {
       if (toolName === 'show_lyrics' && args.lines) showLyricsOnScreen(args.lines, args.tempo);
       if (toolName === 'set_mood' && args.mood) setMood(args.mood as Mood);
+      if (toolName === 'alexa_control' && args.command) {
+  fetch('/api/alexa/control', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command: args.command, device: args.device, value: args.value })
+  })
+  .then(r => r.json())
+  .then(data => sendLiveMessage(data.success
+    ? `✅ ${data.message}`
+    : `❌ Não consegui: ${data.error}`
+  ));
+      }
       if (toolName === 'set_focus_mode' && typeof args.enabled === 'boolean') setFocusMode(args.enabled);
       if (toolName === 'save_profile_info' && args.field && args.value) {
         setUserProfile({ [args.field]: args.value });
