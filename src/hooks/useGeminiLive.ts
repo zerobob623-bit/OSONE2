@@ -429,6 +429,25 @@ export const useGeminiLive = ({
                   continue;
                 }
 
+                if (name === "send_whatsapp") {
+                  fetch('/api/whatsapp/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: args.message })
+                  })
+                    .then(r => r.json())
+                    .then(data => {
+                      onToolCallRef.current?.(name, args);
+                      session.sendToolResponse({
+                        functionResponses: [{ name, id, response: data.success ? { success: true } : { success: false, error: data.error } }]
+                      });
+                    })
+                    .catch(err => session.sendToolResponse({
+                      functionResponses: [{ name, id, response: { success: false, error: String(err) } }]
+                    }));
+                  continue;
+                }
+
                 if (name === "generate_image") {
                   generateImage(args.prompt, args.aspect_ratio ?? "1:1")
                     .then(() => session.sendToolResponse({

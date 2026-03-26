@@ -287,6 +287,44 @@ app.post("/api/web-search", async (req, res) => {
   return res.status(400).json({ error: 'Parâmetros inválidos.' });
 });
 
+// ============================================================
+// 📱 WHATSAPP — Envio de mensagem para o próprio número
+// ============================================================
+
+const EVOLUTION_URL = 'https://evolution-api-production-9133.up.railway.app';
+const EVOLUTION_KEY = '5DC26A82784E-4BDB-A4CD-33C86CB2455D';
+const EVOLUTION_INSTANCE = 'OSONE2';
+
+app.post("/api/whatsapp/send", async (req, res) => {
+  const { message, phone } = req.body;
+  const target = phone || process.env.WHATSAPP_MY_NUMBER;
+
+  if (!message) return res.status(400).json({ error: "message é obrigatório" });
+  if (!target) return res.status(400).json({ error: "Número de destino não configurado. Defina WHATSAPP_MY_NUMBER no .env" });
+
+  try {
+    const response = await axios.post(
+      `${EVOLUTION_URL}/message/sendText/${EVOLUTION_INSTANCE}`,
+      {
+        number: `${target}@s.whatsapp.net`,
+        text: message
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': EVOLUTION_KEY
+        },
+        timeout: 10000
+      }
+    );
+    console.log(`[WhatsApp] Mensagem enviada para ${target}:`, message);
+    res.json({ success: true, to: target });
+  } catch (error: any) {
+    console.error('[WhatsApp] Erro ao enviar mensagem:', error.message);
+    res.status(500).json({ error: 'Falha ao enviar mensagem pelo WhatsApp.' });
+  }
+});
+
 // Vite Middleware
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

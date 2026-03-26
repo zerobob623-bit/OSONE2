@@ -249,6 +249,17 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       },
       required: ["summary", "topics"]
     }
+  },
+  {
+    name: "send_whatsapp",
+    description: "Envia uma mensagem de WhatsApp para o número do próprio usuário. Use após pesquisar na web para enviar resultados ou resumos ao usuário.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        message: { type: Type.STRING, description: "Texto da mensagem a ser enviada." }
+      },
+      required: ["message"]
+    }
   }
 ];
 
