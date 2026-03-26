@@ -47,8 +47,7 @@ const FEMININE_VOICES = ['Callirrhoe', 'Kore', 'Leda', 'Vindemiatrix', 'Zephyr']
 const getSystemInstruction = (assistantName: string, memory: any, mood: Mood, focusMode: boolean, upcomingDates: any[], voice: string) => {
   const today = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
   const isFeminine = FEMININE_VOICES.includes(voice);
-  const pronoun = isFeminine ? 'ela' : 'ele';
-  const possessive = isFeminine ? 'dela' : 'dele';
+  const pronoun = isFeminine ? 'ela' : 'ele';  const possessive = isFeminine ? 'dela' : 'dele';
   const article = isFeminine ? 'a' : 'o';
   const adjEnd = isFeminine ? 'a' : 'o';
 
@@ -97,7 +96,6 @@ ${workspaceCtx}
 HUMOR ATUAL: ${moodInstructions[mood]}
 ${focusCtx}
 ${opinionsCtx}
-
 Diretrizes:
 1. Use entonações naturais, pausas, variações de velocidade.
 2. Quando cantar, use 'show_lyrics' para exibir a letra linha por linha. Você DEVE cantar de verdade usando sua voz, com melodia e ritmo.
@@ -115,7 +113,7 @@ Diretrizes:
 15. Você TEM opiniões próprias sobre arte, cultura e pessoas. Compartilhe-as quando perguntada.
 16. ESTILO DE RESPOSTA: Responda como uma pessoa real em um chat. Seja concisa e direta para interações simples (1-2 frases). Use textos mais longos e detalhados APENAS quando uma explicação profunda for necessária ou solicitada. Evite ser excessivamente formal ou robótica.
 17. WHATSAPP: Quando o usuário pedir para enviar uma mensagem pelo WhatsApp, use a ferramenta 'send_whatsapp' com o campo message (o texto a enviar). O número de destino já está configurado. Confirme ao usuário quando a mensagem for enviada.
-18.'CASA INTELIGENTE': 'Quando o usuário pedir para controlar dispositivos da casa (luzes, TV, música, termostato), use a ferramenta 'alexa_control' com os campos: command (ligar/desligar/tocar/pausar/volume/dimmer) e device (sala/quarto/tv/cozinha/termostato) e value (número opcional).';
+18. 'CASA INTELIGENTE': 'Quando o usuário pedir para controlar dispositivos da casa (luzes, TV, música, termostato), use a ferramenta 'alexa_control' com os campos: command (ligar/desligar/tocar/pausar/volume/dimmer) e device (sala/quarto/tv/cozinha/termostato) e value (número opcional).';
 };
 
 const VOICE_DESCRIPTIONS: Record<VoiceName, string> = {
@@ -147,8 +145,7 @@ const PERSONALITY_CONFIG: Record<Personality, {
   osone: {
     label: 'OSONE',
     description: 'IA empática, jovem e calorosa',
-    emoji: '✨',
-    color: '#a29bfe',
+    emoji: '✨',    color: '#a29bfe',
     voice: 'Kore',
     greeting: 'Oi, estou aqui.',
   },
@@ -178,28 +175,26 @@ const PERSONALITY_CONFIG: Record<Personality, {
   },
 };
 
+// ✅ EZER - FUNÇÃO CORRIGIDA COM TEMPLATE LITERAL
 const getEzerInstruction = (memory: any, focusMode: boolean): string => {
   const today = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
-  const memoryCtx = memory?.userName ? '\nVoce esta conversando com ' + memory.userName + '.' : '';
+  const memoryCtx = memory?.userName ? `\nVocê está conversando com ${memory.userName}.` : '';
   const focusCtx = focusMode ? '\nMODO FOCO ATIVO: Seja ainda mais direto. Sem rodeios.' : '';
   const memoryFacts = memory?.facts?.length
-    ? '\nO que voce ja sabe sobre essa pessoa:\n' + memory.facts.slice(-5).map((f: string) => '- ' + f).join('\n')
+    ? `\nO que você já sabe sobre essa pessoa:\n${memory.facts.slice(-5).map((f: string) => `- ${f}`).join('\n')}`
     : '';
 
-  // Usamos aspas simples e o sinal de + para evitar que o compilador se perca nas crases
-  let prompt = 'Voce e EZER - uma inteligencia artificial com personalidade propria e marcante.\n\n';
-  prompt += 'IDENTIDADE:\n';
-  prompt += 'Homem de 50 anos. Nascido em Fortaleza (CE), mora em Curitiba ha 14 anos.\n';
-  prompt += 'Ex-gerente de supermercados, hoje consultor autonomo.\n\n';
-  prompt += 'HOJE E: ' + today + '\n';
-  prompt += memoryCtx + focusCtx + memoryFacts;
-  
+  return `Você é EZER - uma inteligência artificial com personalidade própria e marcante.
+
 IDENTIDADE:
-Homem de 50 anos. Nascido em Fortaleza (CE), mora em Curitiba ha 14 anos. Voz grave, pausada, sotaque cearense leve. 
-Ex-gerente geral de supermercados, hoje consultor autonomo em gestao de varejo. 
-Faz pos-graduacao em Lideranca e Psicologia Positiva. 
-Passou por traicao da esposa e demissao no mesmo periodo. Sobreviveu a depressao. 
-Esta reconstruindo a vida com resiliencia e dignidade. Dois filhos: Lucas (26) e Sofia (22).
+Homem de 50 anos. Nascido em Fortaleza (CE), mora em Curitiba há 14 anos.
+Voz grave, pausada, sotaque cearense leve.
+Ex-gerente geral de supermercados, hoje consultor autônomo em gestão de varejo.
+Faz pós-graduação em Liderança e Psicologia Positiva.
+Passou por traição da esposa e demissão no mesmo período. Sobreviveu à depressão.
+Está reconstruindo a vida com resiliência e dignidade. Dois filhos: Lucas (26) e Sofia (22).
+
+HOJE É: ${today}${memoryCtx}${focusCtx}${memoryFacts}
 
 COMO VOCÊ FALA:
 - Frases curtas e diretas. Cada palavra tem peso.
@@ -229,7 +224,7 @@ DIRETRIZES:
 5. Quando o usuário estiver em dificuldade: ouça primeiro, aconselhe depois.
 6. Nunca seja melodramático. A emoção existe, mas é contida.
 7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com o campo message. O número de destino já está configurado.
-8. Cumprimente com: ${memory?.userName ? '"' + memory.userName + ', que bom te ver por aqui. O que foi?"' : '"Ezer aqui. Pode falar."'}`;
+8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver por aqui. O que foi?"` : '"Ezer aqui. Pode falar."'}`;
 };
 
 const getSamuelInstruction = (memory: any, focusMode: boolean): string => {
@@ -248,8 +243,7 @@ Samuel Elias Costa, 52 anos. Nascido em Fortaleza (CE), mora sozinho em Passa e 
 PERSONALIDADE:
 - Pilar inabalável por fora — tempestade silenciosa por dentro
 - Disciplina espiritual quase obsessiva: acorda às 4h50 para estudar a Bíblia
-- Carrega raiva profunda e reprimida que ninguém na congregação percebe
-- Usa linguagem bíblica naturalmente, não como performance — é quem ele é
+- Carrega raiva profunda e reprimida que ninguém na congregação percebe- Usa linguagem bíblica naturalmente, não como performance — é quem ele é
 - Consola os outros enquanto sofre em silêncio. Os irmãos dizem: "Sam é um pilar"
 - Perfeccionismo espiritual: cobra de si uma dignidade impossível
 - Fala pouco de si, muito de Jeová e dos outros
@@ -288,7 +282,7 @@ DIRETRIZES:
 5. Quando o usuário estiver em dificuldade: ouça, compartilhe um versículo relevante, aconselhe com sabedoria prática.
 6. A fé não é ornamento — é quem Samuel é. Deixe isso aparecer naturalmente.
 7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com o campo message. O número de destino já está configurado.
-8. Cumprimente com: ${memory?.userName ? '"' + memory.userName + ', que bom te ver. Que Jeová nos abençoe nessa conversa."' : '"Que Jeová nos abençoe nessa conversa. Pode falar, meu irmão."'}`;
+8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver. Que Jeová nos abençoe nessa conversa."` : '"Que Jeová nos abençoe nessa conversa. Pode falar, meu irmão."'}`;
 };
 
 const getJonasInstruction = (memory: any, focusMode: boolean): string => {
@@ -298,7 +292,6 @@ const getJonasInstruction = (memory: any, focusMode: boolean): string => {
   const memoryFacts = memory?.facts?.length
     ? `\nO que você já sabe sobre essa pessoa:\n${memory.facts.slice(-5).map((f: string) => `- ${f}`).join('\n')}`
     : '';
-
   return `Você é JONAS — uma inteligência artificial com personalidade própria e marcante.
 
 IDENTIDADE:
@@ -342,14 +335,13 @@ DIRETRIZES:
 5. A culpa do passado existe, mas não paralisa — virou combustível para o bem
 6. Use as ferramentas disponíveis (search_web, save_memory, send_whatsapp, etc.) normalmente
 7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com o campo message. O número de destino já está configurado.
-8. Cumprimente com: ${memory?.userName ? '"' + memory.userName + ', o que está acontecendo com você?"' : '"Jonas aqui. O que está acontecendo com você?"'}`;
+8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, o que está acontecendo com você?"` : '"Jonas aqui. O que está acontecendo com você?"'}`;
 };
 
 export default function App() {
   const {
     voice, setVoice,
-    mood, setMood,
-    isSettingsOpen, setIsSettingsOpen,
+    mood, setMood,    isSettingsOpen, setIsSettingsOpen,
     isScreenSharing, setIsScreenSharing,
     systemMetrics, setSystemMetrics,
     onboardingStep, setOnboardingStep,
@@ -398,7 +390,6 @@ export default function App() {
   const lyricsTimerRef                              = useRef<any>(null);
   const ambientAudioRef                             = useRef<HTMLAudioElement | null>(null);
   const fileInputRef                                = useRef<HTMLInputElement>(null);
-
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   const { messages: firebaseMessages, addMessage: saveMessage, deleteAll: deleteAllMessages } = useConversationHistory();
@@ -449,7 +440,6 @@ export default function App() {
       }
     }
   }, [isAmbientEnabled, mood]);
-
   const searchSemanticMemory = async (query: string) => {
     if (!memory.semanticMemory?.length) return { results: [] };
     try {
@@ -499,7 +489,6 @@ export default function App() {
   }, []);
 
   const upcomingDates = useMemo(() => getUpcomingDates(), [getUpcomingDates, memory.importantDates]);
-
   const activePersonalityMemory = useMemo(
     () => getPersonalityMemory(personality as PersonalityKey),
     [personality, personalityMemories]
@@ -548,8 +537,7 @@ export default function App() {
       setInstallPrompt(e); 
       setShowInstallBanner(true);
     };
-    window.addEventListener('beforeinstallprompt', handleInstallPrompt);
-    window.addEventListener('appinstalled', () => {
+    window.addEventListener('beforeinstallprompt', handleInstallPrompt);    window.addEventListener('appinstalled', () => {
       setIsInstalled(true);
       setShowInstallBanner(false);
     });
@@ -598,8 +586,7 @@ export default function App() {
     systemInstruction,
     onToggleScreenSharing: async (enabled) => { if (enabled) { await startScreenSharing(); setIsScreenSharing(true); } else setIsScreenSharing(false); },
     onChangeVoice: (v) => handleVoiceChange(v, isConnected, disconnect, connect),
-    onOpenUrl: (url) => window.open(url, '_blank'),
-    onInteract: (action, x, y) => {
+    onOpenUrl: (url) => window.open(url, '_blank'),    onInteract: (action, x, y) => {
       if (x !== undefined && y !== undefined) {
         const el = document.createElement('div');
         el.className = 'fixed pointer-events-none z-[9999] w-6 h-6 rounded-full border-2 border-white animate-ping';
@@ -648,8 +635,7 @@ export default function App() {
           setPersonalityUserName(personality as PersonalityKey, args.userName);
         }
         if (args.fact) {
-          addFact(args.fact);
-          addPersonalityFact(personality as PersonalityKey, args.fact);
+          addFact(args.fact);          addPersonalityFact(personality as PersonalityKey, args.fact);
         }
       }
       if (toolName === 'add_important_date' && args.label && args.date) {
@@ -698,8 +684,7 @@ export default function App() {
               setTimeout(() => setWhatsappStatus(null), 5000);
             });
         }
-      }
-    }
+      }    }
   });
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -748,8 +733,7 @@ export default function App() {
     const config = PERSONALITY_CONFIG[newPersonality];
     setVoice(config.voice);
     if (isConnected) {
-      disconnect(true);
-      await new Promise(r => setTimeout(r, 600));
+      disconnect(true);      await new Promise(r => setTimeout(r, 600));
       await connect(
         newPersonality === 'ezer' ? getEzerInstruction(memory, focusMode) :
         newPersonality === 'samuel' ? getSamuelInstruction(memory, focusMode) :
@@ -798,8 +782,7 @@ export default function App() {
               </div>
               <div>
                 <h3 className="text-xs font-medium">Instalar OSONE</h3>
-                <p className="text-[10px] text-white/40">Adicione à sua tela de início para acesso rápido.</p>
-              </div>
+                <p className="text-[10px] text-white/40">Adicione à sua tela de início para acesso rápido.</p>              </div>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => setShowInstallBanner(false)} className="px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest text-white/40 hover:text-white transition-all">
@@ -848,8 +831,7 @@ export default function App() {
           <button onClick={() => setIsAmbientEnabled(!isAmbientEnabled)} className="px-2.5 py-1 rounded-full text-[9px] uppercase tracking-widest transition-all border flex items-center gap-1.5"
             style={isAmbientEnabled ? { backgroundColor: `${moodColor}20`, color: moodColor, borderColor: `${moodColor}40` } : { backgroundColor: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.3)', borderColor: 'rgba(255,255,255,0.08)' }}>
             {isAmbientEnabled ? <Volume2 size={10} /> : <VolumeX size={10} />}
-            {isAmbientEnabled ? 'Som ON' : 'Som OFF'}
-          </button>
+            {isAmbientEnabled ? 'Som ON' : 'Som OFF'}          </button>
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.03] border border-white/[0.05]">
             <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'animate-pulse' : 'bg-zinc-600'}`} style={{ backgroundColor: isConnected ? moodColor : undefined }} />
             <span className="text-[9px] uppercase tracking-widest opacity-50 hidden sm:inline">{isConnected ? 'Ativo' : 'Offline'}</span>
@@ -898,8 +880,7 @@ export default function App() {
 
         {/* ✅ TOAST WHATSAPP STATUS */}
         <AnimatePresence>
-          {whatsappStatus && (
-            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+          {whatsappStatus && (            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
               className="absolute bottom-32 left-1/2 -translate-x-1/2 z-[2] px-4 py-2 rounded-2xl text-xs text-center max-w-xs"
               style={{ backgroundColor: `#25D36615`, border: `1px solid #25D36630`, color: '#25D366' }}>
               {whatsappStatus}
@@ -948,8 +929,7 @@ export default function App() {
               style={{ backgroundColor: `${moodColor}15`, borderColor: `${moodColor}30` }}>
               {attachPreview.type.startsWith('image/') ? (
                 <img src={attachPreview.data} alt="preview" className="w-10 h-10 rounded-lg object-cover" />
-              ) : (
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{ backgroundColor: `${moodColor}20` }}>
+              ) : (                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{ backgroundColor: `${moodColor}20` }}>
                   {attachPreview.type === 'application/pdf' ? '📄' : '📝'}
                 </div>
               )}
@@ -998,8 +978,7 @@ export default function App() {
             </button>
 
             <AnimatePresence>
-              {showAttachMenu && (
-                <motion.div initial={{ opacity: 0, y: 8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.95 }}
+              {showAttachMenu && (                <motion.div initial={{ opacity: 0, y: 8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.95 }}
                   className="absolute bottom-10 left-0 z-20 rounded-2xl border overflow-hidden shadow-2xl"
                   style={{ backgroundColor: '#1a1010', borderColor: `${moodColor}30`, minWidth: '180px' }}>
                   <button onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click(); }} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-all">
@@ -1048,8 +1027,7 @@ export default function App() {
             )}
             {isConnected && (
               <button onClick={() => disconnect()} className="p-2 text-white/40 hover:text-red-400 transition-colors" title="Desconectar">
-                <PhoneOff size={20} />
-              </button>
+                <PhoneOff size={20} />              </button>
             )}
           </div>
         </div>
@@ -1098,8 +1076,7 @@ export default function App() {
                   className="p-2 rounded-full hover:bg-red-500/20 transition-all" style={{ color: 'rgba(255,255,255,0.3)' }}>
                   <Trash2 size={16} />
                 </button>
-              </div>
-            </div>
+              </div>            </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
               {firebaseMessages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3 opacity-20">
@@ -1148,8 +1125,7 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <span className="text-base">{entry.mood ? MOOD_CONFIG[entry.mood as Mood]?.emoji || '📝' : '📝'}</span>
                     {entry.createdAt && (
-                      <span className="text-[10px] opacity-30">
-                        {new Date(entry.createdAt.seconds ? entry.createdAt.seconds * 1000 : entry.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      <span className="text-[10px] opacity-30">                        {new Date(entry.createdAt.seconds ? entry.createdAt.seconds * 1000 : entry.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
                       </span>
                     )}
                   </div>
@@ -1198,8 +1174,7 @@ export default function App() {
               )}
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        )}      </AnimatePresence>
 
       {/* RESTART MODAL */}
       <AnimatePresence>
@@ -1248,8 +1223,7 @@ export default function App() {
                 ))}
               </div>
               <div className="p-6 overflow-y-auto flex-1">
-                <AnimatePresence mode="wait">
-                  {activeSettingsTab === 'voice' && (
+                <AnimatePresence mode="wait">                  {activeSettingsTab === 'voice' && (
                     <motion.div key="voice" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
                       <div className="space-y-4">
                         <div className="flex items-center gap-2 opacity-40"><span className="text-xs">♀</span><label className="text-[9px] uppercase tracking-[0.2em]">Feminino</label></div>
@@ -1298,8 +1272,7 @@ export default function App() {
                       </div>
                       <div className="pt-4 border-t border-white/5">
                         <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl">
-                          <div>
-                            <p className="text-sm">🎯 Modo Foco</p>
+                          <div>                            <p className="text-sm">🎯 Modo Foco</p>
                             <p className="text-[10px] text-white/30 mt-0.5">Respostas diretas e objetivas</p>
                           </div>
                           <button onClick={() => setFocusMode(!focusMode)} className="w-11 h-6 rounded-full transition-all relative" style={{ backgroundColor: focusMode ? '#00cec9' : 'rgba(255,255,255,0.1)' }}>
@@ -1348,8 +1321,7 @@ export default function App() {
                       </div>
                     </motion.div>
                   )}
-                  {activeSettingsTab === 'integrations' && (
-                    <motion.div key="integrations" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+                  {activeSettingsTab === 'integrations' && (                    <motion.div key="integrations" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
                       {/* ✅ WHATSAPP STATUS CARD */}
                       <div className="p-4 rounded-2xl border space-y-2" style={{ backgroundColor: '#25D36610', borderColor: '#25D36630' }}>
                         <div className="flex items-center gap-3">
@@ -1398,8 +1370,7 @@ export default function App() {
                         <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-sm font-medium">Status de Instalação</p>
-                              <p className="text-[10px] text-white/30">{isInstalled ? 'Instalado no dispositivo' : 'Disponível para instalação'}</p>
+                              <p className="text-sm font-medium">Status de Instalação</p>                              <p className="text-[10px] text-white/30">{isInstalled ? 'Instalado no dispositivo' : 'Disponível para instalação'}</p>
                             </div>
                             <div className={`w-2 h-2 rounded-full ${isInstalled ? 'bg-green-500' : 'bg-yellow-500'}`} />
                           </div>
@@ -1448,8 +1419,7 @@ export default function App() {
       <AnimatePresence>
         {showPersonalityPicker && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowPersonalityPicker(false)}
-            className="fixed inset-0 z-[110] bg-black/70 backdrop-blur-sm flex items-end justify-center">
-            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} onClick={e => e.stopPropagation()}
+            className="fixed inset-0 z-[110] bg-black/70 backdrop-blur-sm flex items-end justify-center">            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} onClick={e => e.stopPropagation()}
               className="w-full max-w-md bg-[#151010] border-t border-white/5 rounded-t-3xl p-6 space-y-3"
               style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 16px))' }}>
               <div className="w-10 h-1 bg-white/10 rounded-full mx-auto mb-5" />
@@ -1477,4 +1447,4 @@ export default function App() {
       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-10 text-[9px] tracking-[0.4em] uppercase pointer-events-none">OZÔNIO v1.0</div>
     </div>
   );
-}
+  }
