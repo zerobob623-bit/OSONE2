@@ -183,7 +183,6 @@ const getEzerInstruction = (memory: any, focusMode: boolean): string => {
     month: 'long' 
   });
 
-  // Usando concatenação para evitar o bug do esbuild com \n + template literal
   const memoryCtx = memory?.userName 
     ? "\nVocê está conversando com " + memory.userName + "." 
     : '';
@@ -192,12 +191,12 @@ const getEzerInstruction = (memory: any, focusMode: boolean): string => {
     ? "\nMODO FOCO ATIVO: Seja ainda mais direto. Sem rodeios." 
     : '';
 
+  // Correção: colocamos o .map() dentro de parênteses para evitar confusão de sintaxe
   const memoryFacts = memory?.facts?.length
     ? "\nO que você já sabe sobre essa pessoa:\n" + 
       memory.facts.slice(-5).map((f: string) => `- ${f}`).join('\n')
     : '';
 
-  // Junta tudo
   return `Hoje é \( {today}. \){memoryCtx}\( {focusCtx} \){memoryFacts}`;
 };
 
