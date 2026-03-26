@@ -5,7 +5,10 @@ const EVOLUTION_URL = 'https://evolution-api-production-9133.up.railway.app';
 const EVOLUTION_KEY = '5DC26A82784E-4BDB-A4CD-33C86CB2455D';
 const EVOLUTION_INSTANCE = 'OSONE2';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
-const GOOGLE_TTS_KEY = process.env.GEMINI_API_KEY!; // mesma chave se TTS estiver ativo
+
+// ─── PALAVRA DE ATIVAÇÃO ──────────────────────────────────────────────────────
+// A mensagem precisa começar com isso para a OSONE responder
+const ACTIVATION_WORD = '/osone';
 
 // ─── GERA RESPOSTA DE TEXTO VIA GEMINI ───────────────────────────────────────
 async function generateReply(userMessage: string, phone: string): Promise<string> {
@@ -20,7 +23,7 @@ async function generateReply(userMessage: string, phone: string): Promise<string
             text: `Você é OSONE, uma inteligência artificial empática, jovem e calorosa.
 Você está respondendo mensagens de WhatsApp.
 Seja natural, direta e concisa — máximo 2 frases curtas.
-Não use emojis em excesso. Não use markdown. Fale como uma pessoa real no WhatsApp.
+Não use markdown. Fale como uma pessoa real no WhatsApp.
 O número de quem está falando com você é: ${phone}`
           }]
         },
@@ -30,12 +33,7 @@ O número de quem está falando com você é: ${phone}`
     }
   );
 
-  if (!res.ok) {
-    const err = await res.text();
-    console.error('Gemini error:', err);
-    throw new Error('Gemini API failed');
-  }
-
+  if (!res.ok) throw new Error('Gemini API failed');
   const data = await res.json();
   return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'Não entendi, pode repetir?';
 }
@@ -43,7 +41,7 @@ O número de quem está falando com você é: ${phone}`
 // ─── CONVERTE TEXTO EM ÁUDIO VIA GOOGLE TTS ──────────────────────────────────
 async function textToSpeech(text: string): Promise<string> {
   const res = await fetch(
-    `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_TTS_KEY}`,
+    `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GEMINI_API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -51,11 +49,11 @@ async function textToSpeech(text: string): Promise<string> {
         input: { text },
         voice: {
           languageCode: 'pt-BR',
-          name: 'pt-BR-Wavenet-A', // voz feminina natural
+          name: 'pt-BR-Wavenet-A',
           ssmlGender: 'FEMALE'
         },
         audioConfig: {
-          audioEncoding: 'OGG_OPUS', // formato aceito pelo WhatsApp
+          audioEncoding: 'OGG_OPUS',
           speakingRate: 1.05,
           pitch: 1.0
         }
@@ -63,20 +61,15 @@ async function textToSpeech(text: string): Promise<string> {
     }
   );
 
-  if (!res.ok) {
-    const err = await res.text();
-    console.error('TTS error:', err);
-    throw new Error('TTS API failed');
-  }
-
+  if (!res.ok) throw new Error('TTS API failed');
   const data = await res.json();
-  if (!data.audioContent) throw new Error('No audio content returned');
-  return data.audioContent; // base64 string
+  if (!data.audioContent) throw new Error('No audio content');
+  return data.audioContent;
 }
 
 // ─── ENVIA ÁUDIO NO WHATSAPP ─────────────────────────────────────────────────
 async function sendAudio(phone: string, audioBase64: string): Promise<void> {
-  const res = await fetch(`${EVOLUTION_URL}/message/sendMedia/${EVOLUTION_INSTANCE}`, {
+  await fetch(`${EVOLUTION_URL}/message/sendMedia/${EVOLUTION_INSTANCE}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -90,15 +83,9 @@ async function sendAudio(phone: string, audioBase64: string): Promise<void> {
       fileName: 'osone.ogg'
     })
   });
-
-  if (!res.ok) {
-    const err = await res.text();
-    console.error('Evolution send audio error:', err);
-    throw new Error('Failed to send audio');
-  }
 }
 
-// ─── ENVIA TEXTO NO WHATSAPP (fallback se TTS falhar) ────────────────────────
+// ─── ENVIA TEXTO (fallback) ───────────────────────────────────────────────────
 async function sendText(phone: string, message: string): Promise<void> {
   await fetch(`${EVOLUTION_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
     method: 'POST',
@@ -115,7 +102,7 @@ async function sendText(phone: string, message: string): Promise<void> {
 
 // ─── WEBHOOK HANDLER ─────────────────────────────────────────────────────────
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Responde rápido para o Evolution API não reenviar
+  // Responde imediatamente para o Evolution API não reenviar
   res.status(200).json({ ok: true });
 
   if (req.method !== 'POST') return;
@@ -127,36 +114,52 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Ignora mensagens enviadas pela própria OSONE
     if (msg?.key?.fromMe) return;
 
-    // Pega o texto da mensagem (texto simples ou com formatação)
-    const text =
+    // Ignora grupos
+    const isGroup = msg?.key?.remoteJid?.includes('@g.us');
+    if (isGroup) return;
+
+    // Pega o texto da mensagem
+    const rawText =
       msg?.message?.conversation ||
       msg?.message?.extendedTextMessage?.text ||
-      msg?.message?.imageMessage?.caption ||
       null;
 
-    // Pega o número do remetente (remove sufixo @s.whatsapp.net)
-    const phone = msg?.key?.remoteJid?.replace('@s.whatsapp.net', '').replace('@g.us', '');
+    const phone = msg?.key?.remoteJid?.replace('@s.whatsapp.net', '');
 
-    // Ignora grupos, mensagens sem texto e mensagens de sistema
-    const isGroup = msg?.key?.remoteJid?.includes('@g.us');
-    if (!text || !phone || isGroup) return;
+    if (!rawText || !phone) return;
 
-    console.log(`📩 [WhatsApp] De: ${phone} | Mensagem: ${text}`);
+    // ✅ FILTRO: só responde se começar com a palavra de ativação
+    const lowerText = rawText.trim().toLowerCase();
+    if (!lowerText.startsWith(ACTIVATION_WORD)) {
+      console.log(`⏭️ Ignorado (sem ativação): ${phone} → "${rawText}"`);
+      return;
+    }
+
+    // Remove a palavra de ativação antes de enviar ao Gemini
+    const cleanMessage = rawText.trim().slice(ACTIVATION_WORD.length).trim();
+
+    // Se mandou só "/osone" sem mensagem
+    if (!cleanMessage) {
+      await sendText(phone, 'Oi! Me diz o que você precisa depois do /osone 😊');
+      return;
+    }
+
+    console.log(`📩 [WhatsApp] De: ${phone} | Mensagem: ${cleanMessage}`);
 
     // Gera resposta com Gemini
-    const reply = await generateReply(text, phone);
+    const reply = await generateReply(cleanMessage, phone);
     console.log(`🤖 [OSONE] Resposta: ${reply}`);
 
     try {
-      // Tenta enviar como áudio
+      // Envia como áudio
       const audioBase64 = await textToSpeech(reply);
       await sendAudio(phone, audioBase64);
-      console.log(`🎙️ [WhatsApp] Áudio enviado para ${phone}`);
+      console.log(`🎙️ Áudio enviado para ${phone}`);
     } catch (ttsError) {
-      // Se TTS falhar, envia como texto (fallback)
+      // Fallback: envia como texto se TTS falhar
       console.warn('TTS falhou, enviando como texto:', ttsError);
       await sendText(phone, reply);
-      console.log(`💬 [WhatsApp] Texto enviado para ${phone} (fallback)`);
+      console.log(`💬 Texto enviado para ${phone} (fallback)`);
     }
 
   } catch (error) {
@@ -164,9 +167,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 }
 
-// Configuração do Next.js para aceitar o body do webhook
 export const config = {
-  api: {
-    bodyParser: true,
-  },
+  api: { bodyParser: true },
 };
