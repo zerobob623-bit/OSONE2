@@ -230,15 +230,6 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     }
   },
   {
-    name: "search_email",
-    description: "Pesquisa nos e-mails do usuário usando IMAP.",
-    parameters: {
-      type: Type.OBJECT,
-      properties: { query: { type: Type.STRING } },
-      required: ["query"]
-    }
-  },
-  {
     name: "save_conversation_summary",
     description: "Salva um resumo da conversa atual.",
     parameters: {
@@ -249,6 +240,17 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       },
       required: ["summary", "topics"]
     }
+  },
+  {
+    name: "send_whatsapp",
+    description: "Envia uma mensagem de WhatsApp para o número do próprio usuário. Use após pesquisar na web para enviar resultados ou resumos ao usuário.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        message: { type: Type.STRING, description: "Texto da mensagem a ser enviada." }
+      },
+      required: ["message"]
+    }
   }
 ];
 
@@ -257,5 +259,5 @@ export const DELEGATED_TOOLS = new Set([
   'show_lyrics', 'set_mood', 'set_focus_mode', 'save_memory',
   'add_important_date', 'write_diary', 'update_workspace', 'clear_workspace',
   'save_semantic_fact', 'search_semantic_memory', 'search_gmail',
-  'search_email', 'save_conversation_summary', 'save_profile_info'
+  'save_conversation_summary', 'save_profile_info'
 ]);

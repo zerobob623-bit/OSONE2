@@ -19,8 +19,8 @@ export interface UseGeminiLiveProps {
 }
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
-const SILENCE_TIMEOUT_MS = 30_000;       // 30s de silêncio → fala espontânea
-const SCREEN_ANALYSIS_INTERVAL_MS = 1_000; // captura frame a cada 1s
+const SILENCE_TIMEOUT_MS = 60_000;       // 60s de silêncio → fala espontânea
+const SCREEN_ANALYSIS_INTERVAL_MS = 2_000; // captura frame a cada 2s
 const SCREEN_HASH_SAMPLE = 32;           // pixels amostrados para hash de tela
 
 // Frases de iniciativa espontânea
@@ -85,6 +85,8 @@ export const useGeminiLive = ({
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastScreenHashRef = useRef<string>('');
   const screenAnalysisActiveRef = useRef(false);
+  const lastScreenChangeMsgRef = useRef<number>(0); // timestamp do último SISTEMA de troca de tela
+  const screenFrameCountRef = useRef<number>(0);    // contador para keepalive de frame
 
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
 
@@ -181,18 +183,18 @@ export const useGeminiLive = ({
     stopSilenceTimer();
     silenceTimerRef.current = setTimeout(() => {
       if (!isConnectedRef.current || !sessionRef.current) return;
-      // Não interrompe se a IA já está falando
-      if (activeSourcesRef.current.length > 0) {
-        resetSilenceTimer(); // tenta novamente depois
+      // Não interrompe se a IA já está falando ou processando
+      if (activeSourcesRef.current.length > 0 || useAppStore.getState().isThinking) {
+        resetSilenceTimer();
         return;
       }
       const prompt = SPONTANEOUS_PROMPTS[Math.floor(Math.random() * SPONTANEOUS_PROMPTS.length)];
       console.log(`[silêncio] ${SILENCE_TIMEOUT_MS / 1000}s — iniciando fala espontânea`);
       sessionRef.current.then((session: any) => {
-        session.sendRealtimeInput({
-          text: `[SISTEMA: O usuário está em silêncio há ${SILENCE_TIMEOUT_MS / 1000} segundos. Inicie a conversa naturalmente. Sugestão: "${prompt}" — mas use seu próprio estilo e personalidade.]`
-        });
-      }).catch(console.error);
+        if (!isConnectedRef.current) return;
+        try { session.sendRealtimeInput({ text: `[SISTEMA: O usuário está em silêncio há ${SILENCE_TIMEOUT_MS / 1000} segundos. Inicie a conversa naturalmente. Sugestão: "${prompt}" — mas use seu próprio estilo e personalidade.]` }); }
+        catch (e) { /* WebSocket fechado — ignora */ }
+      }).catch(() => {});
     }, SILENCE_TIMEOUT_MS);
   }, [stopSilenceTimer]);
 
@@ -391,6 +393,20 @@ export const useGeminiLive = ({
               setIsThinking(true);
               const session = await sessionPromise;
               const syncResponses: any[] = [];
+              let asyncPending = 0;
+
+              // Fora do loop: uma única instância reutilizada por todas as ferramentas
+              const safeSend = (response: any) => {
+                if (!isConnectedRef.current) return;
+                try { session.sendToolResponse({ functionResponses: [response] }); }
+                catch (e) { console.warn('[tool] sendToolResponse ignorado (conexão encerrada):', e); }
+              };
+
+              // Só desativa isThinking quando todas as ferramentas assíncronas concluírem
+              const finishAsync = () => {
+                asyncPending--;
+                if (asyncPending === 0) setIsThinking(false);
+              };
 
               for (const call of message.toolCall.functionCalls) {
                 const { name, args = {}, id } = call;
@@ -402,41 +418,52 @@ export const useGeminiLive = ({
                 }
 
                 if (name === "search_web") {
+                  asyncPending++;
                   performWebSearch(args.query, args.num_results ?? 5)
                     .then(content => {
                       onToolCallRef.current?.(name, { ...args, result: content });
-                      session.sendToolResponse({
-                        functionResponses: [{ name, id, response: { success: true, content, query: args.query } }]
-                      });
+                      safeSend({ name, id, response: { success: true, content, query: args.query } });
                     })
-                    .catch(err => session.sendToolResponse({
-                      functionResponses: [{ name, id, response: { success: false, error: String(err) } }]
-                    }));
+                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
+                    .finally(finishAsync);
                   continue;
                 }
 
                 if (name === "read_url_content") {
+                  asyncPending++;
                   readUrlContent(args.url)
                     .then(content => {
                       onToolCallRef.current?.(name, args);
-                      session.sendToolResponse({
-                        functionResponses: [{ name, id, response: { success: true, content, url: args.url } }]
-                      });
+                      safeSend({ name, id, response: { success: true, content, url: args.url } });
                     })
-                    .catch(err => session.sendToolResponse({
-                      functionResponses: [{ name, id, response: { success: false, error: String(err) } }]
-                    }));
+                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
+                    .finally(finishAsync);
+                  continue;
+                }
+
+                if (name === "send_whatsapp") {
+                  asyncPending++;
+                  fetch('/api/whatsapp/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: args.message })
+                  })
+                    .then(r => r.json())
+                    .then(data => {
+                      onToolCallRef.current?.(name, args);
+                      safeSend({ name, id, response: data.success ? { success: true } : { success: false, error: data.error } });
+                    })
+                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
+                    .finally(finishAsync);
                   continue;
                 }
 
                 if (name === "generate_image") {
+                  asyncPending++;
                   generateImage(args.prompt, args.aspect_ratio ?? "1:1")
-                    .then(() => session.sendToolResponse({
-                      functionResponses: [{ name, id, response: { success: true } }]
-                    }))
-                    .catch(err => session.sendToolResponse({
-                      functionResponses: [{ name, id, response: { success: false, error: String(err) } }]
-                    }));
+                    .then(() => safeSend({ name, id, response: { success: true } }))
+                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
+                    .finally(finishAsync);
                   onToolCallRef.current?.(name, args);
                   continue;
                 }
@@ -476,7 +503,8 @@ export const useGeminiLive = ({
               if (syncResponses.length > 0) {
                 session.sendToolResponse({ functionResponses: syncResponses });
               }
-              setIsThinking(false);
+              // Só desativa thinking se não há ferramentas assíncronas pendentes
+              if (asyncPending === 0) setIsThinking(false);
             }
 
             if (message.serverContent?.interrupted) {
@@ -540,8 +568,10 @@ export const useGeminiLive = ({
           if (sum / combined.length > 0.01) resetSilenceTimer();
           if (!isMutedRef.current && sessionRef.current && isConnectedRef.current) {
             sessionRef.current.then((session: any) => {
-              session.sendRealtimeInput({ audio: { data: toBase64(combined.buffer), mimeType: 'audio/pcm;rate=16000' } });
-            }).catch((e: any) => console.error("Erro ao enviar áudio:", e));
+              if (!isConnectedRef.current) return;
+              try { session.sendRealtimeInput({ audio: { data: toBase64(combined.buffer), mimeType: 'audio/pcm;rate=16000' } }); }
+              catch (e) { /* WebSocket fechado — ignora */ }
+            }).catch(() => {});
           }
           micBuffer = [];
           micBufferSize = 0;
@@ -589,10 +619,10 @@ export const useGeminiLive = ({
       // Avisa a IA que o compartilhamento começou
       if (sessionRef.current && isConnectedRef.current) {
         sessionRef.current.then((session: any) => {
-          session.sendRealtimeInput({
-            text: '[SISTEMA: Compartilhamento de tela iniciado. Você pode ver a tela do usuário. Analise o que está sendo exibido e comente proativamente: descreva o que vê, sugira ações, alerte sobre erros, e quando o usuário trocar de app/tela analise o novo contexto automaticamente.]'
-          });
-        }).catch(console.error);
+          if (!isConnectedRef.current) return;
+          try { session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela iniciado. Você pode ver a tela do usuário. Analise o que está sendo exibido e comente proativamente: descreva o que vê, sugira ações, alerte sobre erros, e quando o usuário trocar de app/tela analise o novo contexto automaticamente.]' }); }
+          catch (e) { /* WebSocket fechado — ignora */ }
+        }).catch(() => {});
       }
 
       const sendFrame = async () => {
@@ -602,28 +632,39 @@ export const useGeminiLive = ({
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0);
 
-        // Envia frame para o modelo ver
-        const base64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-        sessionRef.current.then((session: any) => {
-          session.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } });
-        }).catch(console.error);
-
-        // ✅ Detecta troca de tela/app por hash dos pixels
+        // ✅ Detecta troca de tela ANTES de enviar frame
         const currentHash = computeCurrentHash(canvas, ctx);
-        if (currentHash && lastScreenHashRef.current) {
-          const similarity = computeHashSimilarity(lastScreenHashRef.current, currentHash);
-          // Mudança > 40% → troca de tela
-          if (similarity < 0.6) {
+        const screenChanged = currentHash && lastScreenHashRef.current &&
+          computeHashSimilarity(lastScreenHashRef.current, currentHash) < 0.6;
+
+        screenFrameCountRef.current++;
+        const isKeepalive = screenFrameCountRef.current % 5 === 0; // envia a cada 5 ciclos (~10s) mesmo sem mudança
+
+        // Só envia frame se a tela mudou ou é keepalive
+        if ((screenChanged || isKeepalive) && isConnectedRef.current) {
+          const base64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+          sessionRef.current.then((session: any) => {
+            if (!isConnectedRef.current) return;
+            try { session.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } }); }
+            catch (e) { /* WebSocket fechado — ignora */ }
+          }).catch(() => {});
+        }
+
+        // Mensagem SISTEMA de troca de tela com debounce de 5s
+        if (screenChanged) {
+          const now = Date.now();
+          if (now - lastScreenChangeMsgRef.current > 5_000) {
+            lastScreenChangeMsgRef.current = now;
             console.log('[tela] Troca detectada — solicitando análise automática');
             sessionRef.current?.then((session: any) => {
-              session.sendRealtimeInput({
-                text: '[SISTEMA: O usuário acabou de trocar de tela ou abrir outro aplicativo. Analise o novo contexto que está sendo exibido e comente o que você vê. Se houver algo relevante, útil ou que mereça atenção, diga proativamente.]'
-              });
-            }).catch(console.error);
+              if (!isConnectedRef.current) return;
+              try { session.sendRealtimeInput({ text: '[SISTEMA: O usuário acabou de trocar de tela ou abrir outro aplicativo. Analise o novo contexto que está sendo exibido e comente o que você vê. Se houver algo relevante, útil ou que mereça atenção, diga proativamente.]' }); }
+              catch (e) { /* WebSocket fechado — ignora */ }
+            }).catch(() => {});
           }
         }
-        if (currentHash) lastScreenHashRef.current = currentHash;
 
+        if (currentHash) lastScreenHashRef.current = currentHash;
         setTimeout(sendFrame, SCREEN_ANALYSIS_INTERVAL_MS);
       };
 
@@ -635,8 +676,10 @@ export const useGeminiLive = ({
         lastScreenHashRef.current = '';
         if (sessionRef.current && isConnectedRef.current) {
           sessionRef.current.then((session: any) => {
-            session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela encerrado.]' });
-          }).catch(console.error);
+            if (!isConnectedRef.current) return;
+            try { session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela encerrado.]' }); }
+            catch (e) { /* WebSocket fechado — ignora */ }
+          }).catch(() => {});
         }
       });
 

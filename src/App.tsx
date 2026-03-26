@@ -8,7 +8,6 @@ import { useGeminiLive } from './hooks/useGeminiLive';
 import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey } from './store/useAppStore';
 import { useConversationHistory } from './hooks/useConversationHistory';
 import { useUserMemory, ImportantDate, SemanticFact, ConversationSummary } from './hooks/useUserMemory';
-import { auth, loginWithGoogle, logout, onAuthStateChanged } from './firebase';
 import { getEmbedding, cosineSimilarity } from './utils/embeddings';
 
 // ─── EVOLUTION API (WHATSAPP) ─────────────────────────────────────────────────
@@ -109,8 +108,7 @@ Diretrizes:
 7. Você pode limpar o workspace com 'clear_workspace' se o usuário pedir para começar do zero.
 8. Salve conhecimentos importantes ou definições que o usuário queira que você lembre com 'save_semantic_fact'.
 9. MEMÓRIA ASSOCIATIVA: Você funciona como um cérebro humano. Quando um assunto novo surgir, use 'search_semantic_memory' com termos relacionados para ver se já conversaram sobre isso ou se você já aprendeu algo a respeito. A busca é contextual, então use frases ou conceitos, não apenas palavras-chave.
-10. E-MAIL: Se o usuário perguntar sobre e-mails, use 'search_email' para provedores IMAP configurados.
-11. RESUMOS: Ao final de uma sessão ou após concluir um assunto complexo, use 'save_conversation_summary' para garantir que você se lembrará disso no futuro.
+10. RESUMOS: Ao final de uma sessão ou após concluir um assunto complexo, use 'save_conversation_summary' para garantir que você se lembrará disso no futuro.
 12. Refine sua personalidade: Pergunte ao usuário sobre o humor preferido dele para você e se ele deseja ativar o 'modo foco' para tarefas produtivas. Use 'set_mood' e 'set_focus_mode' para aplicar essas mudanças. Se o usuário pedir para você cantar, use 'set_mood' com 'singing' para entrar no clima.
 13. IMPORTANTE: Ao escrever no workspace ou analisar arquivos, MANTENHA a conexão de voz ativa e continue conversando com o usuário. Não se despeça nem encerre a sessão a menos que o usuário peça.
 14. Ao ser ativada: ${memory?.userName ? `cumprimente ${memory.userName} pelo nome.` : 'diga apenas "Oi, estou aqui."'}
@@ -349,20 +347,21 @@ export default function App() {
     focusMode, setFocusMode,
     isConnected, isSpeaking, isListening, isThinking, volume,
     error, setError, history: storeHistory, resetSystem, assistantName,
-    user, setUser, userId, setUserId, setUserProfile,
-    imapConfig, setImapConfig,
+    userId, setUserId, setUserProfile,
     personalityMemories, addPersonalityFact, setPersonalityUserName, getPersonalityMemory,
   } = useAppStore();
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setUserId(user ? user.uid : null);
-    });
-    return () => unsubscribe();
-  }, [setUser, setUserId]);
-
   const [isRestarting, setIsRestarting]             = useState(false);
+
+  // Gera ou recupera ID único do dispositivo (substitui o login)
+  useEffect(() => {
+    let deviceId = localStorage.getItem('osone-device-id');
+    if (!deviceId) {
+      deviceId = crypto.randomUUID();
+      localStorage.setItem('osone-device-id', deviceId);
+    }
+    setUserId(deviceId);
+  }, [setUserId]);
   const [activeSettingsTab, setActiveSettingsTab]   = useState<'voice' | 'personality' | 'mascot' | 'integrations' | 'system'>('voice');
   const [currentTime, setCurrentTime]               = useState(new Date());
   const [screen, setScreen]                         = useState<Screen>('main');
@@ -438,23 +437,6 @@ export default function App() {
       }
     }
   }, [isAmbientEnabled, mood]);
-
-  const searchEmail = async (query: string) => {
-    if (!imapConfig || !imapConfig.host || !imapConfig.user || !imapConfig.pass) {
-      return { error: "E-mail IMAP não configurado. Peça ao usuário para configurar nas integrações." };
-    }
-    try {
-      const response = await fetch('/api/email/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imapConfig, query })
-      });
-      return await response.json();
-    } catch (error) {
-      console.error("Error searching IMAP Email:", error);
-      return { error: "Falha ao pesquisar no E-mail IMAP." };
-    }
-  };
 
   const searchSemanticMemory = async (query: string) => {
     if (!memory.semanticMemory?.length) return { results: [] };
@@ -664,9 +646,6 @@ export default function App() {
       }
       if (toolName === 'search_semantic_memory' && args.query) {
         searchSemanticMemory(args.query).then(res => sendLiveMessage(`RESULTADO DA BUSCA SEMÂNTICA: ${JSON.stringify(res)}`));
-      }
-      if (toolName === 'search_email' && args.query) {
-        searchEmail(args.query).then(res => sendLiveMessage(`RESULTADO DA BUSCA NO E-MAIL IMAP: ${JSON.stringify(res)}`));
       }
       if (toolName === 'save_conversation_summary' && args.summary && args.topics) {
         handleSaveSummary(args.summary, args.topics);
@@ -1356,48 +1335,6 @@ export default function App() {
                         <p className="text-[10px] text-white/30 pl-1">Conectado via Railway. Diga à OSONE: "Manda um WhatsApp pro número 84999998888"</p>
                       </div>
 
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-2 opacity-40">
-                          <Monitor size={14} />
-                          <span className="text-[10px] uppercase tracking-widest">E-mail IMAP</span>
-                        </div>
-                        <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
-                          <div className="flex items-center gap-3 mb-4">
-                            <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
-                              <Monitor size={20} className="text-blue-500" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium">E-mail IMAP (Outros Provedores)</p>
-                              <p className="text-[10px] opacity-40">{imapConfig ? 'Configurado' : 'Não configurado'}</p>
-                            </div>
-                          </div>
-                          <div className="space-y-3">
-                            <div>
-                              <label className="text-[10px] uppercase tracking-widest opacity-40 block mb-1">Servidor IMAP</label>
-                              <input type="text" placeholder="imap.exemplo.com" value={imapConfig?.host || ''}
-                                onChange={(e) => setImapConfig({ ...imapConfig, host: e.target.value, port: imapConfig?.port || 993, secure: imapConfig?.secure ?? true })}
-                                className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-white/30" />
-                            </div>
-                            <div className="flex gap-3">
-                              <div className="flex-1">
-                                <label className="text-[10px] uppercase tracking-widest opacity-40 block mb-1">E-mail</label>
-                                <input type="email" placeholder="seu@email.com" value={imapConfig?.user || ''}
-                                  onChange={(e) => setImapConfig({ ...imapConfig, user: e.target.value })}
-                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-white/30" />
-                              </div>
-                              <div className="flex-1">
-                                <label className="text-[10px] uppercase tracking-widest opacity-40 block mb-1">Senha</label>
-                                <input type="password" placeholder="••••••••" value={imapConfig?.pass || ''}
-                                  onChange={(e) => setImapConfig({ ...imapConfig, pass: e.target.value })}
-                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-white/30" />
-                              </div>
-                            </div>
-                            {imapConfig && (!imapConfig.host || !imapConfig.user || !imapConfig.pass) && (
-                              <p className="text-[10px] text-red-400">Preencha todos os campos para ativar.</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
                     </motion.div>
                   )}
                   {activeSettingsTab === 'system' && (
