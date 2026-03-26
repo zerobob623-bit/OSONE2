@@ -194,7 +194,7 @@ const getEzerInstruction = (memory: any, focusMode: boolean): string => {
   // Correção: colocamos o .map() dentro de parênteses para evitar confusão de sintaxe
 const memoryFacts = memory?.facts?.length
       ? "\nO que você já sabe sobre essa pessoa:\n" +
-              memory.facts.slice(-5).map((f: string) => `- ${f}`).join('\n')
+              memory.facts.slice(-5).map((f: string) => '- ' + f).join('\n')
                     : '';
 
     return `Hoje é ${today}. ${memoryCtx}${focusCtx}${memoryFacts}`;
