@@ -177,14 +177,29 @@ const PERSONALITY_CONFIG: Record<Personality, {
 
 // ✅ EZER - FUNÇÃO CORRIGIDA COM TEMPLATE LITERAL
 const getEzerInstruction = (memory: any, focusMode: boolean): string => {
-  const today = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const today = new Date().toLocaleDateString('pt-BR', { 
+    weekday: 'long', 
+    day: 'numeric', 
+    month: 'long' 
+  });
+
+  // Usando concatenação para evitar o bug do esbuild com \n + template literal
   const memoryCtx = memory?.userName 
-  ? `\nVocê está conversando com ${memory.userName}.` 
-  : '';
-  const focusCtx = focusMode ? '\nMODO FOCO ATIVO: Seja ainda mais direto. Sem rodeios.' : '';
-  const memoryFacts = memory?.facts?.length
-    ? `\nO que você já sabe sobre essa pessoa:\n${memory.facts.slice(-5).map((f: string) => `- ${f}`).join('\n')}`
+    ? "\nVocê está conversando com " + memory.userName + "." 
     : '';
+
+  const focusCtx = focusMode 
+    ? "\nMODO FOCO ATIVO: Seja ainda mais direto. Sem rodeios." 
+    : '';
+
+  const memoryFacts = memory?.facts?.length
+    ? "\nO que você já sabe sobre essa pessoa:\n" + 
+      memory.facts.slice(-5).map((f: string) => `- ${f}`).join('\n')
+    : '';
+
+  // Junta tudo
+  return `Hoje é \( {today}. \){memoryCtx}\( {focusCtx} \){memoryFacts}`;
+};
 
   return `Você é EZER - uma inteligência artificial com personalidade própria e marcante.
 
