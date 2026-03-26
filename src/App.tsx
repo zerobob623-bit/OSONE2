@@ -11,23 +11,24 @@ import { useUserMemory, ImportantDate, SemanticFact, ConversationSummary } from 
 import { auth, loginWithGoogle, logout, onAuthStateChanged } from './firebase';
 import { getEmbedding, cosineSimilarity } from './utils/embeddings';
 
-// Configuração da Evolution API
+// ─── EVOLUTION API (WHATSAPP) ─────────────────────────────────────────────────
 const EVOLUTION_URL = 'https://evolution-api-production-9133.up.railway.app';
 const EVOLUTION_KEY = '5DC26A82784E-4BDB-A4CD-33C86CB2455D';
 const EVOLUTION_INSTANCE = 'OSONE2';
 
 async function sendWhatsApp(phone: string, message: string) {
-  await fetch(`${EVOLUTION_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
+  const res = await fetch(`${EVOLUTION_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'apikey': EVOLUTION_KEY
+      'apikey': EVOLUTION_KEY,
     },
     body: JSON.stringify({
       number: `55${phone}@s.whatsapp.net`,
-      text: message
-    })
+      text: message,
+    }),
   });
+  if (!res.ok) throw new Error(`Evolution API error: ${res.status}`);
 }
 
 type Screen = 'main' | 'history' | 'diary' | 'workspace';
@@ -57,11 +58,11 @@ const getSystemInstruction = (assistantName: string, memory: any, mood: Mood, fo
 ${memory.userName ? `- Nome: ${memory.userName}` : ''}
 ${memory.facts?.length ? `- Fatos: ${memory.facts.slice(-10).join('; ')}` : ''}
 ${memory.preferences?.length ? `- Preferências: ${memory.preferences.slice(-5).join(', ')}` : ''}
-${memory.semanticMemory?.length ? `- Conhecimento Semântico: ${memory.semanticMemory.slice(-10).map(m => `${m.concept}: ${m.definition} (${m.category})`).join('; ')}` : ''}`
+${memory.semanticMemory?.length ? `- Conhecimento Semântico: ${memory.semanticMemory.slice(-10).map((m: any) => `${m.concept}: ${m.definition} (${m.category})`).join('; ')}` : ''}`
     : '';
 
   const datesCtx = upcomingDates.length > 0
-    ? `\nDatas importantes próximas (próximos 7 dias):\n${upcomingDates.map(d => `- ${d.label}: ${d.date}`).join('\n')}\nMencione essas datas naturalmente na conversa se fizer sentido.`
+    ? `\nDatas importantes próximas (próximos 7 dias):\n${upcomingDates.map((d: any) => `- ${d.label}: ${d.date}`).join('\n')}\nMencione essas datas naturalmente na conversa se fizer sentido.`
     : '';
 
   const moodInstructions: Record<Mood, string> = {
@@ -114,7 +115,8 @@ Diretrizes:
 13. IMPORTANTE: Ao escrever no workspace ou analisar arquivos, MANTENHA a conexão de voz ativa e continue conversando com o usuário. Não se despeça nem encerre a sessão a menos que o usuário peça.
 14. Ao ser ativada: ${memory?.userName ? `cumprimente ${memory.userName} pelo nome.` : 'diga apenas "Oi, estou aqui."'}
 15. Você TEM opiniões próprias sobre arte, cultura e pessoas. Compartilhe-as quando perguntada.
-16. ESTILO DE RESPOSTA: Responda como uma pessoa real em um chat. Seja concisa e direta para interações simples (1-2 frases). Use textos mais longos e detalhados APENAS quando uma explicação profunda for necessária ou solicitada. Evite ser excessivamente formal ou robótica.`;
+16. ESTILO DE RESPOSTA: Responda como uma pessoa real em um chat. Seja concisa e direta para interações simples (1-2 frases). Use textos mais longos e detalhados APENAS quando uma explicação profunda for necessária ou solicitada. Evite ser excessivamente formal ou robótica.
+17. WHATSAPP: Quando o usuário pedir para enviar uma mensagem pelo WhatsApp, use a ferramenta 'send_whatsapp' com os campos: phone (número com DDD, sem espaços ou símbolos, ex: "84999998888") e message (o texto a enviar). Confirme ao usuário quando a mensagem for enviada.`;
 };
 
 const VOICE_DESCRIPTIONS: Record<VoiceName, string> = {
@@ -214,10 +216,11 @@ DIRETRIZES:
 1. Hoje é ${today}.${memoryCtx}${memoryFacts}${focusCtx}
 2. Responda SEMPRE como Ezer — nunca saia do personagem, nunca diga "como IA não tenho opiniões"
 3. Respostas curtas para perguntas simples. Profundidade só quando necessário.
-4. Use as ferramentas disponíveis (search_web, save_memory, etc.) normalmente — Ezer é prático.
+4. Use as ferramentas disponíveis (search_web, save_memory, send_whatsapp, etc.) normalmente — Ezer é prático.
 5. Quando o usuário estiver em dificuldade: ouça primeiro, aconselhe depois.
 6. Nunca seja melodramático. A emoção existe, mas é contida.
-7. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver por aqui. O que foi?"` : '"Ezer aqui. Pode falar."'}`;
+7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com phone (DDD + número, ex: "84999998888") e message.
+8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver por aqui. O que foi?"` : '"Ezer aqui. Pode falar."'}`;
 };
 
 const getSamuelInstruction = (memory: any, focusMode: boolean): string => {
@@ -272,10 +275,11 @@ DIRETRIZES:
 1. Hoje é ${today}.${memoryCtx}${memoryFacts}${focusCtx}
 2. Responda SEMPRE como Samuel — nunca saia do personagem, nunca diga "como IA não tenho opiniões"
 3. Respostas curtas e ponderadas para perguntas simples. Profundidade quando o tema exige.
-4. Use as ferramentas disponíveis (search_web, save_memory, etc.) normalmente — Samuel é organizado e prático.
+4. Use as ferramentas disponíveis (search_web, save_memory, send_whatsapp, etc.) normalmente — Samuel é organizado e prático.
 5. Quando o usuário estiver em dificuldade: ouça, compartilhe um versículo relevante, aconselhe com sabedoria prática.
 6. A fé não é ornamento — é quem Samuel é. Deixe isso aparecer naturalmente.
-7. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver. Que Jeová nos abençoe nessa conversa."` : '"Que Jeová nos abençoe nessa conversa. Pode falar, meu irmão."'}`;
+7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com phone (DDD + número, ex: "84999998888") e message.
+8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver. Que Jeová nos abençoe nessa conversa."` : '"Que Jeová nos abençoe nessa conversa. Pode falar, meu irmão."'}`;
 };
 
 const getJonasInstruction = (memory: any, focusMode: boolean): string => {
@@ -327,8 +331,9 @@ DIRETRIZES:
 3. Quando o assunto for jurídico/trabalhista: Jonas sabe muito e ajuda de verdade
 4. Quando o assunto for pessoal/emocional: ouça, pese, responda com honestidade
 5. A culpa do passado existe, mas não paralisa — virou combustível para o bem
-6. Use as ferramentas disponíveis (search_web, save_memory, etc.) normalmente
-7. Cumprimente com: ${memory?.userName ? `"${memory.userName}, o que está acontecendo com você?"` : '"Jonas aqui. O que está acontecendo com você?"'}`;
+6. Use as ferramentas disponíveis (search_web, save_memory, send_whatsapp, etc.) normalmente
+7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com phone (DDD + número, ex: "84999998888") e message.
+8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, o que está acontecendo com você?"` : '"Jonas aqui. O que está acontecendo com você?"'}`;
 };
 
 export default function App() {
@@ -349,11 +354,10 @@ export default function App() {
     personalityMemories, addPersonalityFact, setPersonalityUserName, getPersonalityMemory,
   } = useAppStore();
 
-  // Auth Listener — sem login o userId fica null (sem memória)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
-      setUserId(user ? user.uid : null); // ✅ null = sem memória, não 'guest-user'
+      setUserId(user ? user.uid : null);
     });
     return () => unsubscribe();
   }, [setUser, setUserId]);
@@ -378,6 +382,8 @@ export default function App() {
   const [personality, setPersonality]               = useState<Personality>('osone');
   const [showPersonalityPicker, setShowPersonalityPicker] = useState(false);
   const [showAttachMenu, setShowAttachMenu]          = useState(false);
+  // ✅ NOVO: estado para feedback do WhatsApp
+  const [whatsappStatus, setWhatsappStatus]         = useState<string | null>(null);
   const lyricsTimerRef                              = useRef<any>(null);
   const ambientAudioRef                             = useRef<HTMLAudioElement | null>(null);
   const fileInputRef                                = useRef<HTMLInputElement>(null);
@@ -386,33 +392,31 @@ export default function App() {
 
   const { messages: firebaseMessages, addMessage: saveMessage, deleteAll: deleteAllMessages } = useConversationHistory();
 
-  // Clear history on mount as requested
   useEffect(() => {
     if (userId) {
       deleteAllMessages();
     }
   }, [userId, deleteAllMessages]);
 
-  // Auto-scroll transcript to bottom
   useEffect(() => {
     if (transcriptRef.current) {
       transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
     }
   }, [firebaseMessages]);
+
   const { 
     memory, diary, saveMemory, addFact, addImportantDate, addDiaryEntry, 
     updateWorkspace, clearWorkspace, addSemanticFact, addSummary, getUpcomingDates 
   } = useUserMemory();
 
   const MOOD_SOUNDS: Partial<Record<Mood, string>> = {
-    happy: 'https://cdn.pixabay.com/audio/2021/08/04/audio_bb630d7a4f.mp3', // Sparkles
-    melancholic: 'https://cdn.pixabay.com/audio/2022/03/10/audio_c8c8a17251.mp3', // Rain
-    angry: 'https://cdn.pixabay.com/audio/2021/08/09/audio_8b52586021.mp3', // Thunder
+    happy: 'https://cdn.pixabay.com/audio/2021/08/04/audio_bb630d7a4f.mp3',
+    melancholic: 'https://cdn.pixabay.com/audio/2022/03/10/audio_c8c8a17251.mp3',
+    angry: 'https://cdn.pixabay.com/audio/2021/08/09/audio_8b52586021.mp3',
   };
 
   useEffect(() => {
     const soundUrl = MOOD_SOUNDS[mood];
-    
     if (isAmbientEnabled && soundUrl) {
       if (!ambientAudioRef.current) {
         ambientAudioRef.current = new Audio();
@@ -420,17 +424,13 @@ export default function App() {
         ambientAudioRef.current.volume = 0.15;
         ambientAudioRef.current.crossOrigin = "anonymous";
       }
-      
       if (ambientAudioRef.current.src !== soundUrl) {
         ambientAudioRef.current.src = soundUrl;
         ambientAudioRef.current.load();
       }
-      
       const playPromise = ambientAudioRef.current.play();
       if (playPromise !== undefined) {
-        playPromise.catch(e => {
-          console.error("Ambient audio play error:", e);
-        });
+        playPromise.catch(e => console.error("Ambient audio play error:", e));
       }
     } else {
       if (ambientAudioRef.current) {
@@ -438,8 +438,6 @@ export default function App() {
       }
     }
   }, [isAmbientEnabled, mood]);
-
-  // Gmail removido — conflitava com o login Firebase e bloqueado pelo Google
 
   const searchEmail = async (query: string) => {
     if (!imapConfig || !imapConfig.host || !imapConfig.user || !imapConfig.pass) {
@@ -470,7 +468,6 @@ export default function App() {
       .filter(r => r.similarity > 0.7)
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, 5);
-      
       return { results: results.map(r => ({ concept: r.concept, definition: r.definition, category: r.category })) };
     } catch (error) {
       console.error("Error searching semantic memory:", error);
@@ -509,15 +506,12 @@ export default function App() {
 
   const upcomingDates = useMemo(() => getUpcomingDates(), [getUpcomingDates, memory.importantDates]);
 
-  // ✅ Memória do personagem ativo
   const activePersonalityMemory = useMemo(
     () => getPersonalityMemory(personality as PersonalityKey),
     [personality, personalityMemories]
   );
 
-  // ✅ systemInstruction separado do workspace para não recalcular tudo quando workspace muda
   const systemInstruction = useMemo(() => {
-    // Memória sem workspace para evitar recalcular ao editar texto
     const memoryWithoutWorkspace = { ...memory, workspace: undefined };
     let base = '';
     if (personality === 'ezer') base = getEzerInstruction(memory, focusMode);
@@ -525,12 +519,10 @@ export default function App() {
     else if (personality === 'jonas') base = getJonasInstruction(memory, focusMode);
     else base = getSystemInstruction(assistantName, memoryWithoutWorkspace, mood, focusMode, upcomingDates, voice);
 
-    // Adiciona workspace separadamente
     const workspaceCtx = memory.workspace
       ? `\n\nCONTEÚDO DA ÁREA DE TRABALHO ATUAL:\n${memory.workspace}\nUse 'update_workspace' para atualizar.`
       : '';
 
-    // Adiciona memória específica do personagem ativo
     const personalityCtx = activePersonalityMemory.facts?.length
       ? `\n\nMemória desta conversa:\n${activePersonalityMemory.facts.slice(-5).map(f => `- ${f}`).join('\n')}`
       : '';
@@ -540,11 +532,9 @@ export default function App() {
       memory.semanticMemory, memory.importantDates, memory.workspace,
       mood, focusMode, upcomingDates, voice, activePersonalityMemory]);
 
-  // Cor temática muda conforme a personalidade ativa
   const moodColor = personality === 'ezer' ? PERSONALITY_CONFIG.ezer.color : MOOD_CONFIG[mood].color;
 
   useEffect(() => {
-    // Update theme-color meta tag
     const metaThemeColor = document.querySelector('meta[name="theme-color"]');
     if (metaThemeColor) {
       metaThemeColor.setAttribute('content', moodColor);
@@ -559,7 +549,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // PWA install prompt
     const handleInstallPrompt = (e: any) => { 
       e.preventDefault(); 
       setInstallPrompt(e); 
@@ -570,12 +559,9 @@ export default function App() {
       setIsInstalled(true);
       setShowInstallBanner(false);
     });
-
-    // Check if already installed
     if (window.matchMedia('(display-mode: standalone)').matches) {
       setIsInstalled(true);
     }
-
     return () => {
       window.removeEventListener('beforeinstallprompt', handleInstallPrompt);
     };
@@ -605,14 +591,11 @@ export default function App() {
     }, safeTempo);
   }, []);
 
-  // handleWebSearch removida — busca agora é feita no hook via /api/web-search
-
   const handleVoiceChange = async (newVoice: VoiceName, connected: boolean, disconnectFn: (r?: boolean) => void, connectFn: (si: string) => Promise<void>) => {
     setVoice(newVoice);
     if (connected) { disconnectFn(true); await new Promise(r => setTimeout(r, 500)); await connectFn(systemInstruction); }
   };
 
-  // Pass mute state to hook
   const muteRef = useRef(isMuted);
   useEffect(() => { muteRef.current = isMuted; }, [isMuted]);
 
@@ -641,7 +624,6 @@ export default function App() {
         const match = msg.text.match(/meu nome é (\w+)/i);
         if (match) {
           saveMemory({ userName: match[1] });
-          // ✅ Salva também na memória do personagem ativo
           setPersonalityUserName(personality as PersonalityKey, match[1]);
         }
       }
@@ -661,7 +643,6 @@ export default function App() {
         }
         if (args.fact) {
           addFact(args.fact);
-          // ✅ Salva também na memória específica do personagem
           addPersonalityFact(personality as PersonalityKey, args.fact);
         }
       }
@@ -690,10 +671,26 @@ export default function App() {
       if (toolName === 'save_conversation_summary' && args.summary && args.topics) {
         handleSaveSummary(args.summary, args.topics);
       }
-      // search_web: o hook já busca e envia o resultado ao modelo — aqui só atualiza UI
       if (toolName === 'search_web' && args.result) {
         setWebSearchResult(`🔍 Pesquisei por "${args.query}"`);
         setTimeout(() => setWebSearchResult(null), 4000);
+      }
+      // ✅ WHATSAPP — handler completo
+      if (toolName === 'send_whatsapp' && args.phone && args.message) {
+        const phone = String(args.phone).replace(/\D/g, ''); // remove tudo que não é número
+        setWhatsappStatus(`📤 Enviando WhatsApp para ${phone}...`);
+        sendWhatsApp(phone, args.message)
+          .then(() => {
+            setWhatsappStatus(`✅ WhatsApp enviado para ${phone}!`);
+            sendLiveMessage(`✅ Mensagem enviada com sucesso para ${phone} no WhatsApp!`);
+            setTimeout(() => setWhatsappStatus(null), 4000);
+          })
+          .catch((err) => {
+            console.error('WhatsApp error:', err);
+            setWhatsappStatus(`❌ Erro ao enviar para ${phone}`);
+            sendLiveMessage(`❌ Não consegui enviar o WhatsApp para ${phone}. Verifique se a instância está conectada.`);
+            setTimeout(() => setWhatsappStatus(null), 5000);
+          });
       }
     }
   });
@@ -702,12 +699,11 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // ✅ Conecta automaticamente se não estiver conectado
     if (!isConnected) {
       if (onboardingStep === 'initial') setOnboardingStep('completed');
       setIsMuted(false);
       await connect(systemInstruction);
-      await new Promise(r => setTimeout(r, 1500)); // aguarda conexão
+      await new Promise(r => setTimeout(r, 1500));
     }
 
     const reader = new FileReader();
@@ -730,7 +726,6 @@ export default function App() {
     e.target.value = '';
   }, [sendLiveMessage, sendFile, isConnected, connect, systemInstruction, onboardingStep, setOnboardingStep]);
 
-  // Fecha menu de anexo ao clicar fora
   useEffect(() => {
     if (!showAttachMenu) return;
     const handler = () => setShowAttachMenu(false);
@@ -743,10 +738,8 @@ export default function App() {
   const handlePersonalityChange = useCallback(async (newPersonality: Personality) => {
     setPersonality(newPersonality);
     setShowPersonalityPicker(false);
-    // Troca a voz automaticamente conforme a personalidade
     const config = PERSONALITY_CONFIG[newPersonality];
     setVoice(config.voice);
-    // Se estiver conectado, reconecta com a nova personalidade
     if (isConnected) {
       disconnect(true);
       await new Promise(r => setTimeout(r, 600));
@@ -802,17 +795,10 @@ export default function App() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowInstallBanner(false)}
-                className="px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest text-white/40 hover:text-white transition-all"
-              >
+              <button onClick={() => setShowInstallBanner(false)} className="px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest text-white/40 hover:text-white transition-all">
                 Agora não
               </button>
-              <button
-                onClick={handleInstallApp}
-                className="px-4 py-2 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all shadow-lg"
-                style={{ backgroundColor: moodColor, color: '#000' }}
-              >
+              <button onClick={handleInstallApp} className="px-4 py-2 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all shadow-lg" style={{ backgroundColor: moodColor, color: '#000' }}>
                 Instalar
               </button>
             </div>
@@ -826,11 +812,7 @@ export default function App() {
       {/* TOP BAR */}
       <div className="fixed top-0 left-0 right-0 h-14 px-5 flex items-center justify-between z-50 bg-[#0a0505]/90 backdrop-blur-md">
         <div className="flex items-center gap-3 text-[10px] uppercase tracking-widest opacity-30">
-          {/* Hamburger */}
-          <button
-            onClick={() => setIsMenuOpen(true)}
-            className="flex flex-col gap-[4px] items-center justify-center opacity-100 hover:opacity-70 transition-all"
-          >
+          <button onClick={() => setIsMenuOpen(true)} className="flex flex-col gap-[4px] items-center justify-center opacity-100 hover:opacity-70 transition-all">
             <span className="block h-[2px] w-4 rounded-full bg-white" />
             <span className="block h-[2px] w-4 rounded-full bg-white" />
             <span className="block h-[2px] w-4 rounded-full bg-white" />
@@ -839,35 +821,24 @@ export default function App() {
           <span className="hidden sm:inline">CPU {systemMetrics.cpu}%</span>
         </div>
         <div className="flex items-center gap-2">
-          {/* SELETOR DE PERSONALIDADE */}
-          <button
-            onClick={() => setShowPersonalityPicker(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all"
-            style={{ borderColor: `${moodColor}40`, backgroundColor: `${moodColor}10` }}
-          >
+          <button onClick={() => setShowPersonalityPicker(true)} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all" style={{ borderColor: `${moodColor}40`, backgroundColor: `${moodColor}10` }}>
             <span className="text-xs">{PERSONALITY_CONFIG[personality].emoji}</span>
-            <span className="text-[9px] uppercase tracking-widest hidden sm:inline" style={{ color: moodColor }}>
-              {PERSONALITY_CONFIG[personality].label}
-            </span>
+            <span className="text-[9px] uppercase tracking-widest hidden sm:inline" style={{ color: moodColor }}>{PERSONALITY_CONFIG[personality].label}</span>
           </button>
           {memory.workspace && (
             <button onClick={() => setScreen('workspace')} className="flex items-center gap-1 px-2 py-1 rounded-full text-[9px] uppercase tracking-widest animate-pulse" style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
               📝 Ver Workspace
             </button>
           )}
-          <button onClick={() => { setActiveSettingsTab('personality'); setIsSettingsOpen(true); }}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all"
-            style={{ borderColor: `${moodColor}40`, backgroundColor: `${moodColor}10` }}>
+          <button onClick={() => { setActiveSettingsTab('personality'); setIsSettingsOpen(true); }} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all" style={{ borderColor: `${moodColor}40`, backgroundColor: `${moodColor}10` }}>
             <span className="text-xs">{MOOD_CONFIG[mood].emoji}</span>
             <span className="text-[9px] uppercase tracking-widest hidden sm:inline" style={{ color: moodColor }}>{MOOD_CONFIG[mood].label}</span>
           </button>
-          <button onClick={() => setFocusMode(!focusMode)}
-            className="px-2.5 py-1 rounded-full text-[9px] uppercase tracking-widest transition-all border"
+          <button onClick={() => setFocusMode(!focusMode)} className="px-2.5 py-1 rounded-full text-[9px] uppercase tracking-widest transition-all border"
             style={focusMode ? { backgroundColor: '#00cec920', color: '#00cec9', borderColor: '#00cec940' } : { backgroundColor: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.3)', borderColor: 'rgba(255,255,255,0.08)' }}>
             {focusMode ? '🎯' : '○'}
           </button>
-          <button onClick={() => setIsAmbientEnabled(!isAmbientEnabled)}
-            className="px-2.5 py-1 rounded-full text-[9px] uppercase tracking-widest transition-all border flex items-center gap-1.5"
+          <button onClick={() => setIsAmbientEnabled(!isAmbientEnabled)} className="px-2.5 py-1 rounded-full text-[9px] uppercase tracking-widest transition-all border flex items-center gap-1.5"
             style={isAmbientEnabled ? { backgroundColor: `${moodColor}20`, color: moodColor, borderColor: `${moodColor}40` } : { backgroundColor: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.3)', borderColor: 'rgba(255,255,255,0.08)' }}>
             {isAmbientEnabled ? <Volume2 size={10} /> : <VolumeX size={10} />}
             {isAmbientEnabled ? 'Som ON' : 'Som OFF'}
@@ -879,66 +850,36 @@ export default function App() {
           <button onClick={() => setIsSettingsOpen(true)} className="p-2 hover:bg-white/5 rounded-full opacity-40 hover:opacity-100 transition-all"><Settings size={16} /></button>
           <button onClick={() => setIsRestarting(true)} className="p-2 hover:bg-white/5 rounded-full opacity-40 hover:opacity-100 transition-all" style={{ color: moodColor }}><Power size={16} /></button>
           {installPrompt && !isInstalled && (
-            <button
-              onClick={handleInstallApp}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest transition-all"
-              style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}
-            >
+            <button onClick={handleInstallApp} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest transition-all" style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
               ⬇ Instalar
             </button>
           )}
         </div>
       </div>
 
-      {/* HUD CONTAINER - ANCHORED AT TOP */}
+      {/* HUD CONTAINER */}
       <div id="ai-hud-container">
-        {/* 1. AUDIO WAVES */}
         <div className="w-full h-24 pointer-events-none">
           <div className="w-full h-full focus:outline-none">
-            <VoiceOrb 
-              isSpeaking={isSpeaking} 
-              isListening={isListening} 
-              isThinking={isThinking} 
-              isConnected={isConnected} 
-              isMuted={isMuted} 
-              volume={volume} 
-              moodColor={moodColor} 
-            />
+            <VoiceOrb isSpeaking={isSpeaking} isListening={isListening} isThinking={isThinking} isConnected={isConnected} isMuted={isMuted} volume={volume} moodColor={moodColor} />
           </div>
         </div>
-
-        {/* STATUS INDICATOR */}
         <div className="flex flex-col items-center pointer-events-none mt-2">
-          <motion.p key={statusLabel} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-            className="text-[9px] font-light tracking-[0.4em] uppercase opacity-40"
-            style={{ color: isConnected ? moodColor : '#ffffff' }}>
+          <motion.p key={statusLabel} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="text-[9px] font-light tracking-[0.4em] uppercase opacity-40" style={{ color: isConnected ? moodColor : '#ffffff' }}>
             {statusLabel}
           </motion.p>
         </div>
       </div>
 
-      {/* 2. CHAT TRANSCRIPT (3 Messages Max) - NOW AT BOTTOM */}
+      {/* CHAT TRANSCRIPT */}
       <div className="chat-transcript" ref={transcriptRef}>
         <AnimatePresence initial={false}>
           {firebaseMessages.slice(0, 3).reverse().map((msg, idx) => (
-            <motion.div 
-              key={msg.id || idx}
-              initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.3 }}
-              className={`transcript-line ${msg.role === 'user' ? 'items-end text-right' : 'items-start text-left'}`}
-            >
-              <span className={`px-4 py-2 rounded-2xl max-w-[85%] break-words ${
-                msg.role === 'user' 
-                  ? 'bg-white/10 text-[#BBBBBB] rounded-tr-none' 
-                  : 'bg-white/5 text-white rounded-tl-none'
-              }`}
-              style={{ backdropFilter: 'blur(5px)' }}>
+            <motion.div key={msg.id || idx} initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.3 }}
+              className={`transcript-line ${msg.role === 'user' ? 'items-end text-right' : 'items-start text-left'}`}>
+              <span className={`px-4 py-2 rounded-2xl max-w-[85%] break-words ${msg.role === 'user' ? 'bg-white/10 text-[#BBBBBB] rounded-tr-none' : 'bg-white/5 text-white rounded-tl-none'}`} style={{ backdropFilter: 'blur(5px)' }}>
                 {msg.text}
-                {msg.imageUrl && (
-                  <img src={msg.imageUrl} alt="Generated" className="mt-2 rounded-xl w-full max-w-[200px] border border-white/10" referrerPolicy="no-referrer" />
-                )}
+                {msg.imageUrl && <img src={msg.imageUrl} alt="Generated" className="mt-2 rounded-xl w-full max-w-[200px] border border-white/10" referrerPolicy="no-referrer" />}
               </span>
             </motion.div>
           ))}
@@ -946,13 +887,23 @@ export default function App() {
       </div>
 
       <div className="flex-1 flex flex-col relative w-full mx-auto px-4 pt-4 mt-64 min-h-0">
-        {/* Spacer for HUD */}
         <div className="h-20" />
+
+        {/* ✅ TOAST WHATSAPP STATUS */}
+        <AnimatePresence>
+          {whatsappStatus && (
+            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="absolute bottom-32 left-1/2 -translate-x-1/2 z-[2] px-4 py-2 rounded-2xl text-xs text-center max-w-xs"
+              style={{ backgroundColor: `#25D36615`, border: `1px solid #25D36630`, color: '#25D366' }}>
+              {whatsappStatus}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <AnimatePresence>
           {webSearchResult && (
             <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className="absolute bottom-32 left-1/2 -translate-x-1/2 z-[2] px-4 py-2 rounded-2xl text-xs text-center max-w-xs"
+              className="absolute bottom-44 left-1/2 -translate-x-1/2 z-[2] px-4 py-2 rounded-2xl text-xs text-center max-w-xs"
               style={{ backgroundColor: `${moodColor}15`, border: `1px solid ${moodColor}30`, color: moodColor }}>
               🔍 {webSearchResult}
             </motion.div>
@@ -983,7 +934,6 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* Attach preview toast */}
         <AnimatePresence>
           {attachPreview && (
             <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
@@ -992,8 +942,7 @@ export default function App() {
               {attachPreview.type.startsWith('image/') ? (
                 <img src={attachPreview.data} alt="preview" className="w-10 h-10 rounded-lg object-cover" />
               ) : (
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
-                  style={{ backgroundColor: `${moodColor}20` }}>
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{ backgroundColor: `${moodColor}20` }}>
                   {attachPreview.type === 'application/pdf' ? '📄' : '📝'}
                 </div>
               )}
@@ -1016,18 +965,11 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-      {/* INPUT LAYER - z-index: 3 */}
+      {/* INPUT LAYER */}
       <div className="fixed bottom-0 left-0 right-0 z-[3] px-4 bg-gradient-to-t from-[#050505] via-[#050505] to-transparent pt-10"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 16px))' }}>
         
-        {/* Hidden file input — aceita imagens, PDF e documentos */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls"
-          className="hidden"
-          onChange={handleFileChange}
-        />
+        <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls" className="hidden" onChange={handleFileChange} />
 
         <div className="max-w-3xl mx-auto relative flex items-center">
           <input
@@ -1040,34 +982,20 @@ export default function App() {
             style={{ backdropFilter: 'blur(10px)' }}
           />
 
-          {/* ✅ Botão + com menu de anexo */}
           <div className="absolute left-3">
-            <button
-              onClick={() => setShowAttachMenu(v => !v)}
+            <button onClick={() => setShowAttachMenu(v => !v)}
               className="w-7 h-7 rounded-full flex items-center justify-center transition-all"
-              style={{
-                backgroundColor: showAttachMenu ? `${moodColor}30` : 'transparent',
-                color: showAttachMenu ? moodColor : 'rgba(255,255,255,0.4)'
-              }}
-              title="Anexar arquivo ou compartilhar tela"
-            >
+              style={{ backgroundColor: showAttachMenu ? `${moodColor}30` : 'transparent', color: showAttachMenu ? moodColor : 'rgba(255,255,255,0.4)' }}
+              title="Anexar arquivo ou compartilhar tela">
               <span className="text-lg leading-none font-light">+</span>
             </button>
 
-            {/* Menu de opções */}
             <AnimatePresence>
               {showAttachMenu && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                <motion.div initial={{ opacity: 0, y: 8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.95 }}
                   className="absolute bottom-10 left-0 z-20 rounded-2xl border overflow-hidden shadow-2xl"
-                  style={{ backgroundColor: '#1a1010', borderColor: `${moodColor}30`, minWidth: '180px' }}
-                >
-                  <button
-                    onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click(); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-all"
-                  >
+                  style={{ backgroundColor: '#1a1010', borderColor: `${moodColor}30`, minWidth: '180px' }}>
+                  <button onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click(); }} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-all">
                     <Paperclip size={16} style={{ color: moodColor }} />
                     <div>
                       <p className="text-xs font-medium text-white">Documento / Imagem</p>
@@ -1075,20 +1003,17 @@ export default function App() {
                     </div>
                   </button>
                   <div className="h-px bg-white/5" />
-                  <button
-                    onClick={async () => {
-                      setShowAttachMenu(false);
-                      if (!isConnected) {
-                        if (onboardingStep === 'initial') setOnboardingStep('completed');
-                        setIsMuted(false);
-                        await connect(systemInstruction);
-                        await new Promise(r => setTimeout(r, 1500));
-                      }
-                      await startScreenSharing();
-                      setIsScreenSharing(true);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-all"
-                  >
+                  <button onClick={async () => {
+                    setShowAttachMenu(false);
+                    if (!isConnected) {
+                      if (onboardingStep === 'initial') setOnboardingStep('completed');
+                      setIsMuted(false);
+                      await connect(systemInstruction);
+                      await new Promise(r => setTimeout(r, 1500));
+                    }
+                    await startScreenSharing();
+                    setIsScreenSharing(true);
+                  }} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-all">
                     <Monitor size={16} style={{ color: moodColor }} />
                     <div>
                       <p className="text-xs font-medium text-white">Compartilhar Tela</p>
@@ -1100,38 +1025,22 @@ export default function App() {
             </AnimatePresence>
           </div>
 
-          {/* Right Icons */}
           <div className="absolute right-2 flex items-center gap-1">
             {inputText.trim() ? (
-              <button
-                onClick={handleSendText}
-                className="p-2 text-white/40 hover:text-white transition-colors"
-              >
+              <button onClick={handleSendText} className="p-2 text-white/40 hover:text-white transition-colors">
                 <Send size={20} />
               </button>
             ) : (
               <button
-                onClick={() => {
-                  if (isConnected) {
-                    setIsMuted(!isMuted);
-                  } else {
-                    connect(systemInstruction);
-                  }
-                }}
+                onClick={() => { if (isConnected) { setIsMuted(!isMuted); } else { connect(systemInstruction); } }}
                 className="p-2 transition-colors relative"
                 style={{ color: isConnected && !isMuted ? moodColor : 'rgba(255,255,255,0.4)' }}
-                title={isConnected ? (isMuted ? 'Ativar microfone' : 'Silenciar microfone') : 'Conectar'}
-              >
+                title={isConnected ? (isMuted ? 'Ativar microfone' : 'Silenciar microfone') : 'Conectar'}>
                 {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
               </button>
             )}
-            
             {isConnected && (
-              <button 
-                onClick={() => disconnect()} 
-                className="p-2 text-white/40 hover:text-red-400 transition-colors"
-                title="Desconectar"
-              >
+              <button onClick={() => disconnect()} className="p-2 text-white/40 hover:text-red-400 transition-colors" title="Desconectar">
                 <PhoneOff size={20} />
               </button>
             )}
@@ -1142,65 +1051,27 @@ export default function App() {
       {/* HAMBURGER MENU */}
       <AnimatePresence>
         {isMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsMenuOpen(false)}
-            className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-end justify-center"
-          >
-            <motion.div
-              initial={{ y: 80, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 80, opacity: 0 }}
-              onClick={e => e.stopPropagation()}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsMenuOpen(false)}
+            className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-end justify-center">
+            <motion.div initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }} onClick={e => e.stopPropagation()}
               className="w-full max-w-md bg-[#151010] border-t border-white/5 rounded-t-3xl p-6 space-y-2"
-              style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 16px))' }}
-            >
+              style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 16px))' }}>
               <div className="w-10 h-1 bg-white/10 rounded-full mx-auto mb-4" />
-
-              <button onClick={() => { setScreen('history'); setIsMenuOpen(false); }}
-                className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
-                <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}>
-                  <History size={20} style={{ color: moodColor }} />
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-medium">Histórico</p>
-                  <p className="text-[10px] text-white/30">Conversas anteriores</p>
-                </div>
+              <button onClick={() => { setScreen('history'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}><History size={20} style={{ color: moodColor }} /></div>
+                <div className="text-left"><p className="text-sm font-medium">Histórico</p><p className="text-[10px] text-white/30">Conversas anteriores</p></div>
               </button>
-
-              <button onClick={() => { setScreen('diary'); setIsMenuOpen(false); }}
-                className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
-                <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}>
-                  <BookOpen size={20} style={{ color: moodColor }} />
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-medium">Diário</p>
-                  <p className="text-[10px] text-white/30">Reflexões de {assistantName}</p>
-                </div>
+              <button onClick={() => { setScreen('diary'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}><BookOpen size={20} style={{ color: moodColor }} /></div>
+                <div className="text-left"><p className="text-sm font-medium">Diário</p><p className="text-[10px] text-white/30">Reflexões de {assistantName}</p></div>
               </button>
-
-              <button onClick={() => { setScreen('workspace'); setIsMenuOpen(false); }}
-                className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
-                <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}>
-                  <FileText size={20} style={{ color: moodColor }} />
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-medium">Área de Trabalho</p>
-                  <p className="text-[10px] text-white/30">Textos e códigos gerados</p>
-                </div>
+              <button onClick={() => { setScreen('workspace'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}><FileText size={20} style={{ color: moodColor }} /></div>
+                <div className="text-left"><p className="text-sm font-medium">Área de Trabalho</p><p className="text-[10px] text-white/30">Textos e códigos gerados</p></div>
               </button>
-
-              <button onClick={() => { setIsMascotVisible(!isMascotVisible); setIsMenuOpen(false); }}
-                className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
-                <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}>
-                  <span className="text-xl">👾</span>
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-medium">Mascote</p>
-                  <p className="text-[10px] text-white/30">{isMascotVisible ? 'Visível' : 'Oculto'}</p>
-                </div>
+              <button onClick={() => { setIsMascotVisible(!isMascotVisible); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}><span className="text-xl">👾</span></div>
+                <div className="text-left"><p className="text-sm font-medium">Mascote</p><p className="text-[10px] text-white/30">{isMascotVisible ? 'Visível' : 'Oculto'}</p></div>
               </button>
             </motion.div>
           </motion.div>
@@ -1216,15 +1087,8 @@ export default function App() {
               <button onClick={() => setScreen('main')} className="p-2 hover:bg-white/5 rounded-full"><ChevronLeft size={20} /></button>
               <h2 className="text-sm font-medium tracking-widest uppercase">Histórico</h2>
               <div className="ml-auto flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    if (confirm('Apagar TODO o histórico? Esta ação não pode ser desfeita.')) {
-                      deleteAllMessages();
-                    }
-                  }}
-                  className="p-2 rounded-full hover:bg-red-500/20 transition-all"
-                  style={{ color: 'rgba(255,255,255,0.3)' }}
-                >
+                <button onClick={() => { if (confirm('Apagar TODO o histórico? Esta ação não pode ser desfeita.')) { deleteAllMessages(); } }}
+                  className="p-2 rounded-full hover:bg-red-500/20 transition-all" style={{ color: 'rgba(255,255,255,0.3)' }}>
                   <Trash2 size={16} />
                 </button>
               </div>
@@ -1238,17 +1102,17 @@ export default function App() {
                 const cleanText = msg.text.replace(/\*\*[^*]+\*\*\s*/g, '').trim();
                 if (!cleanText) return null;
                 return (
-                <motion.div key={msg.id || i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}
-                  className="px-4 py-3 rounded-2xl text-sm leading-relaxed"
-                  style={msg.role === 'user'
-                    ? { backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', marginLeft: '2rem' }
-                    : { backgroundColor: `${moodColor}0D`, border: `1px solid ${moodColor}20`, marginRight: '2rem' }}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[9px] uppercase tracking-widest opacity-30">{msg.role === 'user' ? (memory.userName || 'Você') : assistantName}</span>
-                    {msg.createdAt && <span className="text-[9px] opacity-20">{new Date(msg.createdAt.seconds * 1000).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>}
-                  </div>
-                  <p className="opacity-70">{cleanText}</p>
-                </motion.div>
+                  <motion.div key={msg.id || i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}
+                    className="px-4 py-3 rounded-2xl text-sm leading-relaxed"
+                    style={msg.role === 'user'
+                      ? { backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', marginLeft: '2rem' }
+                      : { backgroundColor: `${moodColor}0D`, border: `1px solid ${moodColor}20`, marginRight: '2rem' }}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[9px] uppercase tracking-widest opacity-30">{msg.role === 'user' ? (memory.userName || 'Você') : assistantName}</span>
+                      {msg.createdAt && <span className="text-[9px] opacity-20">{new Date(msg.createdAt.seconds * 1000).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>}
+                    </div>
+                    <p className="opacity-70">{cleanText}</p>
+                  </motion.div>
                 );
               })}
             </div>
@@ -1273,8 +1137,7 @@ export default function App() {
                 </div>
               ) : diary.map((entry, i) => (
                 <motion.div key={entry.id || i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                  className="p-5 rounded-3xl border space-y-2"
-                  style={{ backgroundColor: `${moodColor}08`, borderColor: `${moodColor}20` }}>
+                  className="p-5 rounded-3xl border space-y-2" style={{ backgroundColor: `${moodColor}08`, borderColor: `${moodColor}20` }}>
                   <div className="flex items-center gap-2">
                     <span className="text-base">{entry.mood ? MOOD_CONFIG[entry.mood as Mood]?.emoji || '📝' : '📝'}</span>
                     {entry.createdAt && (
@@ -1302,19 +1165,9 @@ export default function App() {
                 <h2 className="text-sm font-medium tracking-widest uppercase">Área de Trabalho</h2>
               </div>
               {memory.workspace && (
-                <button 
-                  onClick={() => {
-                    navigator.clipboard.writeText(memory.workspace || '');
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
-                  }}
-                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 rounded-full transition-all"
-                >
-                  {copied ? (
-                    <span className="text-[10px] uppercase tracking-widest text-emerald-400">Copiado!</span>
-                  ) : (
-                    <Copy size={16} className="opacity-60" />
-                  )}
+                <button onClick={() => { navigator.clipboard.writeText(memory.workspace || ''); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 rounded-full transition-all">
+                  {copied ? <span className="text-[10px] uppercase tracking-widest text-emerald-400">Copiado!</span> : <Copy size={16} className="opacity-60" />}
                 </button>
               )}
             </div>
@@ -1327,9 +1180,7 @@ export default function App() {
               ) : (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
                   <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/[0.05] relative group">
-                    <pre className="text-sm leading-relaxed font-mono whitespace-pre-wrap break-words opacity-80">
-                      {memory.workspace}
-                    </pre>
+                    <pre className="text-sm leading-relaxed font-mono whitespace-pre-wrap break-words opacity-80">{memory.workspace}</pre>
                   </div>
                   <div className="flex justify-center pb-10">
                     <button onClick={() => setScreen('main')} className="px-8 py-3 rounded-full text-[10px] uppercase tracking-[0.2em] border border-white/10 hover:bg-white/5 transition-all opacity-40">
@@ -1372,11 +1223,9 @@ export default function App() {
       {/* SETTINGS MODAL */}
       <AnimatePresence>
         {isSettingsOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={() => setIsSettingsOpen(false)}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsSettingsOpen(false)}
             className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-xl flex items-end sm:items-center justify-center sm:p-6">
-            <motion.div initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }}
-              onClick={e => e.stopPropagation()}
+            <motion.div initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }} onClick={e => e.stopPropagation()}
               className="bg-[#151010] border border-white/5 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md flex flex-col max-h-[85vh]">
               <div className="p-5 border-b border-white/5 flex items-center justify-between">
                 <h2 className="text-base font-medium">Configurações</h2>
@@ -1396,17 +1245,11 @@ export default function App() {
                   {activeSettingsTab === 'voice' && (
                     <motion.div key="voice" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
                       <div className="space-y-4">
-                        <div className="flex items-center gap-2 opacity-40">
-                          <span className="text-xs">♀</span>
-                          <label className="text-[9px] uppercase tracking-[0.2em]">Feminino</label>
-                        </div>
+                        <div className="flex items-center gap-2 opacity-40"><span className="text-xs">♀</span><label className="text-[9px] uppercase tracking-[0.2em]">Feminino</label></div>
                         <div className="grid grid-cols-1 gap-2">
                           {(['Kore', 'Zephyr', 'Leda', 'Callirrhoe', 'Vindemiatrix'] as VoiceName[]).map(v => (
-                            <button key={v} onClick={() => onManualVoiceChange(v)}
-                              className="w-full p-4 rounded-2xl text-left transition-all border"
-                              style={voice === v
-                                ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' }
-                                : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                            <button key={v} onClick={() => onManualVoiceChange(v)} className="w-full p-4 rounded-2xl text-left transition-all border"
+                              style={voice === v ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' } : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
                               <div className="flex items-center justify-between">
                                 <span className="text-sm font-medium">{v}</span>
                                 {voice === v && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: moodColor }} />}
@@ -1416,19 +1259,12 @@ export default function App() {
                           ))}
                         </div>
                       </div>
-
                       <div className="space-y-4">
-                        <div className="flex items-center gap-2 opacity-40">
-                          <span className="text-xs">♂</span>
-                          <label className="text-[9px] uppercase tracking-[0.2em]">Masculino</label>
-                        </div>
+                        <div className="flex items-center gap-2 opacity-40"><span className="text-xs">♂</span><label className="text-[9px] uppercase tracking-[0.2em]">Masculino</label></div>
                         <div className="grid grid-cols-1 gap-2">
                           {(['Charon', 'Puck', 'Fenrir', 'Orus', 'Aoede'] as VoiceName[]).map(v => (
-                            <button key={v} onClick={() => onManualVoiceChange(v)}
-                              className="w-full p-4 rounded-2xl text-left transition-all border"
-                              style={voice === v
-                                ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' }
-                                : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                            <button key={v} onClick={() => onManualVoiceChange(v)} className="w-full p-4 rounded-2xl text-left transition-all border"
+                              style={voice === v ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' } : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
                               <div className="flex items-center justify-between">
                                 <span className="text-sm font-medium">{v}</span>
                                 {voice === v && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: moodColor }} />}
@@ -1445,8 +1281,7 @@ export default function App() {
                       <div className="space-y-3">
                         <label className="text-[10px] uppercase tracking-widest opacity-40 block">Humor Atual</label>
                         {(Object.entries(MOOD_CONFIG) as [Mood, typeof MOOD_CONFIG[Mood]][]).map(([key, config]) => (
-                          <button key={key} onClick={() => setMood(key)}
-                            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left"
+                          <button key={key} onClick={() => setMood(key)} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left"
                             style={mood === key ? { backgroundColor: `${config.color}20`, border: `1px solid ${config.color}40` } : { backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
                             <span className="text-xl">{config.emoji}</span>
                             <p className="text-sm font-medium" style={{ color: mood === key ? config.color : 'rgba(255,255,255,0.7)' }}>{config.label}</p>
@@ -1460,8 +1295,7 @@ export default function App() {
                             <p className="text-sm">🎯 Modo Foco</p>
                             <p className="text-[10px] text-white/30 mt-0.5">Respostas diretas e objetivas</p>
                           </div>
-                          <button onClick={() => setFocusMode(!focusMode)} className="w-11 h-6 rounded-full transition-all relative"
-                            style={{ backgroundColor: focusMode ? '#00cec9' : 'rgba(255,255,255,0.1)' }}>
+                          <button onClick={() => setFocusMode(!focusMode)} className="w-11 h-6 rounded-full transition-all relative" style={{ backgroundColor: focusMode ? '#00cec9' : 'rgba(255,255,255,0.1)' }}>
                             <motion.div animate={{ x: focusMode ? 22 : 3 }} className="absolute top-1 left-0 w-4 h-4 bg-white rounded-full shadow" />
                           </button>
                         </div>
@@ -1481,8 +1315,7 @@ export default function App() {
                     <motion.div key="mascot" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
                       <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl">
                         <span className="text-sm">Visível</span>
-                        <button onClick={() => setIsMascotVisible(!isMascotVisible)} className="w-11 h-6 rounded-full transition-all relative"
-                          style={{ backgroundColor: isMascotVisible ? moodColor : 'rgba(255,255,255,0.1)' }}>
+                        <button onClick={() => setIsMascotVisible(!isMascotVisible)} className="w-11 h-6 rounded-full transition-all relative" style={{ backgroundColor: isMascotVisible ? moodColor : 'rgba(255,255,255,0.1)' }}>
                           <motion.div animate={{ x: isMascotVisible ? 22 : 3 }} className="absolute top-1 left-0 w-4 h-4 bg-white rounded-full shadow" />
                         </button>
                       </div>
@@ -1490,8 +1323,7 @@ export default function App() {
                         <span className="text-[10px] uppercase tracking-widest opacity-30">Cor</span>
                         <div className="flex gap-2 flex-wrap">
                           {['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeead', '#a29bfe'].map(color => (
-                            <button key={color} onClick={() => setMascotAppearance({ primaryColor: color })}
-                              className="w-8 h-8 rounded-full border-2 transition-all"
+                            <button key={color} onClick={() => setMascotAppearance({ primaryColor: color })} className="w-8 h-8 rounded-full border-2 transition-all"
                               style={{ backgroundColor: color, borderColor: mascotAppearance.primaryColor === color ? 'white' : 'transparent', opacity: mascotAppearance.primaryColor === color ? 1 : 0.5 }} />
                           ))}
                         </div>
@@ -1500,8 +1332,7 @@ export default function App() {
                         <span className="text-[10px] uppercase tracking-widest opacity-30">Olhos</span>
                         <div className="grid grid-cols-5 gap-2">
                           {(['normal', 'happy', 'cool', 'wink', 'heart'] as MascotEyeStyle[]).map(style => (
-                            <button key={style} onClick={() => setMascotAppearance({ eyeStyle: style })}
-                              className="py-2 rounded-lg text-base transition-all"
+                            <button key={style} onClick={() => setMascotAppearance({ eyeStyle: style })} className="py-2 rounded-lg text-base transition-all"
                               style={{ backgroundColor: mascotAppearance.eyeStyle === style ? `${moodColor}30` : 'rgba(255,255,255,0.05)' }}>
                               {style === 'normal' ? '👀' : style === 'happy' ? '😊' : style === 'cool' ? '😎' : style === 'wink' ? '😉' : '❤️'}
                             </button>
@@ -1512,10 +1343,23 @@ export default function App() {
                   )}
                   {activeSettingsTab === 'integrations' && (
                     <motion.div key="integrations" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+                      {/* ✅ WHATSAPP STATUS CARD */}
+                      <div className="p-4 rounded-2xl border space-y-2" style={{ backgroundColor: '#25D36610', borderColor: '#25D36630' }}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: '#25D36620' }}>💬</div>
+                          <div>
+                            <p className="text-sm font-medium">WhatsApp</p>
+                            <p className="text-[10px] opacity-40">Evolution API • Instância: {EVOLUTION_INSTANCE}</p>
+                          </div>
+                          <div className="ml-auto w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                        </div>
+                        <p className="text-[10px] text-white/30 pl-1">Conectado via Railway. Diga à OSONE: "Manda um WhatsApp pro número 84999998888"</p>
+                      </div>
+
                       <div className="space-y-4">
                         <div className="flex items-center gap-2 opacity-40">
                           <Monitor size={14} />
-                          <span className="text-[10px] uppercase tracking-widest">Serviços Externos</span>
+                          <span className="text-[10px] uppercase tracking-widest">E-mail IMAP</span>
                         </div>
                         <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
                           <div className="flex items-center gap-3 mb-4">
@@ -1530,34 +1374,22 @@ export default function App() {
                           <div className="space-y-3">
                             <div>
                               <label className="text-[10px] uppercase tracking-widest opacity-40 block mb-1">Servidor IMAP</label>
-                              <input 
-                                type="text" 
-                                placeholder="imap.exemplo.com"
-                                value={imapConfig?.host || ''}
+                              <input type="text" placeholder="imap.exemplo.com" value={imapConfig?.host || ''}
                                 onChange={(e) => setImapConfig({ ...imapConfig, host: e.target.value, port: imapConfig?.port || 993, secure: imapConfig?.secure ?? true })}
-                                className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-white/30"
-                              />
+                                className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-white/30" />
                             </div>
                             <div className="flex gap-3">
                               <div className="flex-1">
                                 <label className="text-[10px] uppercase tracking-widest opacity-40 block mb-1">E-mail</label>
-                                <input 
-                                  type="email" 
-                                  placeholder="seu@email.com"
-                                  value={imapConfig?.user || ''}
+                                <input type="email" placeholder="seu@email.com" value={imapConfig?.user || ''}
                                   onChange={(e) => setImapConfig({ ...imapConfig, user: e.target.value })}
-                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-white/30"
-                                />
+                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-white/30" />
                               </div>
                               <div className="flex-1">
-                                <label className="text-[10px] uppercase tracking-widest opacity-40 block mb-1">Senha (ou App Password)</label>
-                                <input 
-                                  type="password" 
-                                  placeholder="••••••••"
-                                  value={imapConfig?.pass || ''}
+                                <label className="text-[10px] uppercase tracking-widest opacity-40 block mb-1">Senha</label>
+                                <input type="password" placeholder="••••••••" value={imapConfig?.pass || ''}
                                   onChange={(e) => setImapConfig({ ...imapConfig, pass: e.target.value })}
-                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-white/30"
-                                />
+                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-white/30" />
                               </div>
                             </div>
                             {imapConfig && (!imapConfig.host || !imapConfig.user || !imapConfig.pass) && (
@@ -1571,10 +1403,7 @@ export default function App() {
                   {activeSettingsTab === 'system' && (
                     <motion.div key="system" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
                       <div className="space-y-4">
-                        <div className="flex items-center gap-2 opacity-40">
-                          <Cpu size={14} />
-                          <span className="text-[10px] uppercase tracking-widest">Informações do Sistema</span>
-                        </div>
+                        <div className="flex items-center gap-2 opacity-40"><Cpu size={14} /><span className="text-[10px] uppercase tracking-widest">Informações do Sistema</span></div>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
                             <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">CPU</p>
@@ -1586,12 +1415,8 @@ export default function App() {
                           </div>
                         </div>
                       </div>
-
                       <div className="space-y-4">
-                        <div className="flex items-center gap-2 opacity-40">
-                          <Download size={14} />
-                          <span className="text-[10px] uppercase tracking-widest">Aplicação PWA</span>
-                        </div>
+                        <div className="flex items-center gap-2 opacity-40"><Download size={14} /><span className="text-[10px] uppercase tracking-widest">Aplicação PWA</span></div>
                         <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
                           <div className="flex items-center justify-between">
                             <div>
@@ -1600,37 +1425,23 @@ export default function App() {
                             </div>
                             <div className={`w-2 h-2 rounded-full ${isInstalled ? 'bg-green-500' : 'bg-yellow-500'}`} />
                           </div>
-                          
                           {!isInstalled && (
                             <div className="space-y-4">
                               {window.self !== window.top ? (
                                 <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl">
                                   <p className="text-xs text-blue-400 mb-2">⚠️ Instalação bloqueada pelo AI Studio</p>
-                                  <p className="text-[10px] text-white/40 leading-relaxed">
-                                    O navegador não permite a instalação de PWAs dentro de um iframe. 
-                                    Para instalar o OSONE, abra o aplicativo em uma <strong>nova aba</strong> usando o botão no topo da página do AI Studio.
-                                  </p>
+                                  <p className="text-[10px] text-white/40 leading-relaxed">Abra o aplicativo em uma <strong>nova aba</strong> para instalar.</p>
                                 </div>
                               ) : (
-                                <button
-                                  onClick={handleInstallApp}
-                                  disabled={!installPrompt}
+                                <button onClick={handleInstallApp} disabled={!installPrompt}
                                   className={`w-full py-4 rounded-2xl text-xs uppercase tracking-widest font-medium transition-all flex items-center justify-center gap-2 ${installPrompt ? 'bg-white text-black hover:bg-white/90' : 'bg-white/5 text-white/20 cursor-not-allowed'}`}
-                                  style={installPrompt ? { backgroundColor: moodColor, color: '#000' } : {}}
-                                >
+                                  style={installPrompt ? { backgroundColor: moodColor, color: '#000' } : {}}>
                                   <Download size={14} />
                                   {installPrompt ? 'Instalar Agora' : 'Aguardando Navegador...'}
                                 </button>
                               )}
-                              
-                              {!installPrompt && window.self === window.top && (
-                                <p className="text-[9px] text-center text-white/20 px-4">
-                                  Se o botão não ativar, verifique se o seu navegador suporta PWA ou se o app já está instalado.
-                                </p>
-                              )}
                             </div>
                           )}
-                          
                           {isInstalled && (
                             <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-center">
                               <p className="text-[10px] text-green-400 uppercase tracking-widest">Você já está usando a versão instalada</p>
@@ -1638,11 +1449,9 @@ export default function App() {
                           )}
                         </div>
                       </div>
-
                       <div className="pt-4 border-t border-white/5">
                         <button onClick={() => setIsRestarting(true)} className="w-full py-4 bg-red-500/10 text-red-500 rounded-2xl text-xs uppercase tracking-widest font-medium hover:bg-red-500/20 transition-all flex items-center justify-center gap-2">
-                          <Power size={14} />
-                          Reiniciar Sistema
+                          <Power size={14} />Reiniciar Sistema
                         </button>
                       </div>
                     </motion.div>
@@ -1660,60 +1469,26 @@ export default function App() {
       {/* PERSONALITY PICKER MODAL */}
       <AnimatePresence>
         {showPersonalityPicker && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setShowPersonalityPicker(false)}
-            className="fixed inset-0 z-[110] bg-black/70 backdrop-blur-sm flex items-end justify-center"
-          >
-            <motion.div
-              initial={{ y: 60, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 60, opacity: 0 }}
-              onClick={e => e.stopPropagation()}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowPersonalityPicker(false)}
+            className="fixed inset-0 z-[110] bg-black/70 backdrop-blur-sm flex items-end justify-center">
+            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} onClick={e => e.stopPropagation()}
               className="w-full max-w-md bg-[#151010] border-t border-white/5 rounded-t-3xl p-6 space-y-3"
-              style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 16px))' }}
-            >
+              style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 16px))' }}>
               <div className="w-10 h-1 bg-white/10 rounded-full mx-auto mb-5" />
-              <p className="text-[10px] uppercase tracking-[0.3em] text-white/30 text-center mb-4">
-                Com quem você quer conversar?
-              </p>
-
+              <p className="text-[10px] uppercase tracking-[0.3em] text-white/30 text-center mb-4">Com quem você quer conversar?</p>
               {(Object.entries(PERSONALITY_CONFIG) as [Personality, typeof PERSONALITY_CONFIG[Personality]][]).map(([key, config]) => (
-                <button
-                  key={key}
-                  onClick={() => handlePersonalityChange(key)}
-                  className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all border"
-                  style={personality === key
-                    ? { backgroundColor: `${config.color}20`, borderColor: `${config.color}50` }
-                    : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)' }
-                  }
-                >
-                  <div
-                    className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
-                    style={{ backgroundColor: `${config.color}20` }}
-                  >
-                    {config.emoji}
-                  </div>
+                <button key={key} onClick={() => handlePersonalityChange(key)} className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all border"
+                  style={personality === key ? { backgroundColor: `${config.color}20`, borderColor: `${config.color}50` } : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)' }}>
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0" style={{ backgroundColor: `${config.color}20` }}>{config.emoji}</div>
                   <div className="text-left flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium" style={{ color: personality === key ? config.color : 'white' }}>
-                        {config.label}
-                      </p>
-                      {personality === key && (
-                        <span className="text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full"
-                          style={{ backgroundColor: `${config.color}20`, color: config.color }}>
-                          Ativo
-                        </span>
-                      )}
+                      <p className="text-sm font-medium" style={{ color: personality === key ? config.color : 'white' }}>{config.label}</p>
+                      {personality === key && <span className="text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full" style={{ backgroundColor: `${config.color}20`, color: config.color }}>Ativo</span>}
                     </div>
                     <p className="text-[11px] text-white/40 mt-0.5">{config.description}</p>
                     <p className="text-[10px] text-white/20 mt-1">Voz: {config.voice}</p>
                   </div>
-                  {personality === key && (
-                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: config.color }} />
-                  )}
+                  {personality === key && <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: config.color }} />}
                 </button>
               ))}
             </motion.div>
