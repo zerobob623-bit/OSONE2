@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { User } from '../firebase';
 
 // ✅ 10 vozes completas do Gemini Live
 export type VoiceName = 
@@ -65,8 +64,6 @@ export interface PersonalityMemory {
 
 interface AppState {
   // User
-  user: User | null;
-  setUser: (user: User | null) => void;
   userId: string | null;
   setUserId: (userId: string | null) => void;
 
@@ -152,8 +149,6 @@ export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
       // User
-      user: null,
-      setUser: (user) => set({ user }),
       userId: null,
       setUserId: (userId) => set({ userId }),
 
