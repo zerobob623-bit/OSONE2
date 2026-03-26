@@ -443,10 +443,11 @@ export const useGeminiLive = ({
 
                 if (name === "send_whatsapp") {
                   asyncPending++;
+                  const waPhone = useAppStore.getState().myWhatsappNumber;
                   fetch('/api/whatsapp/send', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: args.message })
+                    body: JSON.stringify({ message: args.message, phone: waPhone })
                   })
                     .then(r => r.json())
                     .then(data => {

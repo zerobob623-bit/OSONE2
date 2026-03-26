@@ -130,6 +130,10 @@ interface AppState {
   apiKey: string;
   setApiKey: (key: string) => void;
 
+  // WhatsApp
+  myWhatsappNumber: string;
+  setMyWhatsappNumber: (number: string) => void;
+
   // ✅ Memória por personagem
   personalityMemories: Record<PersonalityKey, PersonalityMemory>;
   addPersonalityFact: (personality: PersonalityKey, fact: string) => void;
@@ -233,6 +237,10 @@ export const useAppStore = create<AppState>()(
       apiKey: (typeof process !== 'undefined' && (process.env.GEMINI_API_KEY || process.env.API_KEY)) || (import.meta as any).env?.VITE_GEMINI_API_KEY || '',
       setApiKey: (apiKey) => set({ apiKey }),
 
+      // WhatsApp
+      myWhatsappNumber: '',
+      setMyWhatsappNumber: (myWhatsappNumber) => set({ myWhatsappNumber }),
+
       // ✅ Memória por personagem
       personalityMemories: {
         osone:  defaultPersonalityMemory(),
@@ -299,6 +307,7 @@ export const useAppStore = create<AppState>()(
         focusMode: state.focusMode,
         mood: state.mood,
         personalityMemories: state.personalityMemories, // ✅ persiste memória por personagem
+        myWhatsappNumber: state.myWhatsappNumber,
       }),
     }
   )

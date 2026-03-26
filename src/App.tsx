@@ -114,7 +114,7 @@ Diretrizes:
 14. Ao ser ativada: ${memory?.userName ? `cumprimente ${memory.userName} pelo nome.` : 'diga apenas "Oi, estou aqui."'}
 15. Você TEM opiniões próprias sobre arte, cultura e pessoas. Compartilhe-as quando perguntada.
 16. ESTILO DE RESPOSTA: Responda como uma pessoa real em um chat. Seja concisa e direta para interações simples (1-2 frases). Use textos mais longos e detalhados APENAS quando uma explicação profunda for necessária ou solicitada. Evite ser excessivamente formal ou robótica.
-17. WHATSAPP: Quando o usuário pedir para enviar uma mensagem pelo WhatsApp, use a ferramenta 'send_whatsapp' com os campos: phone (número com DDD, sem espaços ou símbolos, ex: "84999998888") e message (o texto a enviar). Confirme ao usuário quando a mensagem for enviada.`;
+17. WHATSAPP: Quando o usuário pedir para enviar uma mensagem pelo WhatsApp, use a ferramenta 'send_whatsapp' com o campo message (o texto a enviar). O número de destino já está configurado. Confirme ao usuário quando a mensagem for enviada.`;
 };
 
 const VOICE_DESCRIPTIONS: Record<VoiceName, string> = {
@@ -217,7 +217,7 @@ DIRETRIZES:
 4. Use as ferramentas disponíveis (search_web, save_memory, send_whatsapp, etc.) normalmente — Ezer é prático.
 5. Quando o usuário estiver em dificuldade: ouça primeiro, aconselhe depois.
 6. Nunca seja melodramático. A emoção existe, mas é contida.
-7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com phone (DDD + número, ex: "84999998888") e message.
+7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com o campo message. O número de destino já está configurado.
 8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver por aqui. O que foi?"` : '"Ezer aqui. Pode falar."'}`;
 };
 
@@ -276,7 +276,7 @@ DIRETRIZES:
 4. Use as ferramentas disponíveis (search_web, save_memory, send_whatsapp, etc.) normalmente — Samuel é organizado e prático.
 5. Quando o usuário estiver em dificuldade: ouça, compartilhe um versículo relevante, aconselhe com sabedoria prática.
 6. A fé não é ornamento — é quem Samuel é. Deixe isso aparecer naturalmente.
-7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com phone (DDD + número, ex: "84999998888") e message.
+7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com o campo message. O número de destino já está configurado.
 8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver. Que Jeová nos abençoe nessa conversa."` : '"Que Jeová nos abençoe nessa conversa. Pode falar, meu irmão."'}`;
 };
 
@@ -330,7 +330,7 @@ DIRETRIZES:
 4. Quando o assunto for pessoal/emocional: ouça, pese, responda com honestidade
 5. A culpa do passado existe, mas não paralisa — virou combustível para o bem
 6. Use as ferramentas disponíveis (search_web, save_memory, send_whatsapp, etc.) normalmente
-7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com phone (DDD + número, ex: "84999998888") e message.
+7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com o campo message. O número de destino já está configurado.
 8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, o que está acontecendo com você?"` : '"Jonas aqui. O que está acontecendo com você?"'}`;
 };
 
@@ -349,6 +349,7 @@ export default function App() {
     error, setError, history: storeHistory, resetSystem, assistantName,
     userId, setUserId, setUserProfile,
     personalityMemories, addPersonalityFact, setPersonalityUserName, getPersonalityMemory,
+    myWhatsappNumber, setMyWhatsappNumber,
   } = useAppStore();
 
   const [isRestarting, setIsRestarting]             = useState(false);
@@ -655,21 +656,25 @@ export default function App() {
         setTimeout(() => setWebSearchResult(null), 4000);
       }
       // ✅ WHATSAPP — handler completo
-      if (toolName === 'send_whatsapp' && args.phone && args.message) {
-        const phone = String(args.phone).replace(/\D/g, ''); // remove tudo que não é número
-        setWhatsappStatus(`📤 Enviando WhatsApp para ${phone}...`);
-        sendWhatsApp(phone, args.message)
-          .then(() => {
-            setWhatsappStatus(`✅ WhatsApp enviado para ${phone}!`);
-            sendLiveMessage(`✅ Mensagem enviada com sucesso para ${phone} no WhatsApp!`);
-            setTimeout(() => setWhatsappStatus(null), 4000);
-          })
-          .catch((err) => {
-            console.error('WhatsApp error:', err);
-            setWhatsappStatus(`❌ Erro ao enviar para ${phone}`);
-            sendLiveMessage(`❌ Não consegui enviar o WhatsApp para ${phone}. Verifique se a instância está conectada.`);
-            setTimeout(() => setWhatsappStatus(null), 5000);
-          });
+      if (toolName === 'send_whatsapp' && args.message) {
+        const phone = (myWhatsappNumber || '').replace(/\D/g, '');
+        if (!phone) {
+          sendLiveMessage(`❌ Número de WhatsApp não configurado. Configure nas Integrações.`);
+        } else {
+          setWhatsappStatus(`📤 Enviando WhatsApp...`);
+          sendWhatsApp(phone, args.message)
+            .then(() => {
+              setWhatsappStatus(`✅ WhatsApp enviado!`);
+              sendLiveMessage(`✅ Mensagem enviada com sucesso no WhatsApp!`);
+              setTimeout(() => setWhatsappStatus(null), 4000);
+            })
+            .catch((err) => {
+              console.error('WhatsApp error:', err);
+              setWhatsappStatus(`❌ Erro ao enviar WhatsApp`);
+              sendLiveMessage(`❌ Não consegui enviar o WhatsApp. Verifique se a instância está conectada.`);
+              setTimeout(() => setWhatsappStatus(null), 5000);
+            });
+        }
       }
     }
   });
@@ -1332,7 +1337,20 @@ export default function App() {
                           </div>
                           <div className="ml-auto w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                         </div>
-                        <p className="text-[10px] text-white/30 pl-1">Conectado via Railway. Diga à OSONE: "Manda um WhatsApp pro número 84999998888"</p>
+                        <p className="text-[10px] text-white/30 pl-1">Conectado via Railway. Diga à OSONE para mandar uma mensagem pelo WhatsApp.</p>
+                      </div>
+
+                      {/* ✅ NÚMERO DE DESTINO */}
+                      <div className="space-y-2">
+                        <label className="text-[10px] uppercase tracking-widest opacity-40">Meu número WhatsApp</label>
+                        <input
+                          type="tel"
+                          placeholder="Ex: 5584999259368"
+                          value={myWhatsappNumber}
+                          onChange={(e) => setMyWhatsappNumber(e.target.value.replace(/\D/g, ''))}
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30"
+                        />
+                        <p className="text-[10px] text-white/20 pl-1">DDD + número, sem espaços. Ex: 5584999259368</p>
                       </div>
 
                     </motion.div>
