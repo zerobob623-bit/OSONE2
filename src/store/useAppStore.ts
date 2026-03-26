@@ -133,16 +133,6 @@ interface AppState {
   apiKey: string;
   setApiKey: (key: string) => void;
 
-  // IMAP Config
-  imapConfig: {
-    host: string;
-    port: number;
-    user: string;
-    pass: string;
-    secure: boolean;
-  } | null;
-  setImapConfig: (config: any) => void;
-
   // ✅ Memória por personagem
   personalityMemories: Record<PersonalityKey, PersonalityMemory>;
   addPersonalityFact: (personality: PersonalityKey, fact: string) => void;
@@ -248,10 +238,6 @@ export const useAppStore = create<AppState>()(
       apiKey: (typeof process !== 'undefined' && (process.env.GEMINI_API_KEY || process.env.API_KEY)) || (import.meta as any).env?.VITE_GEMINI_API_KEY || '',
       setApiKey: (apiKey) => set({ apiKey }),
 
-      // IMAP Config
-      imapConfig: null,
-      setImapConfig: (imapConfig) => set({ imapConfig }),
-
       // ✅ Memória por personagem
       personalityMemories: {
         osone:  defaultPersonalityMemory(),
@@ -315,7 +301,6 @@ export const useAppStore = create<AppState>()(
         isMascotVisible: state.isMascotVisible,
         mascotAppearance: state.mascotAppearance,
         apiKey: state.apiKey,
-        imapConfig: state.imapConfig,
         focusMode: state.focusMode,
         mood: state.mood,
         personalityMemories: state.personalityMemories, // ✅ persiste memória por personagem

@@ -7,8 +7,6 @@ import axios from "axios";
 import { convert } from "html-to-text";
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
-import { ImapFlow } from 'imapflow';
-import { simpleParser } from 'mailparser';
 
 dotenv.config();
 
@@ -86,51 +84,6 @@ app.post("/api/gmail/search", async (req, res) => {
   }
 });
 
-app.post("/api/email/search", async (req, res) => {
-  const { imapConfig, query } = req.body;
-  if (!imapConfig || !imapConfig.host || !imapConfig.user || !imapConfig.pass) {
-    return res.status(400).json({ error: "IMAP configuration is required" });
-  }
-  const client = new ImapFlow({
-    host: imapConfig.host,
-    port: imapConfig.port || 993,
-    secure: imapConfig.secure !== false,
-    auth: { user: imapConfig.user, pass: imapConfig.pass },
-    logger: false
-  });
-  try {
-    await client.connect();
-    let lock = await client.getMailboxLock('INBOX');
-    try {
-      let searchCriteria: any = query ? { or: [{ subject: query }, { body: query }] } : { all: true };
-      let uids = await client.search(searchCriteria);
-      const results = [];
-      if (Array.isArray(uids) && uids.length > 0) {
-        if (uids.length > 5) uids = uids.slice(-5);
-        for await (let message of client.fetch(uids, { source: true, envelope: true })) {
-          if (message.source) {
-            const parsed = await simpleParser(message.source);
-            results.push({
-              id: message.uid.toString(),
-              subject: parsed.subject,
-              from: parsed.from?.text,
-              date: parsed.date?.toISOString(),
-              snippet: parsed.text ? parsed.text.substring(0, 200) : ''
-            });
-          }
-        }
-      }
-      res.json({ results: results.reverse() });
-    } finally {
-      lock.release();
-    }
-  } catch (error: any) {
-    console.error("Error searching IMAP email:", error.message);
-    res.status(500).json({ error: "Failed to search email" });
-  } finally {
-    client.logout().catch(() => {});
-  }
-});
 
 app.post("/api/read-url", async (req, res) => {
   const { url } = req.body;
