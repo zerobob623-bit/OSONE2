@@ -354,15 +354,18 @@ export default function App() {
     personalityMemories, addPersonalityFact, setPersonalityUserName, getPersonalityMemory,
   } = useAppStore();
 
+  const [authChecked, setAuthChecked]               = useState(false);
+  const [loginLoading, setLoginLoading]             = useState(false);
+  const [isRestarting, setIsRestarting]             = useState(false);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
       setUserId(user ? user.uid : null);
+      setAuthChecked(true);
     });
     return () => unsubscribe();
   }, [setUser, setUserId]);
-
-  const [isRestarting, setIsRestarting]             = useState(false);
   const [activeSettingsTab, setActiveSettingsTab]   = useState<'voice' | 'personality' | 'mascot' | 'integrations' | 'system'>('voice');
   const [currentTime, setCurrentTime]               = useState(new Date());
   const [screen, setScreen]                         = useState<Screen>('main');
@@ -771,6 +774,62 @@ export default function App() {
   };
 
   const statusLabel = isThinking ? 'Pensando...' : isSpeaking ? 'Falando...' : (isConnected && isMuted) ? 'Microfone Silenciado' : isListening ? 'Ouvindo...' : isConnected ? 'Toque para desligar' : 'Toque para ativar';
+
+  // ─── Tela de login (antes do app carregar) ──────────────────────────────────
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#101010] to-[#000000] flex items-center justify-center">
+        <div className="w-5 h-5 rounded-full border-2 border-white/20 border-t-white/80 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#0a0505] to-[#000000] text-white flex flex-col items-center justify-center px-6 select-none">
+        <div className="w-full max-w-xs flex flex-col items-center gap-10">
+          {/* Logo */}
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl"
+              style={{ background: 'linear-gradient(135deg, #ff6b6b22, #ff6b6b44)', border: '1px solid #ff6b6b33' }}>
+              ◎
+            </div>
+            <div className="text-center">
+              <h1 className="text-2xl font-light tracking-[0.3em] uppercase">OSONE</h1>
+              <p className="text-[10px] text-white/30 uppercase tracking-[0.2em] mt-1">Inteligência Empática</p>
+            </div>
+          </div>
+
+          {/* Botão Google */}
+          <button
+            onClick={async () => {
+              setLoginLoading(true);
+              try { await loginWithGoogle(); }
+              catch (e) { console.error('Login error:', e); }
+              finally { setLoginLoading(false); }
+            }}
+            disabled={loginLoading}
+            className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+            {loginLoading ? (
+              <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white/80 animate-spin" />
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+                <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+                <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/>
+                <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 6.293C4.672 4.166 6.656 3.58 9 3.58z" fill="#EA4335"/>
+              </svg>
+            )}
+            {loginLoading ? 'Entrando...' : 'Entrar com Google'}
+          </button>
+
+          <p className="text-[10px] text-white/20 text-center leading-relaxed">
+            Cada conta tem sua própria memória e histórico.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#101010] to-[#000000] text-[#f5f5f5] font-sans overflow-hidden flex flex-col relative select-none">
@@ -1449,6 +1508,29 @@ export default function App() {
                           )}
                         </div>
                       </div>
+                      {/* Conta Google */}
+                      {user && (
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2 opacity-40"><span className="text-[10px] uppercase tracking-widest">Conta</span></div>
+                          <div className="p-4 bg-white/5 rounded-2xl border border-white/5 flex items-center gap-3">
+                            {user.photoURL ? (
+                              <img src={user.photoURL} alt="avatar" className="w-10 h-10 rounded-full object-cover" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-base">
+                                {user.displayName?.[0] ?? user.email?.[0] ?? '?'}
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{user.displayName ?? 'Usuário'}</p>
+                              <p className="text-[10px] text-white/30 truncate">{user.email}</p>
+                            </div>
+                          </div>
+                          <button onClick={() => logout()} className="w-full py-4 bg-white/5 text-white/60 rounded-2xl text-xs uppercase tracking-widest hover:bg-white/10 transition-all">
+                            Sair da conta
+                          </button>
+                        </div>
+                      )}
+
                       <div className="pt-4 border-t border-white/5">
                         <button onClick={() => setIsRestarting(true)} className="w-full py-4 bg-red-500/10 text-red-500 rounded-2xl text-xs uppercase tracking-widest font-medium hover:bg-red-500/20 transition-all flex items-center justify-center gap-2">
                           <Power size={14} />Reiniciar Sistema
