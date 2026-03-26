@@ -11,6 +11,25 @@ import { useUserMemory, ImportantDate, SemanticFact, ConversationSummary } from 
 import { auth, loginWithGoogle, logout, onAuthStateChanged } from './firebase';
 import { getEmbedding, cosineSimilarity } from './utils/embeddings';
 
+// Configuração da Evolution API
+const EVOLUTION_URL = 'https://evolution-api-production-9133.up.railway.app';
+const EVOLUTION_KEY = '5DC26A82784E-4BDB-A4CD-33C86CB2455D';
+const EVOLUTION_INSTANCE = 'OSONE2';
+
+async function sendWhatsApp(phone: string, message: string) {
+  await fetch(`${EVOLUTION_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': EVOLUTION_KEY
+    },
+    body: JSON.stringify({
+      number: `55${phone}@s.whatsapp.net`,
+      text: message
+    })
+  });
+}
+
 type Screen = 'main' | 'history' | 'diary' | 'workspace';
 
 const MOOD_CONFIG: Record<Mood, { color: string; label: string; emoji: string }> = {
