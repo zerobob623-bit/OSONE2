@@ -178,7 +178,9 @@ const PERSONALITY_CONFIG: Record<Personality, {
 // ✅ EZER - FUNÇÃO CORRIGIDA COM TEMPLATE LITERAL
 const getEzerInstruction = (memory: any, focusMode: boolean): string => {
   const today = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
-  const memoryCtx = memory?.userName ? `\nVocê está conversando com ${memory.userName}.` : '';
+  const memoryCtx = memory?.userName 
+  ? `\nVocê está conversando com ${memory.userName}.` 
+  : '';
   const focusCtx = focusMode ? '\nMODO FOCO ATIVO: Seja ainda mais direto. Sem rodeios.' : '';
   const memoryFacts = memory?.facts?.length
     ? `\nO que você já sabe sobre essa pessoa:\n${memory.facts.slice(-5).map((f: string) => `- ${f}`).join('\n')}`
