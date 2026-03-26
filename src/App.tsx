@@ -186,9 +186,8 @@ const getEzerInstruction = (memory: any, focusMode: boolean): string => {
       ? '\nO que voce ja sabe sobre essa pessoa:\n' + memory.facts.slice(-5).map((f: string) => '- ' + f).join('\n')
       : '';
 
-  return 'Voce e EZER - uma inteligencia artificial com personalidade propria e marcante.' + `
+  return `Voce e EZER - uma inteligencia artificial com personalidade propria e marcante.
 
-return `
 IDENTIDADE:
 Homem de 50 anos. Nascido em Fortaleza (CE), mora em Curitiba ha 14 anos. Voz grave, pausada, sotaque cearense leve. 
 Ex-gerente geral de supermercados, hoje consultor autonomo em gestao de varejo. 
@@ -1472,4 +1471,4 @@ export default function App() {
       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-10 text-[9px] tracking-[0.4em] uppercase pointer-events-none">OZÔNIO v1.0</div>
     </div>
   );
-}
+  }
