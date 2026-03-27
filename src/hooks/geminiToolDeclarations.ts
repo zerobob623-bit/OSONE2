@@ -129,15 +129,16 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: "save_memory",
-    description: "Salva informações importantes sobre o usuário.",
+    description: "Salva informações sobre o usuário para memória permanente. Use PROATIVAMENTE sempre que o usuário compartilhar qualquer dado pessoal: nome, profissão, família, hobby, sonho, medo, hábito, opinião, evento importante, conquista, problema. Não espere ser pedida — salve imediatamente. Quanto mais você salvar, melhor poderá servir.",
     parameters: {
       type: Type.OBJECT,
       properties: {
-        userName: { type: Type.STRING },
-        fact: { type: Type.STRING },
-        preference: { type: Type.STRING }
+        userName: { type: Type.STRING, description: "Nome ou apelido do usuário." },
+        fact: { type: Type.STRING, description: "Fato, evento, característica ou informação sobre o usuário." },
+        preference: { type: Type.STRING, description: "Preferência, gosto ou desgosto do usuário (comida, música, estilo, etc.)." },
+        note: { type: Type.STRING, description: "Anotação livre — use para capturar insights, padrões de comportamento, contexto emocional." }
       },
-      required: ["fact"]
+      required: []
     }
   },
   {

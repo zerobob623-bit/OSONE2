@@ -140,7 +140,7 @@ export function OrbLayout({
   messages, transcriptRef,
   inputText, setInputText, onSendText, onMicToggle, onDisconnect,
   fileInputRef, showAttachMenu, setShowAttachMenu, onFileClick, onScreenShare,
-  onOrbClick, currentTime, onOpenSettings, onOpenPersonalityPicker,
+  onOrbClick, currentTime, onOpenSettings, onOpenPersonalityPicker, onOpenMenu,
   showInstallBanner, onDismissInstallBanner, installPrompt, isInstalled, onInstallApp,
 }: MainLayoutProps) {
 
@@ -169,11 +169,18 @@ export function OrbLayout({
 
       {/* MINIMAL TOP BAR */}
       <div className="fixed top-0 left-0 right-0 h-14 px-5 flex items-center justify-between z-50">
-        <button onClick={onOpenPersonalityPicker}
-          className="flex items-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
-          <span className="text-base">{PERSONALITY_CONFIG[personality]?.emoji}</span>
-          <span className="text-[9px] uppercase tracking-[0.25em]" style={{ color: moodColor }}>{PERSONALITY_CONFIG[personality]?.label}</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={onOpenMenu} className="flex flex-col gap-[4px] items-center justify-center opacity-30 hover:opacity-70 transition-opacity">
+            <span className="block h-[2px] w-4 rounded-full bg-white" />
+            <span className="block h-[2px] w-4 rounded-full bg-white" />
+            <span className="block h-[2px] w-4 rounded-full bg-white" />
+          </button>
+          <button onClick={onOpenPersonalityPicker}
+            className="flex items-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
+            <span className="text-base">{PERSONALITY_CONFIG[personality]?.emoji}</span>
+            <span className="text-[9px] uppercase tracking-[0.25em]" style={{ color: moodColor }}>{PERSONALITY_CONFIG[personality]?.label}</span>
+          </button>
+        </div>
         <span className="text-[10px] tracking-widest opacity-20">{currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
         <button onClick={onOpenSettings} className="opacity-30 hover:opacity-70 transition-opacity">
           <Settings size={16} color="white" />
