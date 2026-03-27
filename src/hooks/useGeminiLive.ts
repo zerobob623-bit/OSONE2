@@ -68,6 +68,8 @@ export const useGeminiLive = ({
     setOnboardingStep,
     apiKey: storedApiKey,
     openaiApiKey,
+    groqApiKey,
+    chatProvider,
     chatModel,
   } = useAppStore();
 
@@ -295,13 +297,18 @@ export const useGeminiLive = ({
         if (prompt) { await generateImage(prompt); return; }
       }
       let replyText = '';
-      if (openaiApiKey) {
-        // Chama OpenAI diretamente do browser (sem servidor)
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const activeKey = chatProvider === 'groq' ? groqApiKey : openaiApiKey;
+      if (activeKey) {
+        // Chama API diretamente do browser (sem servidor)
+        const baseUrl = chatProvider === 'groq'
+          ? 'https://api.groq.com/openai/v1/chat/completions'
+          : 'https://api.openai.com/v1/chat/completions';
+        const defaultModel = chatProvider === 'groq' ? 'llama-3.3-70b-versatile' : 'gpt-4.1-mini';
+        const res = await fetch(baseUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${activeKey}` },
           body: JSON.stringify({
-            model: chatModel || 'gpt-4.1-mini',
+            model: chatModel || defaultModel,
             messages: [
               ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
               ...contextHistory,
@@ -313,7 +320,7 @@ export const useGeminiLive = ({
         });
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          throw new Error((errData as any).error?.message || `OpenAI ${res.status}`);
+          throw new Error((errData as any).error?.message || `${chatProvider} ${res.status}`);
         }
         const data: any = await res.json();
         replyText = data.choices?.[0]?.message?.content || '';

@@ -131,6 +131,10 @@ interface AppState {
   setApiKey: (key: string) => void;
   openaiApiKey: string;
   setOpenaiApiKey: (key: string) => void;
+  groqApiKey: string;
+  setGroqApiKey: (key: string) => void;
+  chatProvider: 'openai' | 'groq';
+  setChatProvider: (provider: 'openai' | 'groq') => void;
   chatModel: string;
   setChatModel: (model: string) => void;
 
@@ -250,6 +254,10 @@ export const useAppStore = create<AppState>()(
       setApiKey: (apiKey) => set({ apiKey }),
       openaiApiKey: (import.meta as any).env?.VITE_OPENAI_API_KEY || '',
       setOpenaiApiKey: (openaiApiKey) => set({ openaiApiKey }),
+      groqApiKey: (import.meta as any).env?.VITE_GROQ_API_KEY || '',
+      setGroqApiKey: (groqApiKey) => set({ groqApiKey }),
+      chatProvider: 'openai',
+      setChatProvider: (chatProvider) => set({ chatProvider }),
       chatModel: 'gpt-4.1-mini',
       setChatModel: (chatModel) => set({ chatModel }),
 
@@ -329,6 +337,8 @@ export const useAppStore = create<AppState>()(
         mascotAppearance: state.mascotAppearance,
         apiKey: state.apiKey,
         openaiApiKey: state.openaiApiKey,
+        groqApiKey: state.groqApiKey,
+        chatProvider: state.chatProvider,
         chatModel: state.chatModel,
         focusMode: state.focusMode,
         mood: state.mood,
