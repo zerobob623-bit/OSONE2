@@ -336,37 +336,34 @@ app.post("/api/alexa/control", async (req, res) => {
   }
 });
 
-// ─── TEXT CHAT — Gemini 2.5 Flash ────────────────────────────────────────────
+// ─── TEXT CHAT — OpenAI gpt-4.1-mini ─────────────────────────────────────────
 app.post("/api/chat", async (req, res) => {
   const { messages, systemInstruction } = req.body;
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: "Parâmetro messages inválido." });
   }
-  const GEMINI_KEY = process.env.GEMINI_API_KEY;
-  if (!GEMINI_KEY) {
-    return res.status(500).json({ error: "Gemini API Key não configurada. Adicione GEMINI_API_KEY nas variáveis de ambiente." });
+  const OPENAI_KEY = process.env.VITE_OPENAI_API_KEY;
+  if (!OPENAI_KEY) {
+    return res.status(500).json({ error: "OPENAI_API_KEY não configurada nas variáveis de ambiente." });
   }
   try {
-    const contents = messages.map((m: any) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    }));
-    const body: any = {
-      contents,
-      generationConfig: { maxOutputTokens: 1024, temperature: 0.75 },
-    };
-    if (systemInstruction) {
-      body.systemInstruction = { parts: [{ text: systemInstruction }] };
-    }
     const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key=${GEMINI_KEY}`,
-      body,
-      { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: 'gpt-4.1-mini',
+        messages: [
+          ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+          ...messages,
+        ],
+        max_tokens: 1024,
+        temperature: 0.75,
+      },
+      { headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' }, timeout: 30000 }
     );
-    const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const text = response.data.choices?.[0]?.message?.content || '';
     res.json({ text });
   } catch (error: any) {
-    console.error('[chat] Erro Gemini:', error.response?.data || error.message);
+    console.error('[chat] Erro OpenAI:', error.response?.data || error.message);
     res.status(500).json({ error: error.response?.data?.error?.message || error.message });
   }
 });
