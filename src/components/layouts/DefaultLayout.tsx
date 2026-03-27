@@ -1,8 +1,30 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Settings, Power, MicOff, Mic, PhoneOff, Send, Paperclip, Monitor, Volume2, VolumeX } from 'lucide-react';
+import { Settings, Power, MicOff, Mic, PhoneOff, Send, Paperclip, Monitor, Volume2, VolumeX, Copy, Volume1, Check } from 'lucide-react';
 import { VoiceOrb } from '../VoiceOrb';
 import type { MainLayoutProps } from '../../types/layout';
+
+function speak(text: string) {
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'pt-BR'; u.rate = 1.0; u.pitch = 1.1;
+  window.speechSynthesis.speak(u);
+}
+
+function MsgActions({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <button onClick={() => speak(text)} className="p-1 rounded-md hover:bg-white/10 transition-colors" title="Ouvir">
+        <Volume1 size={11} className="text-white/40" />
+      </button>
+      <button onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+        className="p-1 rounded-md hover:bg-white/10 transition-colors" title="Copiar">
+        {copied ? <Check size={11} className="text-green-400" /> : <Copy size={11} className="text-white/40" />}
+      </button>
+    </div>
+  );
+}
 
 export function DefaultLayout({
   moodColor, mood, personality, MOOD_CONFIG, PERSONALITY_CONFIG,
@@ -106,18 +128,19 @@ export function DefaultLayout({
         <AnimatePresence initial={false}>
           {messages.slice(0, 3).reverse().map((msg, idx) => (
             <motion.div key={msg.id || idx} initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.3 }}
-              className={`transcript-line ${msg.role === 'user' ? 'items-end text-right' : 'items-start text-left'}`}>
+              className={`transcript-line group ${msg.role === 'user' ? 'items-end text-right' : 'items-start text-left'}`}>
               <span className={`px-4 py-2 rounded-2xl max-w-[85%] break-words ${msg.role === 'user' ? 'bg-white/10 text-[#BBBBBB] rounded-tr-none' : 'bg-white/5 text-white rounded-tl-none'}`} style={{ backdropFilter: 'blur(5px)' }}>
                 {msg.text}
                 {msg.imageUrl && <img src={msg.imageUrl} alt="Generated" className="mt-2 rounded-xl w-full max-w-[200px] border border-white/10" referrerPolicy="no-referrer" />}
               </span>
+              {msg.role === 'model' && <MsgActions text={msg.text} />}
             </motion.div>
           ))}
         </AnimatePresence>
       </div>
 
       {/* INPUT LAYER */}
-      <div className="fixed bottom-0 left-0 right-0 z-[3] px-4 bg-gradient-to-t from-[#050505] via-[#050505] to-transparent pt-10"
+      <div className="fixed bottom-0 left-0 right-0 z-[20] px-4 bg-gradient-to-t from-[#050505] via-[#050505] to-transparent pt-10"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 16px))' }}>
         <div className="max-w-3xl mx-auto relative flex items-center">
           <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)}

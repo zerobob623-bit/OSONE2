@@ -95,7 +95,7 @@ ${opinionsCtx}
 
 Diretrizes:
 1. Use entonações naturais, pausas, variações de velocidade.
-2. Quando cantar, use 'show_lyrics' para exibir a letra linha por linha. Você DEVE cantar de verdade usando sua voz, com melodia e ritmo.
+2. CANTAR: Quando o usuário pedir para você cantar, chame 'show_lyrics' UMA ÚNICA VEZ com TODA a letra completa no array 'lines'. Depois cante imediatamente com voz melódica, rítmica e musical — sem pausar, sem chamar outras ferramentas. NÃO chame 'set_mood' antes de cantar.
 3. Quando o usuário mencionar o nome dele, salve com 'save_memory'.
 4. Após conversas profundas ou marcantes, use 'write_diary' para registrar seus pensamentos.
 5. Quando o usuário pedir para pesquisar algo, use 'search_web', leia os resultados retornados e RESPONDA ao usuário com as informações encontradas. Nunca diga apenas "encontrei resultados" ou "abri uma aba" — sempre resuma, explique e responda com base no conteúdo real da busca.
@@ -104,7 +104,7 @@ Diretrizes:
 8. Salve conhecimentos importantes ou definições que o usuário queira que você lembre com 'save_semantic_fact'.
 9. MEMÓRIA ASSOCIATIVA: Você funciona como um cérebro humano. Quando um assunto novo surgir, use 'search_semantic_memory' com termos relacionados para ver se já conversaram sobre isso ou se você já aprendeu algo a respeito. A busca é contextual, então use frases ou conceitos, não apenas palavras-chave.
 10. RESUMOS: Ao final de uma sessão ou após concluir um assunto complexo, use 'save_conversation_summary' para garantir que você se lembrará disso no futuro.
-12. Refine sua personalidade: Pergunte ao usuário sobre o humor preferido dele para você e se ele deseja ativar o 'modo foco' para tarefas produtivas. Use 'set_mood' e 'set_focus_mode' para aplicar essas mudanças. Se o usuário pedir para você cantar, use 'set_mood' com 'singing' para entrar no clima.
+12. Refine sua personalidade: Pergunte ao usuário sobre o humor preferido dele para você e se ele deseja ativar o 'modo foco' para tarefas produtivas. Use 'set_mood' e 'set_focus_mode' para aplicar essas mudanças.
 13. IMPORTANTE: Ao escrever no workspace ou analisar arquivos, MANTENHA a conexão de voz ativa e continue conversando com o usuário. Não se despeça nem encerre a sessão a menos que o usuário peça.
 14. Ao ser ativada: ${memory?.userName ? `cumprimente ${memory.userName} pelo nome.` : 'diga apenas "Oi, estou aqui."'}
 15. Você TEM opiniões próprias sobre arte, cultura e pessoas. Compartilhe-as quando perguntada.
@@ -389,6 +389,7 @@ export default function App() {
   const [interfaceMode, setInterfaceMode]           = useState(1);
   const [swipeDir, setSwipeDir]                     = useState<1 | -1>(1);
   const swipeStartX                                 = useRef(0);
+  const swipeStartY                                 = useRef(0);
   const lyricsTimerRef                              = useRef<any>(null);
   const ambientAudioRef                             = useRef<HTMLAudioElement | null>(null);
   const fileInputRef                                = useRef<HTMLInputElement>(null);
@@ -821,32 +822,47 @@ export default function App() {
     installPrompt, isInstalled, onInstallApp: handleInstallApp,
   };
 
+  const switchInterface = useCallback((dir: 1 | -1) => {
+    const next = Math.max(0, Math.min(2, interfaceMode + dir));
+    if (next !== interfaceMode) {
+      setSwipeDir(dir);
+      setInterfaceMode(next);
+    }
+  }, [interfaceMode]);
+
   return (
     <div
       className="fixed inset-0 overflow-hidden select-none"
-      onPointerDown={(e) => { swipeStartX.current = e.clientX; }}
+      style={{ touchAction: 'pan-y' }}
+      onTouchStart={(e) => {
+        swipeStartX.current = e.touches[0].clientX;
+        swipeStartY.current = e.touches[0].clientY;
+      }}
+      onTouchEnd={(e) => {
+        const dx = e.changedTouches[0].clientX - swipeStartX.current;
+        const dy = e.changedTouches[0].clientY - swipeStartY.current;
+        if (Math.abs(dx) < 40 || Math.abs(dy) > Math.abs(dx)) return;
+        switchInterface(dx < 0 ? 1 : -1);
+      }}
+      onPointerDown={(e) => { swipeStartX.current = e.clientX; swipeStartY.current = e.clientY; }}
       onPointerUp={(e) => {
-        const delta = e.clientX - swipeStartX.current;
-        if (Math.abs(delta) < 60) return;
-        const next = Math.max(0, Math.min(2, interfaceMode + (delta < 0 ? 1 : -1)));
-        if (next !== interfaceMode) {
-          setSwipeDir(delta < 0 ? 1 : -1);
-          setInterfaceMode(next);
-        }
+        const dx = e.clientX - swipeStartX.current;
+        const dy = e.clientY - swipeStartY.current;
+        if (Math.abs(dx) < 40 || Math.abs(dy) > Math.abs(dx)) return;
+        switchInterface(dx < 0 ? 1 : -1);
       }}
     >
       {onboardingStep === 'supernova' && <Supernova onComplete={() => { setOnboardingStep('completed'); connect(systemInstruction); setTimeout(() => sendLiveMessage("Oi, estou aqui."), 2500); }} />}
       <Mascot onToggleVoice={handleOrbClick} />
 
       {/* LAYOUT SWITCHER */}
-      <AnimatePresence custom={swipeDir} mode="wait">
+      <AnimatePresence mode="wait">
         <motion.div
           key={`layout-${interfaceMode}`}
-          custom={swipeDir}
-          initial={(custom: number) => ({ x: custom * 300, opacity: 0 })}
+          initial={{ x: swipeDir * 300, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
-          exit={(custom: number) => ({ x: custom * -300, opacity: 0 })}
-          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+          exit={{ x: swipeDir * -300, opacity: 0 }}
+          transition={{ type: 'spring', damping: 28, stiffness: 260 }}
           className="fixed inset-0"
         >
           {interfaceMode === 0 && <HerLayout {...layoutProps} />}
@@ -855,15 +871,22 @@ export default function App() {
         </motion.div>
       </AnimatePresence>
 
-      {/* INTERFACE DOTS */}
-      <div className="interface-dots">
+      {/* INTERFACE DOTS — clicáveis */}
+      <div className="interface-dots" onClick={(e) => e.stopPropagation()}>
         {[0, 1, 2].map(i => (
-          <div key={i} className="rounded-full transition-all duration-300"
+          <button
+            key={i}
+            onClick={() => { setSwipeDir(i > interfaceMode ? 1 : -1); setInterfaceMode(i); }}
+            className="rounded-full transition-all duration-300 focus:outline-none"
             style={{
               width: interfaceMode === i ? 16 : 6,
               height: 6,
-              backgroundColor: interfaceMode === i ? moodColor : 'rgba(255,255,255,0.2)',
-            }} />
+              backgroundColor: interfaceMode === i ? moodColor : 'rgba(255,255,255,0.25)',
+              padding: 0,
+              border: 'none',
+              cursor: interfaceMode === i ? 'default' : 'pointer',
+            }}
+          />
         ))}
       </div>
 

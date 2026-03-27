@@ -97,7 +97,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: "show_lyrics",
-    description: "Mostra a letra de uma música na tela linha por linha.",
+    description: "Exibe a letra de uma música na tela enquanto você canta. IMPORTANTE: chame esta ferramenta UMA ÚNICA VEZ antes de começar a cantar. Passe TODAS as linhas de uma só vez no array. Depois de chamar, INICIE a performance vocal imediatamente e cante toda a música sem pausas ou novas chamadas de ferramenta.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -279,7 +279,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
 
 // Tools tratadas externamente (via onToolCall callback)
 export const DELEGATED_TOOLS = new Set([
-  'show_lyrics', 'set_mood', 'set_focus_mode', 'save_memory',
+  'set_mood', 'set_focus_mode', 'save_memory',
   'add_important_date', 'write_diary', 'update_workspace', 'clear_workspace',
   'save_semantic_fact', 'search_semantic_memory', 'search_gmail',
   'save_conversation_summary', 'save_profile_info'
