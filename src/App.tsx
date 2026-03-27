@@ -371,13 +371,19 @@ export default function App() {
     mascotAppearance, setMascotAppearance,
     focusMode, setFocusMode,
     isConnected, isSpeaking, isListening, isThinking, volume,
-    error, setError, history: storeHistory, resetSystem, assistantName,
+    error, setError, history: storeHistory, resetSystem,
     userId, setUserId, setUserProfile,
     personalityMemories, addPersonalityFact, setPersonalityUserName, getPersonalityMemory,
     myWhatsappNumber, setMyWhatsappNumber,
     tuyaClientId, setTuyaClientId,
     tuyaSecret, setTuyaSecret,
     tuyaRegion, setTuyaRegion,
+    apiKey, setApiKey,
+    openaiApiKey, setOpenaiApiKey,
+    groqApiKey, setGroqApiKey,
+    chatProvider, setChatProvider,
+    chatModel, setChatModel,
+    assistantName, setAssistantName,
   } = useAppStore();
 
   const [isRestarting, setIsRestarting]             = useState(false);
@@ -391,7 +397,7 @@ export default function App() {
     }
     setUserId(deviceId);
   }, [setUserId]);
-  const [activeSettingsTab, setActiveSettingsTab]   = useState<'voice' | 'personality' | 'mascot' | 'integrations' | 'system'>('voice');
+  const [activeSettingsTab, setActiveSettingsTab]   = useState<'voice' | 'personality' | 'mascot' | 'integrations' | 'apis' | 'system'>('voice');
   const [currentTime, setCurrentTime]               = useState(new Date());
   const [screen, setScreen]                         = useState<Screen>('main');
   const [lyrics, setLyrics]                         = useState<string[]>([]);
@@ -1204,11 +1210,11 @@ export default function App() {
                 <button onClick={() => setIsSettingsOpen(false)} className="p-2 hover:bg-white/5 rounded-full"><X size={18} /></button>
               </div>
               <div className="flex border-b border-white/5 overflow-x-auto">
-                {(['voice', 'personality', 'mascot', 'integrations', 'system'] as const).map(tab => (
+                {(['voice', 'personality', 'mascot', 'integrations', 'apis', 'system'] as const).map(tab => (
                   <button key={tab} onClick={() => setActiveSettingsTab(tab)}
                     className="flex-1 py-3 text-[10px] uppercase tracking-widest transition-all border-b-2 whitespace-nowrap px-2"
                     style={activeSettingsTab === tab ? { borderColor: moodColor, color: 'white' } : { borderColor: 'transparent', color: 'rgba(255,255,255,0.3)' }}>
-                    {tab === 'voice' ? 'Voz' : tab === 'personality' ? 'Humor' : tab === 'mascot' ? 'Mascote' : tab === 'integrations' ? 'Integrações' : 'Sistema'}
+                    {tab === 'voice' ? 'Voz' : tab === 'personality' ? 'Humor' : tab === 'mascot' ? 'Mascote' : tab === 'integrations' ? 'Integrações' : tab === 'apis' ? 'APIs' : 'Sistema'}
                   </button>
                 ))}
               </div>
@@ -1425,8 +1431,120 @@ export default function App() {
 
                     </motion.div>
                   )}
+                  {activeSettingsTab === 'apis' && (
+                    <motion.div key="apis" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+                      <p className="text-[10px] text-white/30 leading-relaxed">Configure suas chaves de API. Elas ficam salvas só no seu dispositivo e são usadas diretamente pelo app — sem passar por servidor.</p>
+
+                      {/* Gemini (Voz) */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ backgroundColor: `${moodColor}20` }}>🎙️</div>
+                          <div>
+                            <p className="text-xs font-medium">Gemini API Key</p>
+                            <p className="text-[10px] text-white/30">Usado para voz (Gemini Live)</p>
+                          </div>
+                          <div className={`ml-auto w-2 h-2 rounded-full ${apiKey ? 'bg-green-500' : 'bg-zinc-600'}`} />
+                        </div>
+                        <input
+                          type="password"
+                          placeholder="AIza..."
+                          value={apiKey}
+                          onChange={e => setApiKey(e.target.value)}
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
+                        />
+                        <p className="text-[10px] text-white/20 pl-1">Obtenha em: aistudio.google.com</p>
+                      </div>
+
+                      {/* Provedor de texto */}
+                      <div className="space-y-3">
+                        <label className="text-[10px] uppercase tracking-widest text-white/40">Provedor de texto</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {(['openai', 'groq'] as const).map(p => (
+                            <button key={p} onClick={() => {
+                              setChatProvider(p);
+                              setChatModel(p === 'groq' ? 'llama-3.3-70b-versatile' : 'gpt-4.1-mini');
+                            }}
+                              className="p-3 rounded-xl text-sm font-medium transition-all border"
+                              style={chatProvider === p
+                                ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}50`, color: 'white' }
+                                : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
+                              {p === 'openai' ? 'OpenAI' : 'Groq'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* OpenAI API Key */}
+                      {chatProvider === 'openai' && (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ backgroundColor: `${moodColor}20` }}>💬</div>
+                            <div>
+                              <p className="text-xs font-medium">OpenAI API Key</p>
+                              <p className="text-[10px] text-white/30">platform.openai.com</p>
+                            </div>
+                            <div className={`ml-auto w-2 h-2 rounded-full ${openaiApiKey ? 'bg-green-500' : 'bg-zinc-600'}`} />
+                          </div>
+                          <input type="password" placeholder="sk-..." value={openaiApiKey}
+                            onChange={e => setOpenaiApiKey(e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono" />
+                        </div>
+                      )}
+
+                      {/* Groq API Key */}
+                      {chatProvider === 'groq' && (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ backgroundColor: `${moodColor}20` }}>⚡</div>
+                            <div>
+                              <p className="text-xs font-medium">Groq API Key</p>
+                              <p className="text-[10px] text-white/30">console.groq.com</p>
+                            </div>
+                            <div className={`ml-auto w-2 h-2 rounded-full ${groqApiKey ? 'bg-green-500' : 'bg-zinc-600'}`} />
+                          </div>
+                          <input type="password" placeholder="gsk_..." value={groqApiKey}
+                            onChange={e => setGroqApiKey(e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono" />
+                        </div>
+                      )}
+
+                      {/* Modelo de texto */}
+                      <div className="space-y-3">
+                        <label className="text-[10px] uppercase tracking-widest text-white/40">Modelo</label>
+                        <div className="grid grid-cols-1 gap-2">
+                          {(chatProvider === 'groq'
+                            ? ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it']
+                            : ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini']
+                          ).map(m => (
+                            <button key={m} onClick={() => setChatModel(m)}
+                              className="w-full p-3 rounded-xl text-left text-sm transition-all border"
+                              style={chatModel === m
+                                ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' }
+                                : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
                   {activeSettingsTab === 'system' && (
                     <motion.div key="system" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+
+                      {/* Nome do assistente */}
+                      <div className="space-y-3">
+                        <label className="text-[10px] uppercase tracking-widest text-white/40">Nome do assistente</label>
+                        <input
+                          type="text"
+                          placeholder="OSONE"
+                          value={assistantName}
+                          onChange={e => setAssistantName(e.target.value || 'OSONE')}
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30"
+                        />
+                        <p className="text-[10px] text-white/20 pl-1">Muda o nome na personalidade, nas falas e em todo o app.</p>
+                      </div>
+
                       <div className="space-y-4">
                         <div className="flex items-center gap-2 opacity-40"><Cpu size={14} /><span className="text-[10px] uppercase tracking-widest">Informações do Sistema</span></div>
                         <div className="grid grid-cols-2 gap-3">

@@ -66,7 +66,11 @@ export const useGeminiLive = ({
     setMascotTarget,
     setMascotAction,
     setOnboardingStep,
-    apiKey: storedApiKey
+    apiKey: storedApiKey,
+    openaiApiKey,
+    groqApiKey,
+    chatProvider,
+    chatModel,
   } = useAppStore();
 
   const sessionRef = useRef<any>(null);
@@ -292,16 +296,48 @@ export const useGeminiLive = ({
         const prompt = text.substring(lower.indexOf(matchedKw) + matchedKw.length).trim();
         if (prompt) { await generateImage(prompt); return; }
       }
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [...contextHistory, { role: 'user', content: text }], systemInstruction })
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Server error: ${res.status}`);
+      let replyText = '';
+      const activeKey = chatProvider === 'groq' ? groqApiKey : openaiApiKey;
+      if (activeKey) {
+        // Chama API diretamente do browser (sem servidor)
+        const baseUrl = chatProvider === 'groq'
+          ? 'https://api.groq.com/openai/v1/chat/completions'
+          : 'https://api.openai.com/v1/chat/completions';
+        const defaultModel = chatProvider === 'groq' ? 'llama-3.3-70b-versatile' : 'gpt-4.1-mini';
+        const res = await fetch(baseUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${activeKey}` },
+          body: JSON.stringify({
+            model: chatModel || defaultModel,
+            messages: [
+              ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+              ...contextHistory,
+              { role: 'user', content: text },
+            ],
+            max_tokens: 1024,
+            temperature: 0.75,
+          }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error((errData as any).error?.message || `${chatProvider} ${res.status}`);
+        }
+        const data: any = await res.json();
+        replyText = data.choices?.[0]?.message?.content || '';
+      } else {
+        // Fallback: usa rota do servidor
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: [...contextHistory, { role: 'user', content: text }], systemInstruction }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error((errData as any).error || `Server error: ${res.status}`);
+        }
+        const data = await res.json();
+        replyText = data.text || '';
       }
-      const { text: replyText } = await res.json();
       if (replyText) {
         addMessage({ role: 'model', text: replyText });
         onMessageRef.current?.({ role: 'model', text: replyText });
