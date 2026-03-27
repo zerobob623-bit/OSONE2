@@ -203,24 +203,20 @@ export const useGeminiLive = ({
   }, [stopSilenceTimer]);
 
   // ============================================================
-  // 🌐 BUSCA WEB
+  // 🌐 BUSCA WEB — direto do browser via Jina.ai (sem servidor)
   // ============================================================
 
   const performWebSearch = useCallback(async (query: string, numResults = 5): Promise<string> => {
     try {
-      const res = await fetch('/api/web-search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, num_results: numResults })
+      const res = await fetch(`https://s.jina.ai/${encodeURIComponent(query)}`, {
+        headers: { 'Accept': 'text/plain', 'X-Retain-Images': 'none' }
       });
-      if (!res.ok) throw new Error(`web-search API retornou ${res.status}`);
-      const data = await res.json();
-      if (data.raw) return `🔍 Resultados para "${query}":\n\n${data.raw}`;
-      if (data.results?.length) {
-        const formatted = data.results
-          .map((r: any, i: number) => `[${i + 1}] ${r.title}\n${r.description}${r.url ? `\nURL: ${r.url}` : ''}`)
-          .join('\n\n');
-        return `🔍 Resultados para "${query}":\n\n${formatted}`;
+      if (!res.ok) throw new Error(`Jina ${res.status}`);
+      const text = await res.text();
+      if (text && text.trim().length > 100) {
+        const blocks = text.split(/\n---+\n/).slice(0, numResults);
+        const raw = blocks.join('\n---\n').substring(0, 6000);
+        return `🔍 Resultados para "${query}":\n\n${raw}`;
       }
       return `⚠️ Não encontrei resultados para "${query}".`;
     } catch (err: any) {
@@ -231,14 +227,11 @@ export const useGeminiLive = ({
   const readUrlContent = useCallback(async (rawUrl: string): Promise<string> => {
     const url = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
     try {
-      const res = await fetch('/api/web-search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, action: 'read' })
+      const res = await fetch(`https://r.jina.ai/${url}`, {
+        headers: { 'Accept': 'text/plain', 'X-Retain-Images': 'none' }
       });
-      if (!res.ok) throw new Error(`web-search API retornou ${res.status}`);
-      const data = await res.json();
-      const text = data.content || '';
+      if (!res.ok) throw new Error(`Jina ${res.status}`);
+      const text = await res.text();
       const trimmed = text.length > 5000 ? text.substring(0, 5000) + '\n\n⚠️ Conteúdo truncado.' : text;
       return `📄 Conteúdo de ${url}:\n\n${trimmed}`;
     } catch {
