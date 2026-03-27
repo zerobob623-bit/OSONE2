@@ -75,6 +75,8 @@ export const useGeminiLive = ({
 
   const sessionRef = useRef<any>(null);
   const isConnectedRef = useRef(false);
+  const isSpeakingRef  = useRef(false);   // espelha isSpeaking — para lógica de tela
+  const isThinkingRef  = useRef(false);   // espelha isThinking — para lógica de tela
   const audioContextRef = useRef<AudioContext | null>(null);
   const inputAudioContextRef = useRef<AudioContext | null>(null);
   const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
@@ -92,7 +94,9 @@ export const useGeminiLive = ({
   const lastScreenChangeMsgRef = useRef<number>(0); // timestamp do último SISTEMA de troca de tela
   const screenFrameCountRef = useRef<number>(0);    // contador para keepalive de frame
 
-  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+  useEffect(() => { isMutedRef.current   = isMuted;    }, [isMuted]);
+  useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
+  useEffect(() => { isThinkingRef.current = isThinking; }, [isThinking]);
 
   const onToggleScreenSharingRef = useRef(onToggleScreenSharing);
   const onChangeVoiceRef = useRef(onChangeVoice);
@@ -204,40 +208,53 @@ export const useGeminiLive = ({
 
   // ============================================================
   // 🌐 BUSCA WEB — direto do browser via Jina.ai (sem servidor)
+  // Sem headers customizados (evita preflight CORS que falha no browser)
   // ============================================================
 
-  const performWebSearch = useCallback(async (query: string, numResults = 5): Promise<string> => {
+  const jinaFetch = useCallback(async (url: string, timeoutMs = 15_000): Promise<string> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(`https://s.jina.ai/${encodeURIComponent(query)}`, {
-        headers: { 'Accept': 'text/plain', 'X-Retain-Images': 'none' }
-      });
-      if (!res.ok) throw new Error(`Jina ${res.status}`);
-      const text = await res.text();
+      // Sem headers extras — evita preflight OPTIONS que bloqueia CORS no browser
+      const res = await fetch(url, { signal: controller.signal, mode: 'cors' });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.text();
+    } catch (err: any) {
+      clearTimeout(timer);
+      if (err.name === 'AbortError') throw new Error('timeout');
+      throw err;
+    }
+  }, []);
+
+  const performWebSearch = useCallback(async (query: string, numResults = 5): Promise<string> => {
+    const encodedQuery = encodeURIComponent(query);
+    // Tenta endpoint de busca Jina (GET simples, CORS nativo)
+    try {
+      const text = await jinaFetch(`https://s.jina.ai/${encodedQuery}`);
       if (text && text.trim().length > 100) {
         const blocks = text.split(/\n---+\n/).slice(0, numResults);
         const raw = blocks.join('\n---\n').substring(0, 6000);
         return `🔍 Resultados para "${query}":\n\n${raw}`;
       }
-      return `⚠️ Não encontrei resultados para "${query}".`;
+      return `⚠️ Nenhum resultado encontrado para "${query}".`;
     } catch (err: any) {
-      return `❌ Não foi possível realizar a busca por "${query}". Erro: ${err.message}`;
+      console.warn('[search] Jina falhou:', err.message);
+      return `❌ Busca indisponível para "${query}". Erro: ${err.message}`;
     }
-  }, []);
+  }, [jinaFetch]);
 
   const readUrlContent = useCallback(async (rawUrl: string): Promise<string> => {
     const url = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
     try {
-      const res = await fetch(`https://r.jina.ai/${url}`, {
-        headers: { 'Accept': 'text/plain', 'X-Retain-Images': 'none' }
-      });
-      if (!res.ok) throw new Error(`Jina ${res.status}`);
-      const text = await res.text();
+      const text = await jinaFetch(`https://r.jina.ai/${encodeURIComponent(url)}`);
       const trimmed = text.length > 5000 ? text.substring(0, 5000) + '\n\n⚠️ Conteúdo truncado.' : text;
       return `📄 Conteúdo de ${url}:\n\n${trimmed}`;
-    } catch {
-      return `❌ Não foi possível ler "${url}".`;
+    } catch (err: any) {
+      console.warn('[read_url] Jina falhou:', err.message);
+      return `❌ Não foi possível ler "${url}". Erro: ${err.message}`;
     }
-  }, []);
+  }, [jinaFetch]);
 
   // ============================================================
   // 🎨 GERAÇÃO DE IMAGEM
@@ -656,7 +673,7 @@ export const useGeminiLive = ({
     voice, storedApiKey, stopAudio, playNextChunk, toBase64,
     setError, setIsConnected, setIsListening, setVolume,
     addMessage, setMascotAction, setMascotTarget, setOnboardingStep,
-    performWebSearch, readUrlContent, generateImage,
+    jinaFetch, performWebSearch, readUrlContent, generateImage,
     resetSilenceTimer, stopSilenceTimer
   ]);
 
@@ -684,11 +701,13 @@ export const useGeminiLive = ({
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d')!;
 
-      // Avisa a IA que o compartilhamento começou
+      // Avisa a IA que o compartilhamento começou — sem pedir resposta imediata
       if (sessionRef.current && isConnectedRef.current) {
         sessionRef.current.then((session: any) => {
           if (!isConnectedRef.current) return;
-          try { session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela iniciado. Você pode ver a tela do usuário. Analise o que está sendo exibido e comente proativamente: descreva o que vê, sugira ações, alerte sobre erros, e quando o usuário trocar de app/tela analise o novo contexto automaticamente.]' }); }
+          try {
+            session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela iniciado. A partir de agora você recebe frames da tela do usuário como contexto visual silencioso. NÃO comente cada frame automaticamente — use as imagens para enriquecer suas respostas quando o usuário perguntar ou quando detectar algo crítico (erro grave, aviso urgente). Nunca interrompa uma explicação em andamento para descrever a tela.]' });
+          }
           catch (e) { /* WebSocket fechado — ignora */ }
         }).catch(() => {});
       }
@@ -700,17 +719,19 @@ export const useGeminiLive = ({
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0);
 
-        // ✅ Detecta troca de tela ANTES de enviar frame
         const currentHash = computeCurrentHash(canvas, ctx);
-        const screenChanged = currentHash && lastScreenHashRef.current &&
-          computeHashSimilarity(lastScreenHashRef.current, currentHash) < 0.6;
+        const similarity = currentHash && lastScreenHashRef.current
+          ? computeHashSimilarity(lastScreenHashRef.current, currentHash)
+          : 1;
+        const screenChanged = similarity < 0.6;
 
         screenFrameCountRef.current++;
-        const isKeepalive = screenFrameCountRef.current % 5 === 0; // envia a cada 5 ciclos (~10s) mesmo sem mudança
+        // Keepalive: envia frame a cada 10 ciclos (~20s) para a IA não "esquecer" a tela
+        const isKeepalive = screenFrameCountRef.current % 10 === 0;
 
-        // Só envia frame se a tela mudou ou é keepalive
+        // Envia o frame visualmente (sem texto) — contexto silencioso para a IA
         if ((screenChanged || isKeepalive) && isConnectedRef.current) {
-          const base64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+          const base64 = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
           sessionRef.current.then((session: any) => {
             if (!isConnectedRef.current) return;
             try { session.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } }); }
@@ -718,15 +739,20 @@ export const useGeminiLive = ({
           }).catch(() => {});
         }
 
-        // Mensagem SISTEMA de troca de tela com debounce de 5s
+        // Notificação de texto de troca de tela:
+        // — debounce 8s mínimo
+        // — SOMENTE se a IA não está falando nem pensando (evita interromper raciocínio)
         if (screenChanged) {
           const now = Date.now();
-          if (now - lastScreenChangeMsgRef.current > 5_000) {
+          const aiIdle = !isSpeakingRef.current && !isThinkingRef.current && activeSourcesRef.current.length === 0;
+          if (aiIdle && now - lastScreenChangeMsgRef.current > 8_000) {
             lastScreenChangeMsgRef.current = now;
-            console.log('[tela] Troca detectada — solicitando análise automática');
+            console.log('[tela] Troca detectada (IA ociosa) — enviando contexto de tela');
             sessionRef.current?.then((session: any) => {
               if (!isConnectedRef.current) return;
-              try { session.sendRealtimeInput({ text: '[SISTEMA: O usuário acabou de trocar de tela ou abrir outro aplicativo. Analise o novo contexto que está sendo exibido e comente o que você vê. Se houver algo relevante, útil ou que mereça atenção, diga proativamente.]' }); }
+              try {
+                session.sendRealtimeInput({ text: '[SISTEMA: O usuário trocou de tela. Use o frame recebido como contexto. Só comente se o usuário perguntar ou se houver algo crítico visível.]' });
+              }
               catch (e) { /* WebSocket fechado — ignora */ }
             }).catch(() => {});
           }
