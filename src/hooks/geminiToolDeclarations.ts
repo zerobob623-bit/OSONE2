@@ -242,6 +242,29 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     }
   },
   {
+    name: "control_device",
+    description: "Controla dispositivos inteligentes da casa (lâmpadas, tomadas, switches). Use para ligar, desligar ou ajustar brilho. Também pode listar os dispositivos disponíveis.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        device_name: {
+          type: Type.STRING,
+          description: 'Nome do dispositivo ou cômodo. Ex: "sala", "quarto", "ventilador", "lâmpada da cozinha". Deixe vazio para action=list.',
+        },
+        action: {
+          type: Type.STRING,
+          enum: ['on', 'off', 'brightness', 'color_temp', 'list'],
+          description: 'on=ligar, off=desligar, brightness=ajustar brilho (0-100), color_temp=temperatura de cor (0-1000), list=listar dispositivos',
+        },
+        value: {
+          type: Type.NUMBER,
+          description: 'Valor para brightness (0-100) ou color_temp (0-1000). Não necessário para on/off/list.',
+        },
+      },
+      required: ['action'],
+    },
+  },
+  {
     name: "send_whatsapp",
     description: "Envia uma mensagem de WhatsApp para o número do próprio usuário. Use após pesquisar na web para enviar resultados ou resumos ao usuário.",
     parameters: {

@@ -134,6 +134,14 @@ interface AppState {
   myWhatsappNumber: string;
   setMyWhatsappNumber: (number: string) => void;
 
+  // Tuya Smart Home
+  tuyaClientId: string;
+  setTuyaClientId: (id: string) => void;
+  tuyaSecret: string;
+  setTuyaSecret: (secret: string) => void;
+  tuyaRegion: string;
+  setTuyaRegion: (region: string) => void;
+
   // ✅ Memória por personagem
   personalityMemories: Record<PersonalityKey, PersonalityMemory>;
   addPersonalityFact: (personality: PersonalityKey, fact: string) => void;
@@ -241,6 +249,14 @@ export const useAppStore = create<AppState>()(
       myWhatsappNumber: '',
       setMyWhatsappNumber: (myWhatsappNumber) => set({ myWhatsappNumber }),
 
+      // Tuya Smart Home
+      tuyaClientId: '',
+      setTuyaClientId: (tuyaClientId) => set({ tuyaClientId }),
+      tuyaSecret: '',
+      setTuyaSecret: (tuyaSecret) => set({ tuyaSecret }),
+      tuyaRegion: 'us',
+      setTuyaRegion: (tuyaRegion) => set({ tuyaRegion }),
+
       // ✅ Memória por personagem
       personalityMemories: {
         osone:  defaultPersonalityMemory(),
@@ -308,6 +324,9 @@ export const useAppStore = create<AppState>()(
         mood: state.mood,
         personalityMemories: state.personalityMemories, // ✅ persiste memória por personagem
         myWhatsappNumber: state.myWhatsappNumber,
+        tuyaClientId: state.tuyaClientId,
+        tuyaSecret: state.tuyaSecret,
+        tuyaRegion: state.tuyaRegion,
       }),
     }
   )

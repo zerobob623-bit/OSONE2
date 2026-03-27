@@ -441,6 +441,38 @@ export const useGeminiLive = ({
                   continue;
                 }
 
+                if (name === "control_device") {
+                  asyncPending++;
+                  const { tuyaClientId, tuyaSecret, tuyaRegion } = useAppStore.getState();
+                  fetch('/api/tuya/control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      device_name: args.device_name,
+                      action: args.action,
+                      value: args.value,
+                      clientId: tuyaClientId,
+                      secret: tuyaSecret,
+                      region: tuyaRegion || 'us',
+                    })
+                  })
+                    .then(r => r.json())
+                    .then(data => {
+                      onToolCallRef.current?.(name, { ...args, result: data });
+                      if (data.success) {
+                        const msg = args.action === 'list'
+                          ? `Dispositivos: ${data.devices}`
+                          : `${data.device}: ${args.action === 'on' ? 'ligado' : args.action === 'off' ? 'desligado' : args.action}`;
+                        safeSend({ name, id, response: { success: true, result: msg } });
+                      } else {
+                        safeSend({ name, id, response: { success: false, error: data.error } });
+                      }
+                    })
+                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
+                    .finally(finishAsync);
+                  continue;
+                }
+
                 if (name === "send_whatsapp") {
                   asyncPending++;
                   const waPhone = useAppStore.getState().myWhatsappNumber;
