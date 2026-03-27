@@ -307,8 +307,8 @@ export const useGeminiLive = ({
         onMessageRef.current?.({ role: 'model', text: replyText });
       }
     } catch (err: any) {
-      const msg = err.message?.includes("OpenAI API Key")
-        ? "OpenAI API Key não configurada. Adicione OPENAI_API_KEY nas variáveis de ambiente do servidor."
+      const msg = err.message?.includes("Gemini API Key") || err.message?.includes("GEMINI_API_KEY")
+        ? "Gemini API Key não configurada. Adicione GEMINI_API_KEY nas variáveis de ambiente do servidor."
         : `Erro ao processar: ${err.message || 'Erro desconhecido'}`;
       addMessage({ role: 'model', text: msg });
       onMessageRef.current?.({ role: 'model', text: msg });

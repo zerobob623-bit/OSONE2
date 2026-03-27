@@ -1,7 +1,7 @@
-// pages/api/chat.ts
+// pages/api/chat.ts — Gemini 2.5 Flash (fallback serverless route)
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -14,39 +14,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'Parâmetro messages inválido.' });
   }
 
-  if (!OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'OpenAI API Key not found' });
+  if (!GEMINI_API_KEY) {
+    return res.status(500).json({ error: 'Gemini API Key não configurada. Adicione GEMINI_API_KEY nas variáveis de ambiente.' });
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
-          ...messages,
-        ],
-        max_tokens: 1024,
-        temperature: 0.7,
-      }),
-    });
+    const contents = messages.map((m: any) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }));
+
+    const body: any = {
+      contents,
+      generationConfig: { maxOutputTokens: 1024, temperature: 0.75 },
+    };
+    if (systemInstruction) {
+      body.systemInstruction = { parts: [{ text: systemInstruction }] };
+    }
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }
+    );
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      throw new Error(err.error?.message || `OpenAI HTTP ${response.status}`);
+      throw new Error(err.error?.message || `Gemini HTTP ${response.status}`);
     }
 
     const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || '';
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
     return res.status(200).json({ text });
   } catch (error: any) {
-    console.error('[chat] Erro:', error);
+    console.error('[chat] Erro Gemini:', error);
     return res.status(500).json({ error: error.message || 'Erro desconhecido.' });
   }
 }
