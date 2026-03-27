@@ -154,6 +154,7 @@ body {
   display: flex;
   gap: 8px;
   align-items: center;
-  z-index: 20;
-  pointer-events: none;
+  z-index: 40;
+  pointer-events: auto;
+  cursor: pointer;
 }

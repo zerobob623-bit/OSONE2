@@ -389,6 +389,7 @@ export default function App() {
   const [interfaceMode, setInterfaceMode]           = useState(1);
   const [swipeDir, setSwipeDir]                     = useState<1 | -1>(1);
   const swipeStartX                                 = useRef(0);
+  const swipeStartY                                 = useRef(0);
   const lyricsTimerRef                              = useRef<any>(null);
   const ambientAudioRef                             = useRef<HTMLAudioElement | null>(null);
   const fileInputRef                                = useRef<HTMLInputElement>(null);
@@ -821,32 +822,47 @@ export default function App() {
     installPrompt, isInstalled, onInstallApp: handleInstallApp,
   };
 
+  const switchInterface = useCallback((dir: 1 | -1) => {
+    const next = Math.max(0, Math.min(2, interfaceMode + dir));
+    if (next !== interfaceMode) {
+      setSwipeDir(dir);
+      setInterfaceMode(next);
+    }
+  }, [interfaceMode]);
+
   return (
     <div
       className="fixed inset-0 overflow-hidden select-none"
-      onPointerDown={(e) => { swipeStartX.current = e.clientX; }}
+      style={{ touchAction: 'pan-y' }}
+      onTouchStart={(e) => {
+        swipeStartX.current = e.touches[0].clientX;
+        swipeStartY.current = e.touches[0].clientY;
+      }}
+      onTouchEnd={(e) => {
+        const dx = e.changedTouches[0].clientX - swipeStartX.current;
+        const dy = e.changedTouches[0].clientY - swipeStartY.current;
+        if (Math.abs(dx) < 40 || Math.abs(dy) > Math.abs(dx)) return;
+        switchInterface(dx < 0 ? 1 : -1);
+      }}
+      onPointerDown={(e) => { swipeStartX.current = e.clientX; swipeStartY.current = e.clientY; }}
       onPointerUp={(e) => {
-        const delta = e.clientX - swipeStartX.current;
-        if (Math.abs(delta) < 60) return;
-        const next = Math.max(0, Math.min(2, interfaceMode + (delta < 0 ? 1 : -1)));
-        if (next !== interfaceMode) {
-          setSwipeDir(delta < 0 ? 1 : -1);
-          setInterfaceMode(next);
-        }
+        const dx = e.clientX - swipeStartX.current;
+        const dy = e.clientY - swipeStartY.current;
+        if (Math.abs(dx) < 40 || Math.abs(dy) > Math.abs(dx)) return;
+        switchInterface(dx < 0 ? 1 : -1);
       }}
     >
       {onboardingStep === 'supernova' && <Supernova onComplete={() => { setOnboardingStep('completed'); connect(systemInstruction); setTimeout(() => sendLiveMessage("Oi, estou aqui."), 2500); }} />}
       <Mascot onToggleVoice={handleOrbClick} />
 
       {/* LAYOUT SWITCHER */}
-      <AnimatePresence custom={swipeDir} mode="wait">
+      <AnimatePresence mode="wait">
         <motion.div
           key={`layout-${interfaceMode}`}
-          custom={swipeDir}
-          initial={(custom: number) => ({ x: custom * 300, opacity: 0 })}
+          initial={{ x: swipeDir * 300, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
-          exit={(custom: number) => ({ x: custom * -300, opacity: 0 })}
-          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+          exit={{ x: swipeDir * -300, opacity: 0 }}
+          transition={{ type: 'spring', damping: 28, stiffness: 260 }}
           className="fixed inset-0"
         >
           {interfaceMode === 0 && <HerLayout {...layoutProps} />}
@@ -855,15 +871,22 @@ export default function App() {
         </motion.div>
       </AnimatePresence>
 
-      {/* INTERFACE DOTS */}
-      <div className="interface-dots">
+      {/* INTERFACE DOTS — clicáveis */}
+      <div className="interface-dots" onClick={(e) => e.stopPropagation()}>
         {[0, 1, 2].map(i => (
-          <div key={i} className="rounded-full transition-all duration-300"
+          <button
+            key={i}
+            onClick={() => { setSwipeDir(i > interfaceMode ? 1 : -1); setInterfaceMode(i); }}
+            className="rounded-full transition-all duration-300 focus:outline-none"
             style={{
               width: interfaceMode === i ? 16 : 6,
               height: 6,
-              backgroundColor: interfaceMode === i ? moodColor : 'rgba(255,255,255,0.2)',
-            }} />
+              backgroundColor: interfaceMode === i ? moodColor : 'rgba(255,255,255,0.25)',
+              padding: 0,
+              border: 'none',
+              cursor: interfaceMode === i ? 'default' : 'pointer',
+            }}
+          />
         ))}
       </div>
 
