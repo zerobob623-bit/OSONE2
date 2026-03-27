@@ -184,7 +184,7 @@ export function HerLayout({
 
       {/* INPUT — minimal, warm serif */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-[3]"
+        className="fixed bottom-0 left-0 right-0 z-[20]"
         style={{ padding: '0 24px', paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 16px))' }}
       >
         <div className="max-w-lg mx-auto relative flex items-center gap-3">
