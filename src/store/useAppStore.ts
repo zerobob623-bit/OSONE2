@@ -129,6 +129,10 @@ interface AppState {
   // API Key
   apiKey: string;
   setApiKey: (key: string) => void;
+  openaiApiKey: string;
+  setOpenaiApiKey: (key: string) => void;
+  chatModel: string;
+  setChatModel: (model: string) => void;
 
   // WhatsApp
   myWhatsappNumber: string;
@@ -244,6 +248,10 @@ export const useAppStore = create<AppState>()(
       // API Key
       apiKey: (typeof process !== 'undefined' && (process.env.GEMINI_API_KEY || process.env.API_KEY)) || (import.meta as any).env?.VITE_GEMINI_API_KEY || '',
       setApiKey: (apiKey) => set({ apiKey }),
+      openaiApiKey: (import.meta as any).env?.VITE_OPENAI_API_KEY || '',
+      setOpenaiApiKey: (openaiApiKey) => set({ openaiApiKey }),
+      chatModel: 'gpt-4.1-mini',
+      setChatModel: (chatModel) => set({ chatModel }),
 
       // WhatsApp
       myWhatsappNumber: '',
@@ -320,6 +328,8 @@ export const useAppStore = create<AppState>()(
         isMascotVisible: state.isMascotVisible,
         mascotAppearance: state.mascotAppearance,
         apiKey: state.apiKey,
+        openaiApiKey: state.openaiApiKey,
+        chatModel: state.chatModel,
         focusMode: state.focusMode,
         mood: state.mood,
         personalityMemories: state.personalityMemories, // ✅ persiste memória por personagem
