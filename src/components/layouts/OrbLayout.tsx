@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MicOff, Mic, PhoneOff, Send, Settings, Paperclip, Monitor, Volume1, Copy, Check } from 'lucide-react';
 import type { MainLayoutProps } from '../../types/layout';
@@ -34,6 +34,135 @@ const PARTICLES = Array.from({ length: 8 }, (_, i) => ({
   delay: i * 0.5,
 }));
 
+// ─── Distorção de onda circular invisível (heat-shimmer) ─────────────────────
+function DistortionWave({ moodColor, isConnected, isSpeaking, isListening, volume }: {
+  moodColor: string; isConnected: boolean; isSpeaking: boolean; isListening: boolean; volume: number;
+}) {
+  const turbRef = useRef<SVGFETurbulenceElement | null>(null);
+  const dispRef = useRef<SVGFEDisplacementMapElement | null>(null);
+
+  // Refs para evitar recriação do loop RAF a cada mudança de prop
+  const volumeRef  = useRef(volume);
+  const speakRef   = useRef(isSpeaking);
+  const listenRef  = useRef(isListening);
+  const connRef    = useRef(isConnected);
+
+  useEffect(() => { volumeRef.current  = volume;      }, [volume]);
+  useEffect(() => { speakRef.current   = isSpeaking;  }, [isSpeaking]);
+  useEffect(() => { listenRef.current  = isListening; }, [isListening]);
+  useEffect(() => { connRef.current    = isConnected; }, [isConnected]);
+
+  // Loop de animação da turbulência — sem re-renders React
+  useEffect(() => {
+    let t = 0;
+    let raf: number;
+    const loop = () => {
+      t += 0.005;
+      if (turbRef.current) {
+        const bfx = (0.010 + Math.sin(t) * 0.004).toFixed(4);
+        const bfy = (0.013 + Math.cos(t * 0.75) * 0.004).toFixed(4);
+        turbRef.current.setAttribute('baseFrequency', `${bfx} ${bfy}`);
+        turbRef.current.setAttribute('seed', String(Math.floor(t * 7) % 100));
+      }
+      if (dispRef.current) {
+        const v    = volumeRef.current;
+        const conn = connRef.current;
+        const speak = speakRef.current;
+        const listen = listenRef.current;
+        const scale = conn
+          ? speak  ? (10 + v * 18).toFixed(1)
+          : listen ? '6.0'
+          :          '3.0'
+          : '0.5';
+        dispRef.current.setAttribute('scale', scale);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const ringCount = [0, 1, 2, 3];
+
+  return (
+    <>
+      {/* Definição do filtro SVG (oculto, sem tamanho) */}
+      <svg
+        style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}
+        aria-hidden="true"
+      >
+        <defs>
+          <filter
+            id="orb-heat-distort"
+            x="-60%"
+            y="-60%"
+            width="220%"
+            height="220%"
+            colorInterpolationFilters="sRGB"
+          >
+            <feTurbulence
+              ref={turbRef}
+              type="turbulence"
+              baseFrequency="0.010 0.013"
+              numOctaves="3"
+              seed="1"
+              result="noise"
+            />
+            <feDisplacementMap
+              ref={dispRef}
+              in="SourceGraphic"
+              in2="noise"
+              scale="3"
+              xChannelSelector="R"
+              yChannelSelector="G"
+            />
+          </filter>
+        </defs>
+      </svg>
+
+      {/* Camada de distorção — sobreposição quase invisível ao redor do orb */}
+      <motion.div
+        className="absolute pointer-events-none rounded-full"
+        animate={{ opacity: isConnected ? 1 : 0 }}
+        transition={{ duration: 0.8 }}
+        style={{
+          width: 320, height: 320,
+          top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          // Gradiente radial extremamente sutil — é ele que "carrega" o deslocamento
+          background: `radial-gradient(circle at 50% 50%, ${moodColor}05 0%, ${moodColor}02 50%, transparent 72%)`,
+          filter: isConnected ? 'url(#orb-heat-distort)' : 'none',
+        }}
+      />
+
+      {/* Anéis de onda expansiva (ripple) */}
+      {ringCount.map(i => (
+        <motion.div
+          key={i}
+          className="absolute rounded-full pointer-events-none"
+          animate={isConnected ? {
+            scale: [1, 2.4],
+            opacity: [isSpeaking ? 0.14 : 0.06, 0],
+          } : { scale: 1, opacity: 0 }}
+          transition={{
+            duration: isSpeaking ? 2.4 : 3.6,
+            repeat: Infinity,
+            delay: i * (isSpeaking ? 0.6 : 0.9),
+            ease: [0.2, 0, 0.6, 1],
+          }}
+          style={{
+            width: 240, height: 240,
+            top: '50%', left: '50%',
+            x: '-50%', y: '-50%',
+            border: `1px solid ${moodColor}`,
+            borderRadius: '50%',
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
 function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isThinking, volume }: {
   moodColor: string; isConnected: boolean; isSpeaking: boolean;
   isListening: boolean; isThinking: boolean; volume: number;
@@ -59,7 +188,17 @@ function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isThinking
   };
 
   return (
-    <div className="relative flex items-center justify-center" style={{ width: 280, height: 280 }}>
+    <div className="relative flex items-center justify-center" style={{ width: 320, height: 320 }}>
+
+      {/* Distorção de calor + anéis expansivos */}
+      <DistortionWave
+        moodColor={moodColor}
+        isConnected={isConnected}
+        isSpeaking={isSpeaking}
+        isListening={isListening}
+        volume={volume}
+      />
+
       {/* Outer glow ring */}
       <motion.div
         className="absolute rounded-full"
