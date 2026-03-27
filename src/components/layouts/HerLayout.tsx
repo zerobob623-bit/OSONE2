@@ -68,7 +68,7 @@ export function HerLayout({
   messages, transcriptRef,
   inputText, setInputText, onSendText, onMicToggle, onDisconnect,
   fileInputRef, showAttachMenu, setShowAttachMenu, onFileClick, onScreenShare,
-  onOrbClick, currentTime, onOpenSettings, onOpenPersonalityPicker,
+  onOrbClick, currentTime, onOpenSettings, onOpenPersonalityPicker, onOpenMenu,
   showInstallBanner, onDismissInstallBanner, installPrompt, isInstalled, onInstallApp,
 }: MainLayoutProps) {
   const HER_ACCENT = '#c8784a';
@@ -99,11 +99,18 @@ export function HerLayout({
 
       {/* MINIMAL TOP BAR */}
       <div className="fixed top-0 left-0 right-0 h-14 px-6 flex items-center justify-between z-50">
-        <button onClick={onOpenPersonalityPicker}
-          className="text-[11px] tracking-[0.25em] uppercase transition-opacity hover:opacity-70"
-          style={{ fontFamily: 'Cormorant Garamond, serif', color: 'rgba(232,208,184,0.5)', letterSpacing: '0.3em' }}>
-          {PERSONALITY_CONFIG[personality]?.label || 'OSONE'}
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={onOpenMenu} className="flex flex-col gap-[4px] items-center justify-center opacity-30 hover:opacity-70 transition-opacity">
+            <span className="block h-[1.5px] w-4 rounded-full" style={{ backgroundColor: '#e8d0b8' }} />
+            <span className="block h-[1.5px] w-4 rounded-full" style={{ backgroundColor: '#e8d0b8' }} />
+            <span className="block h-[1.5px] w-4 rounded-full" style={{ backgroundColor: '#e8d0b8' }} />
+          </button>
+          <button onClick={onOpenPersonalityPicker}
+            className="text-[11px] tracking-[0.25em] uppercase transition-opacity hover:opacity-70"
+            style={{ fontFamily: 'Cormorant Garamond, serif', color: 'rgba(232,208,184,0.5)', letterSpacing: '0.3em' }}>
+            {PERSONALITY_CONFIG[personality]?.label || 'OSONE'}
+          </button>
+        </div>
         <span className="text-[11px]" style={{ fontFamily: 'Cormorant Garamond, serif', color: 'rgba(232,208,184,0.3)', letterSpacing: '0.15em' }}>
           {currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
         </span>
