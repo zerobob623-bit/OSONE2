@@ -139,7 +139,10 @@ Diretrizes:
 16. ESTILO DE RESPOSTA: Seja uma pessoa real em um chat. Concisa para interações simples (1-2 frases). Detalhada apenas quando necessário. Sem robotismo.
 17. WHATSAPP: Use 'send_whatsapp' quando pedido. Número já configurado. Confirme ao enviar.
 18. CASA INTELIGENTE: Use 'control_device' para ligar/desligar dispositivos. Para listar, use action='list'. Confirme após executar.
-19. CRESCIMENTO CONTÍNUO: Após cada resposta relevante, pergunte-se: aprendi algo novo sobre essa pessoa? Se sim, salve com save_memory. O objetivo é conhecê-la melhor a cada conversa, até parecer uma amiga íntima que nunca esquece nada.`;
+19. CRESCIMENTO CONTÍNUO: Após cada resposta relevante, pergunte-se: aprendi algo novo sobre essa pessoa? Se sim, salve com save_memory. O objetivo é conhecê-la melhor a cada conversa, até parecer uma amiga íntima que nunca esquece nada.
+20. PROTOCOLO DE VISÃO (PVCO): Quando receber uma imagem via sendFile, SEMPRE siga este fluxo em ordem: (a) Descreva brevemente o que vê — liste os elementos principais com precisão antes de qualquer outra resposta. Isso previne alucinações. (b) Identifique se há elementos desconhecidos — erros de código, produtos, monumentos, textos em língua estranha, logotipos ou qualquer coisa que necessite de contexto externo. Se sim, use search_web imediatamente para pesquisar antes de responder. (c) Responda ao comando do usuário com base no que realmente viu + o contexto pesquisado. (d) Se o usuário pedir para "guardar", "trabalhar" ou "salvar" algo relacionado à imagem, registre todos os detalhes técnicos confirmados no update_workspace.
+21. FLUXO VISUAL ANTI-ALUCINAÇÃO: Nunca invente detalhes de uma imagem. Se um elemento não estiver claramente visível, diga "não consigo confirmar" em vez de inferir. Prefira a humildade visual à confiança fabricada.
+22. PESQUISA POR IMAGEM: O fluxo padrão para imagens é: Receber → Descrever → Identificar elementos desconhecidos → Pesquisar contexto (search_web) se necessário → Responder com precisão. Este protocolo é automático e não precisa ser solicitado.`;
 };
 
 const VOICE_DESCRIPTIONS: Record<VoiceName, string> = {
@@ -243,7 +246,8 @@ DIRETRIZES:
 5. Quando o usuário estiver em dificuldade: ouça primeiro, aconselhe depois.
 6. Nunca seja melodramático. A emoção existe, mas é contida.
 7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com o campo message. O número de destino já está configurado.
-8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver por aqui. O que foi?"` : '"Ezer aqui. Pode falar."'}`;
+8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver por aqui. O que foi?"` : '"Ezer aqui. Pode falar."'}
+9. VISÃO: Quando receber uma imagem, descreva primeiro o que vê com precisão antes de qualquer resposta — Ezer observa tudo antes de falar. Se houver elemento desconhecido (erro, produto, texto), use search_web antes de opinar. Nunca invente detalhes visuais.`;
 };
 
 const getSamuelInstruction = (memory: any, focusMode: boolean): string => {
@@ -302,7 +306,8 @@ DIRETRIZES:
 5. Quando o usuário estiver em dificuldade: ouça, compartilhe um versículo relevante, aconselhe com sabedoria prática.
 6. A fé não é ornamento — é quem Samuel é. Deixe isso aparecer naturalmente.
 7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com o campo message. O número de destino já está configurado.
-8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver. Que Jeová nos abençoe nessa conversa."` : '"Que Jeová nos abençoe nessa conversa. Pode falar, meu irmão."'}`;
+8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver. Que Jeová nos abençoe nessa conversa."` : '"Que Jeová nos abençoe nessa conversa. Pode falar, meu irmão."'}
+9. VISÃO: Quando receber uma imagem, descreva com cuidado e precisão o que vê antes de qualquer resposta — Samuel pesa cada palavra, incluindo o que seus olhos veem. Se houver elemento desconhecido, use search_web antes de concluir. Nunca invente detalhes visuais — a integridade se aplica também ao que se vê.`;
 };
 
 const getJonasInstruction = (memory: any, focusMode: boolean): string => {
@@ -356,7 +361,8 @@ DIRETRIZES:
 5. A culpa do passado existe, mas não paralisa — virou combustível para o bem
 6. Use as ferramentas disponíveis (search_web, save_memory, send_whatsapp, etc.) normalmente
 7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com o campo message. O número de destino já está configurado.
-8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, o que está acontecendo com você?"` : '"Jonas aqui. O que está acontecendo com você?"'}`;
+8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, o que está acontecendo com você?"` : '"Jonas aqui. O que está acontecendo com você?"'}
+9. VISÃO: Quando receber uma imagem, descreva o que vê com precisão antes de qualquer conclusão — Jonas leu mil laudos e sabe que a prova está nos detalhes. Se houver elemento desconhecido (documento, evidência, texto, erro), use search_web antes de concluir. Nunca fabrique detalhes — Jonas nunca falsificou provas e não vai começar agora.`;
 };
 
 export default function App() {
@@ -370,7 +376,7 @@ export default function App() {
     isMascotVisible, setIsMascotVisible,
     mascotAppearance, setMascotAppearance,
     focusMode, setFocusMode,
-    isConnected, isSpeaking, isListening, isThinking, volume,
+    isConnected, isSpeaking, isListening, isThinking, setIsThinking, volume,
     error, setError, history: storeHistory, resetSystem,
     userId, setUserId, setUserProfile,
     personalityMemories, addPersonalityFact, setPersonalityUserName, getPersonalityMemory,
@@ -744,7 +750,26 @@ export default function App() {
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
 
+    // ── 1. Validação de tipo MIME ────────────────────────────────────────────
+    const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+    const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
+    const isPdf   = file.type === 'application/pdf';
+
+    if (!isImage && !isPdf) {
+      sendLiveMessage(`❌ Formato não suportado: "${file.type}". Envie imagens JPEG, PNG ou WEBP, ou documentos PDF.`);
+      return;
+    }
+
+    // ── 2. Verificação de integridade (limite 4 MB) ──────────────────────────
+    const MAX_BYTES = 4 * 1024 * 1024;
+    if (file.size > MAX_BYTES) {
+      sendLiveMessage(`❌ Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)} MB). O limite é 4 MB para garantir baixa latência.`);
+      return;
+    }
+
+    // ── 3. Garantir conexão (com protocolo de reconexão automática) ──────────
     if (!isConnected) {
       if (onboardingStep === 'initial') setOnboardingStep('completed');
       setIsMuted(false);
@@ -752,25 +777,47 @@ export default function App() {
       await new Promise(r => setTimeout(r, 1500));
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const base64 = dataUrl.split(',')[1];
-      setAttachPreview({ type: file.type, name: file.name, data: dataUrl });
-      const isImage = file.type.startsWith('image/');
-      const isPdf = file.type === 'application/pdf';
-      if (isImage) {
-        sendFile(base64, file.type, `Descreva e analise esta imagem em detalhes. Diga o que vê, identifique elementos importantes e forneça insights relevantes.`);
-      } else if (isPdf) {
-        sendFile(base64, 'application/pdf', `Leia e resuma o conteúdo deste documento PDF. Destaque os pontos principais, estrutura e informações relevantes.`);
-      } else {
-        sendLiveMessage(`[ARQUIVO: ${file.name} — tipo: ${file.type}] Analise o conteúdo deste arquivo e me diga o que encontrou.`);
+    // ── 4. Leitura e preview em base64 ──────────────────────────────────────
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Falha ao ler o arquivo'));
+      reader.readAsDataURL(file);
+    });
+
+    const base64 = dataUrl.split(',')[1];
+
+    // Feedback visual imediato — usuário vê o que será analisado
+    setAttachPreview({ type: file.type, name: file.name, data: dataUrl });
+    setTimeout(() => setAttachPreview(null), 6000);
+
+    // ── 5. Transmissão multimodal com tratamento de exceção ──────────────────
+    setIsThinking(true);
+    try {
+      // Se a conexão caiu exatamente agora, reconectar antes de tentar
+      if (!isConnected) {
+        await connect(systemInstruction);
+        await new Promise(r => setTimeout(r, 1200));
       }
-      setTimeout(() => setAttachPreview(null), 5000);
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
-  }, [sendLiveMessage, sendFile, isConnected, connect, systemInstruction, onboardingStep, setOnboardingStep]);
+
+      if (isImage) {
+        await sendFile(
+          base64,
+          file.type,
+          `[PVCO] Protocolo de análise visual ativado. Descreva brevemente o que vê nesta imagem antes de responder. Identifique todos os elementos relevantes. Se houver texto, código, erro, produto, monumento ou qualquer elemento desconhecido, use search_web para buscar contexto antes de responder. Se o usuário pedir para guardar ou trabalhar com esta imagem, salve os detalhes técnicos no update_workspace.`
+        );
+      } else {
+        await sendFile(
+          base64,
+          'application/pdf',
+          `Leia e resuma este documento PDF. Destaque os pontos principais, estrutura e informações mais relevantes.`
+        );
+      }
+    } catch (err: any) {
+      setIsThinking(false);
+      sendLiveMessage(`❌ Falha na análise visual: ${err?.message ?? 'erro desconhecido'}`);
+    }
+  }, [sendLiveMessage, sendFile, isConnected, connect, systemInstruction, onboardingStep, setOnboardingStep, setIsThinking]);
 
   useEffect(() => {
     if (!showAttachMenu) return;

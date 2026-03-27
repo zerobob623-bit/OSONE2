@@ -768,14 +768,15 @@ export const useGeminiLive = ({
     }
   }, [setIsThinking, resetSilenceTimer]);
 
-  const sendFile = useCallback((base64Data: string, mimeType: string, prompt: string) => {
-    if (sessionRef.current && isConnectedRef.current) {
-      setIsThinking(true);
-      sessionRef.current.then(async (s: any) => {
-        await s.sendRealtimeInput({ video: { mimeType, data: base64Data } });
-        setTimeout(() => s.sendRealtimeInput({ text: prompt }), 300);
-      }).catch(console.error);
+  const sendFile = useCallback(async (base64Data: string, mimeType: string, prompt: string): Promise<void> => {
+    if (!sessionRef.current || !isConnectedRef.current) {
+      throw new Error('Sessão não está ativa');
     }
+    setIsThinking(true);
+    const s = await sessionRef.current;
+    await s.sendRealtimeInput({ video: { mimeType, data: base64Data } });
+    await new Promise(r => setTimeout(r, 300));
+    await s.sendRealtimeInput({ text: prompt });
   }, [setIsThinking]);
 
   const disconnect = useCallback((isReconnecting = false) => {
