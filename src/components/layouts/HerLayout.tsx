@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mic, MicOff, Send, Settings, ChevronUp, ChevronDown, Volume1, Copy, Check, PhoneOff } from 'lucide-react';
 import type { MainLayoutProps } from '../../types/layout';
@@ -16,27 +16,47 @@ const HER = {
   dimPeach:   'rgba(212,137,92,0.25)',
 };
 
-// ─── Lemniscata ∞ que respira com a voz ──────────────────────────────────────
-function InfinityOrb({
+// ─── 5 formas morfáveis (M + 4C cada — estrutura idêntica para interpolação) ──
+// Todas começam aproximadamente no ponto mais à direita e percorrem sentido horário.
+const SHAPES = [
+  // Círculo (radius ~45, centro 100,55)
+  "M 145,55 C 145,30 122,10 100,10 C 78,10 55,30 55,55 C 55,80 78,100 100,100 C 122,100 145,80 145,55",
+  // Quadrado arredondado (80×80, centro 100,55)
+  "M 140,55 C 140,90 130,95 100,95 C 70,95 60,90 60,55 C 60,20 70,15 100,15 C 130,15 140,20 140,55",
+  // Coração (ponto de início = pico direito do lóbulo)
+  "M 158,42 C 168,62 140,86 100,100 C 60,86 32,62 42,42 C 48,22 78,15 100,36 C 122,15 152,22 158,42",
+  // Estrela de 4 pontas (ponto direito externo)
+  "M 148,55 C 120,75 120,75 100,103 C 80,75 80,75 52,55 C 80,35 80,35 100,7 C 120,35 120,35 148,55",
+  // Infinito / Ouroboros (ponto mais à direita = 170,55)
+  "M 170,55 C 170,86 100,86 100,55 C 100,24 30,24 30,55 C 30,86 100,86 100,55 C 100,24 170,24 170,55",
+];
+
+// ─── Símbolo que muda de forma ────────────────────────────────────────────────
+function MorphingSymbol({
   isConnected, isSpeaking, isListening, isThinking, volume,
 }: {
   isConnected: boolean; isSpeaking: boolean; isListening: boolean;
   isThinking: boolean; volume: number;
 }) {
+  const [shapeIdx, setShapeIdx] = useState(4); // começa no infinito
   const v      = Math.min(1, volume * 6);
   const active = isConnected && (isSpeaking || isListening);
   const think  = isConnected && isThinking && !active;
 
-  // Velocidade e intensidade de pulsação
+  // Ciclo automático — mais rápido quando falando/ouvindo
+  useEffect(() => {
+    const interval = isSpeaking ? 1800 : isListening ? 2600 : 4200;
+    const timer = setInterval(() => {
+      setShapeIdx(i => (i + 1) % SHAPES.length);
+    }, interval);
+    return () => clearInterval(timer);
+  }, [isSpeaking, isListening]);
+
   const dur = active ? Math.max(0.28, 0.7 - v * 0.45) : think ? 1.2 : 3.5;
   const sw  = isConnected ? 1.5 + v * 3 : 0.8;
 
-  // Caminho da lemniscata (∞) centralizado em 100,55
-  const PATH = `M 100,55
-    C 100,24 170,24 170,55
-    C 170,86 100,86 100,55
-    C 100,24 30,24 30,55
-    C 30,86 100,86 100,55`;
+  // Transição de morph suave com easing cinematográfico
+  const morphTransition = { duration: 1.6, ease: [0.4, 0, 0.2, 1] as any };
 
   return (
     <motion.div
@@ -56,18 +76,18 @@ function InfinityOrb({
         }}
         transition={{ duration: dur, repeat: Infinity, ease: 'easeInOut' }}
         style={{
-          width: 280, height: 140,
+          width: 280, height: 160,
           background: `radial-gradient(ellipse at center, ${HER.peach} 0%, transparent 68%)`,
-          filter: 'blur(28px)',
+          filter: 'blur(32px)',
           top: '50%', left: '50%',
           transform: 'translate(-50%,-50%)',
         }}
       />
 
-      <svg width="220" height="120" viewBox="0 0 200 110">
+      <svg width="240" height="130" viewBox="0 0 200 110">
         <defs>
-          <filter id="her-glow" x="-40%" y="-60%" width="180%" height="220%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
+          <filter id="her-glow" x="-50%" y="-70%" width="200%" height="240%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="2.8" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="blur" />
@@ -76,25 +96,47 @@ function InfinityOrb({
           </filter>
         </defs>
 
-        {/* Sombra suave (profundidade) */}
-        <path d={PATH} fill="none" strokeLinecap="round"
-          stroke={`rgba(196,114,74,0.08)`} strokeWidth={14}
-          filter="url(#her-glow)" />
-
-        {/* Traço secundário (eco) */}
-        <motion.path d={PATH} fill="none" strokeLinecap="round"
-          stroke={isConnected ? `rgba(212,137,92,0.3)` : 'transparent'}
-          animate={{ strokeWidth: isConnected ? [sw + 3, sw + 6, sw + 3] : 0 }}
-          transition={{ duration: dur, repeat: Infinity, ease: 'easeInOut' }}
+        {/* Sombra de profundidade */}
+        <motion.path
+          fill="none"
+          strokeLinecap="round"
+          stroke="rgba(196,114,74,0.06)"
+          strokeWidth={14}
           filter="url(#her-glow)"
+          animate={{ d: SHAPES[shapeIdx] }}
+          transition={morphTransition}
+        />
+
+        {/* Traço eco (aura) */}
+        <motion.path
+          fill="none"
+          strokeLinecap="round"
+          stroke={isConnected ? 'rgba(212,137,92,0.28)' : 'transparent'}
+          filter="url(#her-glow)"
+          animate={{
+            d: SHAPES[shapeIdx],
+            strokeWidth: isConnected ? [sw + 3, sw + 6, sw + 3] : 0,
+          }}
+          transition={{
+            d: morphTransition,
+            strokeWidth: { duration: dur, repeat: Infinity, ease: 'easeInOut' },
+          }}
         />
 
         {/* Traço principal */}
-        <motion.path d={PATH} fill="none" strokeLinecap="round"
-          stroke={isConnected ? HER.peach : `rgba(196,162,130,0.18)`}
+        <motion.path
+          fill="none"
+          strokeLinecap="round"
+          stroke={isConnected ? HER.peach : 'rgba(196,162,130,0.18)'}
           filter={isConnected ? 'url(#her-glow)' : 'none'}
-          animate={{ strokeWidth: isConnected ? [sw, sw + v * 1.5, sw] : [0.8, 1, 0.8] }}
-          transition={{ duration: dur, repeat: Infinity, ease: 'easeInOut' }}
+          animate={{
+            d: SHAPES[shapeIdx],
+            strokeWidth: isConnected ? [sw, sw + v * 1.5, sw] : [0.8, 1, 0.8],
+          }}
+          transition={{
+            d: morphTransition,
+            strokeWidth: { duration: dur, repeat: Infinity, ease: 'easeInOut' },
+          }}
         />
       </svg>
     </motion.div>
@@ -210,7 +252,7 @@ export function HerLayout({
         </button>
       </motion.div>
 
-      {/* ── CENTRO — Infinito + status ──────────────────────────────────────── */}
+      {/* ── CENTRO — Símbolo morfável + status ─────────────────────────────── */}
       <div className="fixed inset-0 flex flex-col items-center justify-center"
         style={{
           top: isConnected ? '0px' : '56px',
@@ -223,7 +265,7 @@ export function HerLayout({
           className="flex flex-col items-center gap-5"
           style={{ outline: 'none', background: 'none', border: 'none', cursor: 'pointer', pointerEvents: 'auto' }}
         >
-          <InfinityOrb
+          <MorphingSymbol
             isConnected={isConnected}
             isSpeaking={isSpeaking}
             isListening={isListening}
