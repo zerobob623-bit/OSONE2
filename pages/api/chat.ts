@@ -1,7 +1,7 @@
 // pages/api/chat.ts — OpenAI gpt-4.1-mini (fallback serverless route)
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-const OPENAI_KEY = process.env.OPENAI_API_KEY || '';
+const OPENAI_KEY = process.env.VITE_OPENAI_API_KEY || '';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {

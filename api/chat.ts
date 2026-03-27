@@ -10,7 +10,7 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'Parâmetro messages inválido.' });
   }
 
-  const OPENAI_KEY = process.env.OPENAI_API_KEY;
+  const OPENAI_KEY = process.env.VITE_OPENAI_API_KEY;
   if (!OPENAI_KEY) {
     return res.status(500).json({ error: 'OPENAI_API_KEY não configurada nas variáveis de ambiente.' });
   }
