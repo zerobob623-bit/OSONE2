@@ -1,0 +1,277 @@
+import React, { useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { MicOff, Mic, PhoneOff, Send, Settings, Paperclip, Monitor } from 'lucide-react';
+import type { MainLayoutProps } from '../../types/layout';
+
+// 8 floating particles orbiting the sphere
+const PARTICLES = Array.from({ length: 8 }, (_, i) => ({
+  angle: (i / 8) * 360,
+  radius: 160,
+  size: i % 3 === 0 ? 4 : 2.5,
+  duration: 4 + i * 0.4,
+  delay: i * 0.5,
+}));
+
+function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isThinking, volume }: {
+  moodColor: string; isConnected: boolean; isSpeaking: boolean;
+  isListening: boolean; isThinking: boolean; volume: number;
+}) {
+  const scale = isSpeaking ? 1 + volume * 0.08 : isListening ? 0.97 : isThinking ? 1.01 : 1;
+  const glowIntensity = isConnected ? (isSpeaking ? 60 + volume * 40 : 40) : 20;
+
+  const orb3DStyle = {
+    width: 220,
+    height: 220,
+    borderRadius: '50%',
+    background: `
+      radial-gradient(circle at 35% 32%, rgba(255,255,255,0.18) 0%, transparent 45%),
+      radial-gradient(circle at center, ${moodColor}cc 0%, ${moodColor}66 40%, ${moodColor}11 70%, transparent 100%)
+    `,
+    boxShadow: `
+      0 0 ${glowIntensity}px ${moodColor}88,
+      0 0 ${glowIntensity * 2}px ${moodColor}44,
+      0 0 ${glowIntensity * 3}px ${moodColor}22,
+      inset 0 0 40px rgba(0,0,0,0.5),
+      inset 0 -20px 40px rgba(0,0,0,0.3)
+    `,
+  };
+
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: 280, height: 280 }}>
+      {/* Outer glow ring */}
+      <motion.div
+        className="absolute rounded-full"
+        animate={{ scale: [1, 1.05, 1], opacity: [0.3, 0.5, 0.3] }}
+        transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+        style={{
+          width: 260, height: 260,
+          border: `1px solid ${moodColor}40`,
+          borderRadius: '50%',
+        }}
+      />
+
+      {/* Orbital rings — only when connected */}
+      {isConnected && (
+        <>
+          <motion.div
+            className="absolute rounded-full border"
+            animate={{ rotateZ: 360 }}
+            transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
+            style={{ width: 240, height: 240, borderColor: `${moodColor}30`, transform: 'rotateX(70deg)' }}
+          />
+          <motion.div
+            className="absolute rounded-full border"
+            animate={{ rotateZ: -360 }}
+            transition={{ duration: 9, repeat: Infinity, ease: 'linear' }}
+            style={{ width: 260, height: 260, borderColor: `${moodColor}20`, transform: 'rotateX(60deg) rotateZ(45deg)' }}
+          />
+        </>
+      )}
+
+      {/* Particles — only when speaking */}
+      {isSpeaking && PARTICLES.map((p, i) => (
+        <motion.div
+          key={i}
+          className="absolute rounded-full"
+          style={{ width: p.size, height: p.size, backgroundColor: moodColor }}
+          animate={{
+            x: [
+              Math.cos((p.angle * Math.PI) / 180) * p.radius,
+              Math.cos(((p.angle + 360) * Math.PI) / 180) * p.radius,
+            ],
+            y: [
+              Math.sin((p.angle * Math.PI) / 180) * (p.radius * 0.4),
+              Math.sin(((p.angle + 360) * Math.PI) / 180) * (p.radius * 0.4),
+            ],
+            opacity: [0.8, 0.4, 0.8],
+          }}
+          transition={{ duration: p.duration, repeat: Infinity, delay: p.delay, ease: 'linear' }}
+        />
+      ))}
+
+      {/* The sphere itself */}
+      <motion.div
+        animate={{ scale, rotateY: isConnected ? [0, 2, 0, -2, 0] : 0 }}
+        transition={{
+          scale: { type: 'spring', stiffness: 200, damping: 20 },
+          rotateY: { duration: 8, repeat: Infinity, ease: 'easeInOut' },
+        }}
+        style={orb3DStyle}
+      />
+
+      {/* Thinking spinner */}
+      {isThinking && (
+        <motion.div
+          className="absolute rounded-full border-t-2"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
+          style={{ width: 240, height: 240, borderColor: `${moodColor}60` }}
+        />
+      )}
+    </div>
+  );
+}
+
+export function OrbLayout({
+  moodColor, personality, PERSONALITY_CONFIG,
+  statusLabel, isConnected, isSpeaking, isListening, isThinking, isMuted, volume,
+  messages, transcriptRef,
+  inputText, setInputText, onSendText, onMicToggle, onDisconnect,
+  fileInputRef, showAttachMenu, setShowAttachMenu, onFileClick, onScreenShare,
+  onOrbClick, currentTime, onOpenSettings, onOpenPersonalityPicker,
+  showInstallBanner, onDismissInstallBanner, installPrompt, isInstalled, onInstallApp,
+}: MainLayoutProps) {
+
+  return (
+    <div className="fixed inset-0 overflow-hidden select-none" style={{ backgroundColor: '#000000' }}>
+
+      {/* Deep space background */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: `radial-gradient(ellipse at 50% 50%, ${moodColor}08 0%, transparent 65%)`
+      }} />
+
+      {/* PWA Banner */}
+      <AnimatePresence>
+        {showInstallBanner && installPrompt && !isInstalled && (
+          <motion.div initial={{ y: -80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -80, opacity: 0 }}
+            className="fixed top-16 left-4 right-4 z-[60] p-3 rounded-xl flex items-center justify-between gap-3"
+            style={{ backgroundColor: `${moodColor}15`, border: `1px solid ${moodColor}30` }}>
+            <p className="text-xs text-white/60">Instalar OSONE</p>
+            <div className="flex gap-2">
+              <button onClick={onDismissInstallBanner} className="text-[10px] text-white/30 px-2 py-1">não</button>
+              <button onClick={onInstallApp} className="text-[10px] px-3 py-1 rounded-lg" style={{ backgroundColor: `${moodColor}30`, color: moodColor }}>instalar</button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* MINIMAL TOP BAR */}
+      <div className="fixed top-0 left-0 right-0 h-14 px-5 flex items-center justify-between z-50">
+        <button onClick={onOpenPersonalityPicker}
+          className="flex items-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
+          <span className="text-base">{PERSONALITY_CONFIG[personality]?.emoji}</span>
+          <span className="text-[9px] uppercase tracking-[0.25em]" style={{ color: moodColor }}>{PERSONALITY_CONFIG[personality]?.label}</span>
+        </button>
+        <span className="text-[10px] tracking-widest opacity-20">{currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+        <button onClick={onOpenSettings} className="opacity-30 hover:opacity-70 transition-opacity">
+          <Settings size={16} color="white" />
+        </button>
+      </div>
+
+      {/* CHAT — floating above orb */}
+      <div
+        ref={transcriptRef}
+        className="fixed left-0 right-0 overflow-hidden"
+        style={{ top: '70px', height: '140px', padding: '0 24px' }}
+      >
+        <AnimatePresence initial={false}>
+          {messages.slice(0, 2).reverse().map((msg, idx) => (
+            <motion.div
+              key={msg.id || idx}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: idx === 0 ? 0.9 : 0.35 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4 }}
+              className="text-center mb-3"
+            >
+              <p className="text-sm leading-relaxed"
+                style={{ color: msg.role === 'model' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.5)', textShadow: idx === 0 && msg.role === 'model' ? `0 0 20px ${moodColor}60` : 'none' }}>
+                {msg.text}
+              </p>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
+      {/* ORB — center */}
+      <div className="fixed inset-0 flex items-center justify-center" style={{ top: '56px', bottom: '110px' }}>
+        <button onClick={onOrbClick} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+          <OrbSphere
+            moodColor={moodColor}
+            isConnected={isConnected}
+            isSpeaking={isSpeaking}
+            isListening={isListening}
+            isThinking={isThinking}
+            volume={volume}
+          />
+        </button>
+      </div>
+
+      {/* STATUS — below orb */}
+      <div className="fixed left-0 right-0 flex justify-center" style={{ bottom: '130px' }}>
+        <motion.p
+          key={statusLabel}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-[9px] uppercase tracking-[0.35em]"
+          style={{ color: isConnected ? moodColor : 'rgba(255,255,255,0.2)' }}
+        >
+          {statusLabel}
+        </motion.p>
+      </div>
+
+      {/* INPUT LAYER */}
+      <div className="fixed bottom-0 left-0 right-0 z-[3] px-4"
+        style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 16px))', background: 'linear-gradient(to top, #000 60%, transparent)' }}>
+        <div className="max-w-xl mx-auto relative flex items-center">
+          <input
+            type="text"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') onSendText(); }}
+            placeholder="mensagem..."
+            className="w-full bg-transparent py-4 pl-10 pr-24 text-sm text-white placeholder-white/20 focus:outline-none transition-colors"
+            style={{ border: `1px solid ${moodColor}30`, borderRadius: 40, backdropFilter: 'blur(12px)', backgroundColor: `${moodColor}08` }}
+          />
+          {/* + button */}
+          <div className="absolute left-3">
+            <button
+              onClick={() => setShowAttachMenu(v => !v)}
+              className="w-6 h-6 flex items-center justify-center rounded-full transition-all"
+              style={{ color: showAttachMenu ? moodColor : 'rgba(255,255,255,0.3)' }}>
+              <span className="text-base leading-none">+</span>
+            </button>
+            <AnimatePresence>
+              {showAttachMenu && (
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+                  className="absolute bottom-10 left-0 z-20 rounded-2xl border overflow-hidden shadow-2xl"
+                  style={{ backgroundColor: '#0a0a0a', borderColor: `${moodColor}30`, minWidth: '170px' }}>
+                  <button onClick={() => { setShowAttachMenu(false); onFileClick(); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-all text-left">
+                    <Paperclip size={14} style={{ color: moodColor }} />
+                    <p className="text-xs text-white/70">Documento / Imagem</p>
+                  </button>
+                  <div className="h-px" style={{ backgroundColor: `${moodColor}15` }} />
+                  <button onClick={onScreenShare} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-all text-left">
+                    <Monitor size={14} style={{ color: moodColor }} />
+                    <p className="text-xs text-white/70">Compartilhar Tela</p>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Right controls */}
+          <div className="absolute right-3 flex items-center gap-1">
+            {inputText.trim() ? (
+              <button onClick={onSendText} className="p-1.5 transition-colors">
+                <Send size={18} style={{ color: moodColor }} />
+              </button>
+            ) : (
+              <button onClick={onMicToggle} className="p-1.5 transition-colors">
+                {isMuted
+                  ? <MicOff size={18} color="rgba(255,255,255,0.3)" />
+                  : <Mic size={18} style={{ color: isConnected ? moodColor : 'rgba(255,255,255,0.3)' }} />
+                }
+              </button>
+            )}
+            {isConnected && (
+              <button onClick={onDisconnect} className="p-1.5 opacity-40 hover:opacity-80 transition-opacity">
+                <PhoneOff size={16} color="rgba(255,255,255,0.5)" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
