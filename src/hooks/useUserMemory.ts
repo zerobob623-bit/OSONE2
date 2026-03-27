@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { doc, onSnapshot, setDoc, collection, query, orderBy, limit, addDoc, Timestamp } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { useAppStore } from '../store/useAppStore';
+// useUserMemory.ts — localStorage puro (sem Firebase)
+// Memória persiste localmente, sem dependência de rede ou autenticação.
+
+import { useState, useCallback } from 'react';
 
 export interface ImportantDate {
   label: string;
@@ -13,7 +13,7 @@ export interface DiaryEntry {
   id?: string;
   content: string;
   mood?: string;
-  createdAt: Timestamp;
+  createdAt: string; // ISO date string
   userId: string;
 }
 
@@ -28,7 +28,7 @@ export interface ConversationSummary {
   id?: string;
   summary: string;
   topics: string[];
-  createdAt: Timestamp;
+  createdAt: string; // ISO date string
   embedding?: number[];
 }
 
@@ -42,125 +42,90 @@ export interface UserMemory {
   summaries?: ConversationSummary[];
 }
 
+// ─── Chaves localStorage ──────────────────────────────────────────────────────
+const MEMORY_KEY = 'osone_memory_v2';
+const DIARY_KEY  = 'osone_diary_v2';
+
+const EMPTY_MEMORY: UserMemory = {
+  facts: [],
+  preferences: [],
+  importantDates: [],
+  semanticMemory: [],
+  summaries: [],
+};
+
+function readMemory(): UserMemory {
+  try {
+    const raw = localStorage.getItem(MEMORY_KEY);
+    return raw ? { ...EMPTY_MEMORY, ...JSON.parse(raw) } : { ...EMPTY_MEMORY };
+  } catch {
+    return { ...EMPTY_MEMORY };
+  }
+}
+
+function writeMemory(mem: UserMemory) {
+  localStorage.setItem(MEMORY_KEY, JSON.stringify(mem));
+}
+
+function readDiary(): DiaryEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(DIARY_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
 export function useUserMemory() {
-  const [memory, setMemory] = useState<UserMemory>({
-    facts: [],
-    preferences: [],
-    importantDates: [],
-    semanticMemory: [],
-    summaries: []
-  });
-  const [diary, setDiary] = useState<DiaryEntry[]>([]);
-  const { userId } = useAppStore();
-  const memoryUnsubscribeRef = useRef<(() => void) | null>(null);
-  const diaryUnsubscribeRef = useRef<(() => void) | null>(null);
+  const [memory, setMemory] = useState<UserMemory>(readMemory);
+  const [diary,  setDiary]  = useState<DiaryEntry[]>(readDiary);
 
-  useEffect(() => {
-    if (!userId) {
-      setMemory({ facts: [], preferences: [], importantDates: [], semanticMemory: [], summaries: [] });
-      setDiary([]);
-      if (memoryUnsubscribeRef.current) memoryUnsubscribeRef.current();
-      if (diaryUnsubscribeRef.current) diaryUnsubscribeRef.current();
-      return;
-    }
-
-    // Memory listener
-    const memoryPath = `users/${userId}/memory/main`;
-    const memoryUnsubscribe = onSnapshot(doc(db, memoryPath), (snapshot) => {
-      if (snapshot.exists()) {
-        setMemory(snapshot.data() as UserMemory);
-      }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, memoryPath);
+  // Atualiza estado + persiste
+  const mutate = useCallback((updater: (prev: UserMemory) => UserMemory) => {
+    setMemory(prev => {
+      const next = updater(prev);
+      writeMemory(next);
+      return next;
     });
-    memoryUnsubscribeRef.current = memoryUnsubscribe;
+  }, []);
 
-    // Diary listener
-    const diaryPath = `users/${userId}/diary`;
-    const q = query(
-      collection(db, diaryPath),
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
-    const diaryUnsubscribe = onSnapshot(q, (snapshot) => {
-      const entries = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as DiaryEntry[];
-      setDiary(entries);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, diaryPath);
-    });
-    diaryUnsubscribeRef.current = diaryUnsubscribe;
+  const saveMemory = useCallback((partial: Partial<UserMemory>) => {
+    mutate(prev => ({ ...prev, ...partial }));
+  }, [mutate]);
 
-    return () => {
-      if (memoryUnsubscribeRef.current) memoryUnsubscribeRef.current();
-      if (diaryUnsubscribeRef.current) diaryUnsubscribeRef.current();
+  const addFact = useCallback((fact: string) => {
+    mutate(prev => ({
+      ...prev,
+      facts: [...(prev.facts || []), fact].slice(-150),
+    }));
+  }, [mutate]);
+
+  const addImportantDate = useCallback((date: ImportantDate) => {
+    mutate(prev => ({
+      ...prev,
+      importantDates: [...(prev.importantDates || []), date],
+    }));
+  }, [mutate]);
+
+  const addDiaryEntry = useCallback((content: string, mood?: string) => {
+    const entry: DiaryEntry = {
+      id: crypto.randomUUID(),
+      content,
+      mood: mood || 'neutral',
+      createdAt: new Date().toISOString(),
+      userId: 'local',
     };
-  }, [userId]);
-
-  const saveMemory = useCallback(async (partial: Partial<UserMemory>) => {
-    if (!userId) return;
-    const path = `users/${userId}/memory/main`;
-    try {
-      // Filter out undefined values to prevent Firestore error
-      const cleanPartial = Object.fromEntries(
-        Object.entries(partial).filter(([_, v]) => v !== undefined)
-      );
-      await setDoc(doc(db, path), { ...memory, ...cleanPartial }, { merge: true });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, path);
-    }
-  }, [userId, memory]);
-
-  const addFact = useCallback(async (fact: string) => {
-    if (!userId) return;
-    const path = `users/${userId}/memory/main`;
-    try {
-      await setDoc(doc(db, path), { 
-        ...memory, 
-        facts: [...(memory.facts || []), fact] 
-      }, { merge: true });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, path);
-    }
-  }, [userId, memory]);
-
-  const addImportantDate = useCallback(async (date: ImportantDate) => {
-    if (!userId) return;
-    const path = `users/${userId}/memory/main`;
-    try {
-      const newDate: any = { label: date.label, date: date.date };
-      if (date.year) newDate.year = date.year;
-      await setDoc(doc(db, path), { 
-        ...memory, 
-        importantDates: [...(memory.importantDates || []), newDate] 
-      }, { merge: true });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, path);
-    }
-  }, [userId, memory]);
-
-  const addDiaryEntry = useCallback(async (content: string, mood?: string) => {
-    if (!userId) return;
-    const path = `users/${userId}/diary`;
-    try {
-      await addDoc(collection(db, path), {
-        content,
-        mood: mood || 'neutral',
-        createdAt: Timestamp.now(),
-        userId
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, path);
-    }
-  }, [userId]);
+    setDiary(prev => {
+      const next = [entry, ...prev].slice(0, 200);
+      localStorage.setItem(DIARY_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   const getUpcomingDates = useCallback(() => {
     const today = new Date();
     const nextWeek = new Date();
     nextWeek.setDate(today.getDate() + 7);
-
     return (memory.importantDates || []).filter(d => {
       const [day, month] = d.date.split('/').map(Number);
       const dateThisYear = new Date(today.getFullYear(), month - 1, day);
@@ -168,59 +133,42 @@ export function useUserMemory() {
     });
   }, [memory.importantDates]);
 
-  const updateWorkspace = useCallback(async (content: string) => {
-    if (!userId) return;
-    const path = `users/${userId}/memory/main`;
-    try {
-      await setDoc(doc(db, path), { 
-        ...memory, 
-        workspace: content 
-      }, { merge: true });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, path);
-    }
-  }, [userId, memory]);
+  const updateWorkspace = useCallback((content: string) => {
+    mutate(prev => ({ ...prev, workspace: content }));
+  }, [mutate]);
 
-  const clearWorkspace = useCallback(async () => {
-    if (!userId) return;
-    const path = `users/${userId}/memory/main`;
-    try {
-      const { workspace, ...rest } = memory;
-      await setDoc(doc(db, path), rest);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, path);
-    }
-  }, [userId, memory]);
+  const clearWorkspace = useCallback(() => {
+    mutate(prev => {
+      const { workspace: _, ...rest } = prev;
+      return rest as UserMemory;
+    });
+  }, [mutate]);
 
-  const addSemanticFact = useCallback(async (concept: string, definition: string, category: string, embedding?: number[]) => {
-    if (!userId) return;
-    const path = `users/${userId}/memory/main`;
-    try {
-      const newFact: any = { concept, definition, category };
-      if (embedding) newFact.embedding = embedding;
-      await setDoc(doc(db, path), { 
-        ...memory, 
-        semanticMemory: [...(memory.semanticMemory || []), newFact] 
-      }, { merge: true });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, path);
-    }
-  }, [userId, memory]);
+  const addSemanticFact = useCallback(
+    (concept: string, definition: string, category: string, _embedding?: number[]) => {
+      mutate(prev => ({
+        ...prev,
+        semanticMemory: [
+          ...(prev.semanticMemory || []),
+          { concept, definition, category },
+        ].slice(-300),
+      }));
+    },
+    [mutate],
+  );
 
-  const addSummary = useCallback(async (summary: string, topics: string[], embedding?: number[]) => {
-    if (!userId) return;
-    const path = `users/${userId}/memory/main`;
-    try {
-      const newSummary: any = { summary, topics, createdAt: Timestamp.now() };
-      if (embedding) newSummary.embedding = embedding;
-      await setDoc(doc(db, path), { 
-        ...memory, 
-        summaries: [...(memory.summaries || []), newSummary] 
-      }, { merge: true });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, path);
-    }
-  }, [userId, memory]);
+  const addSummary = useCallback(
+    (summary: string, topics: string[], _embedding?: number[]) => {
+      mutate(prev => ({
+        ...prev,
+        summaries: [
+          ...(prev.summaries || []),
+          { id: crypto.randomUUID(), summary, topics, createdAt: new Date().toISOString() },
+        ].slice(-100),
+      }));
+    },
+    [mutate],
+  );
 
   return {
     memory,
@@ -233,6 +181,6 @@ export function useUserMemory() {
     clearWorkspace,
     addSemanticFact,
     addSummary,
-    getUpcomingDates
+    getUpcomingDates,
   };
 }

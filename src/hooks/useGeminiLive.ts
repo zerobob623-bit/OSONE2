@@ -187,10 +187,11 @@ export const useGeminiLive = ({
   }, [stopSilenceTimer]);
 
   // ============================================================
-  // 🌐 BUSCA WEB — DuckDuckGo Instant Answer + Wikipedia (sem API key, CORS nativo)
+  // 🌐 BUSCA WEB — Wikipedia OpenSearch PT+EN + DDG Instant Answer
+  // Sem API key. CORS nativo em todas as fontes.
   // ============================================================
 
-  // Helper fetch com timeout
+  // Helper: fetch com timeout (AbortController)
   const fetchT = useCallback(async (url: string, ms = 12_000): Promise<Response> => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), ms);
@@ -201,43 +202,78 @@ export const useGeminiLive = ({
     } catch (e) { clearTimeout(t); throw e; }
   }, []);
 
+  // Wikipedia: busca + summaries das páginas top
+  const wikiSearch = useCallback(async (query: string, lang: 'pt' | 'en', n: number): Promise<string> => {
+    const enc = encodeURIComponent(query);
+    // OpenSearch retorna [query, [títulos], [descrições], [urls]]
+    const res = await fetchT(
+      `https://${lang}.wikipedia.org/w/api.php?action=opensearch&search=${enc}&limit=${n}&format=json&origin=*`
+    );
+    if (!res.ok) throw new Error(`Wiki-${lang} ${res.status}`);
+    const [, titles, descs] = await res.json() as [string, string[], string[], string[]];
+    if (!titles.length) return '';
+
+    // Busca summaries das 2 primeiras páginas para mais profundidade
+    const summaryLines = await Promise.all(
+      titles.slice(0, 2).map(async (title: string) => {
+        try {
+          const sr = await fetchT(
+            `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`
+          );
+          if (!sr.ok) return null;
+          const sd = await sr.json();
+          return sd.extract ? `**${title}**: ${sd.extract}` : null;
+        } catch { return null; }
+      })
+    );
+
+    const lines: string[] = [];
+    summaryLines.forEach((s, i) => {
+      if (s) lines.push(s);
+      else if (descs[i]) lines.push(`**${titles[i]}**: ${descs[i]}`);
+    });
+    // Títulos restantes sem summary
+    titles.slice(2).forEach((t, i) => {
+      if (descs[i + 2]) lines.push(`${t}: ${descs[i + 2]}`);
+    });
+
+    return lines.join('\n\n');
+  }, [fetchT]);
+
   const performWebSearch = useCallback(async (query: string, numResults = 5): Promise<string> => {
     const enc = encodeURIComponent(query);
+    const parts: string[] = [];
 
-    // ── 1. DuckDuckGo Instant Answer API (JSON, sem API key, CORS ativo) ──────
-    try {
-      const res = await fetchT(`https://api.duckduckgo.com/?q=${enc}&format=json&no_html=1&skip_disambig=1`);
-      if (res.ok) {
-        const d = await res.json();
-        const parts: string[] = [];
-        if (d.Answer)       parts.push(`Resposta direta: ${d.Answer}`);
-        if (d.AbstractText) parts.push(`${d.AbstractText}${d.AbstractURL ? '\nFonte: ' + d.AbstractURL : ''}`);
-        if (d.Definition)   parts.push(`Definição: ${d.Definition}`);
-        const topics = ((d.RelatedTopics ?? []) as any[])
-          .filter(t => t.Text).slice(0, numResults)
-          .map(t => `• ${t.Text}`).join('\n');
-        if (topics) parts.push(topics);
-        if (parts.length) return `🔍 "${query}":\n\n${parts.join('\n\n').substring(0, 5000)}`;
-      }
-    } catch (e: any) { console.warn('[search] DDG:', e.message); }
-
-    // ── 2. Wikipedia Search API (fallback) ────────────────────────────────────
+    // ── 1. DuckDuckGo Instant Answer (resposta direta para fatos/cálculos) ──
     try {
       const res = await fetchT(
-        `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${enc}&format=json&origin=*&srlimit=${Math.min(numResults, 5)}`
+        `https://api.duckduckgo.com/?q=${enc}&format=json&no_html=1&skip_disambig=1`
       );
       if (res.ok) {
         const d = await res.json();
-        const items: any[] = d.query?.search ?? [];
-        if (items.length) {
-          const lines = items.map(r => `${r.title}: ${r.snippet.replace(/<[^>]+>/g, '')}`);
-          return `🔍 "${query}":\n\n${lines.join('\n\n').substring(0, 5000)}`;
-        }
+        if (d.Answer)       parts.push(`📌 ${d.Answer}`);
+        if (d.AbstractText) parts.push(`${d.AbstractText}${d.AbstractURL ? '\nFonte: ' + d.AbstractURL : ''}`);
+        if (d.Definition)   parts.push(`Definição: ${d.Definition}`);
       }
-    } catch (e: any) { console.warn('[search] Wikipedia:', e.message); }
+    } catch (e: any) { console.warn('[search] DDG:', e.message); }
 
-    return `⚠️ Nenhum resultado encontrado para "${query}".`;
-  }, [fetchT]);
+    // ── 2. Wikipedia PT (primário para conteúdo em português) ────────────────
+    try {
+      const ptResult = await wikiSearch(query, 'pt', numResults);
+      if (ptResult) parts.push(ptResult);
+    } catch (e: any) { console.warn('[search] Wiki-PT:', e.message); }
+
+    // ── 3. Wikipedia EN (fallback se PT não encontrou nada) ──────────────────
+    if (parts.length === 0) {
+      try {
+        const enResult = await wikiSearch(query, 'en', numResults);
+        if (enResult) parts.push(enResult);
+      } catch (e: any) { console.warn('[search] Wiki-EN:', e.message); }
+    }
+
+    if (parts.length === 0) return `⚠️ Nenhum resultado encontrado para "${query}".`;
+    return `🔍 "${query}":\n\n${parts.join('\n\n').substring(0, 6000)}`;
+  }, [fetchT, wikiSearch]);
 
   const readUrlContent = useCallback(async (rawUrl: string): Promise<string> => {
     const url = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
@@ -677,7 +713,7 @@ export const useGeminiLive = ({
     voice, storedApiKey, stopAudio, playNextChunk, toBase64,
     setError, setIsConnected, setIsListening, setVolume,
     addMessage, setMascotAction, setMascotTarget, setOnboardingStep,
-    performWebSearch, readUrlContent, generateImage,
+    wikiSearch, performWebSearch, readUrlContent, generateImage,
     resetSilenceTimer, stopSilenceTimer
   ]);
 
