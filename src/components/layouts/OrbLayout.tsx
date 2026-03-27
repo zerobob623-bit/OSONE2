@@ -1,7 +1,29 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MicOff, Mic, PhoneOff, Send, Settings, Paperclip, Monitor } from 'lucide-react';
+import { MicOff, Mic, PhoneOff, Send, Settings, Paperclip, Monitor, Volume1, Copy, Check } from 'lucide-react';
 import type { MainLayoutProps } from '../../types/layout';
+
+function speak(text: string) {
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'pt-BR'; u.rate = 1.0; u.pitch = 1.1;
+  window.speechSynthesis.speak(u);
+}
+
+function OrbMsgActions({ text, moodColor }: { text: string; moodColor: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-center justify-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <button onClick={() => speak(text)} className="p-1 rounded-full hover:bg-white/10 transition-colors" title="Ouvir" style={{ color: moodColor }}>
+        <Volume1 size={10} />
+      </button>
+      <button onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+        className="p-1 rounded-full hover:bg-white/10 transition-colors" title="Copiar" style={{ color: copied ? '#4ade80' : moodColor }}>
+        {copied ? <Check size={10} /> : <Copy size={10} />}
+      </button>
+    </div>
+  );
+}
 
 // 8 floating particles orbiting the sphere
 const PARTICLES = Array.from({ length: 8 }, (_, i) => ({
@@ -172,12 +194,13 @@ export function OrbLayout({
               animate={{ opacity: idx === 0 ? 0.9 : 0.35 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.4 }}
-              className="text-center mb-3"
+              className="text-center mb-3 group"
             >
               <p className="text-sm leading-relaxed"
                 style={{ color: msg.role === 'model' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.5)', textShadow: idx === 0 && msg.role === 'model' ? `0 0 20px ${moodColor}60` : 'none' }}>
                 {msg.text}
               </p>
+              {msg.role === 'model' && idx === 0 && <OrbMsgActions text={msg.text} moodColor={moodColor} />}
             </motion.div>
           ))}
         </AnimatePresence>
@@ -211,7 +234,7 @@ export function OrbLayout({
       </div>
 
       {/* INPUT LAYER */}
-      <div className="fixed bottom-0 left-0 right-0 z-[3] px-4"
+      <div className="fixed bottom-0 left-0 right-0 z-[20] px-4"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 16px))', background: 'linear-gradient(to top, #000 60%, transparent)' }}>
         <div className="max-w-xl mx-auto relative flex items-center">
           <input

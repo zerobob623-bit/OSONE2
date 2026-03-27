@@ -336,6 +336,38 @@ app.post("/api/alexa/control", async (req, res) => {
   }
 });
 
+// ─── TEXT CHAT — OpenAI GPT-4o-mini ───────────────────────────────────────────
+app.post("/api/chat", async (req, res) => {
+  const { messages, systemInstruction } = req.body;
+  if (!messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: "Parâmetro messages inválido." });
+  }
+  const OPENAI_KEY = process.env.OPENAI_API_KEY;
+  if (!OPENAI_KEY) {
+    return res.status(500).json({ error: "OpenAI API Key não configurada. Adicione OPENAI_API_KEY nas variáveis de ambiente." });
+  }
+  try {
+    const response = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: 'gpt-4o-mini',
+        messages: [
+          ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+          ...messages,
+        ],
+        max_tokens: 1024,
+        temperature: 0.7,
+      },
+      { headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' }, timeout: 30000 }
+    );
+    const text = response.data.choices?.[0]?.message?.content || '';
+    res.json({ text });
+  } catch (error: any) {
+    console.error('[chat] Erro OpenAI:', error.response?.data || error.message);
+    res.status(500).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
 // ─── VITE MIDDLEWARE ──────────────────────────────────────────────────────────
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

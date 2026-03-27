@@ -1,7 +1,31 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MicOff, Mic, PhoneOff, Send, Settings } from 'lucide-react';
+import { MicOff, Mic, PhoneOff, Send, Settings, Volume1, Copy, Check } from 'lucide-react';
 import type { MainLayoutProps } from '../../types/layout';
+
+function speak(text: string) {
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'pt-BR'; u.rate = 1.0; u.pitch = 1.1;
+  window.speechSynthesis.speak(u);
+}
+
+function HerMsgActions({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const HER_ACCENT = '#c8784a';
+  return (
+    <div className="flex items-center justify-center gap-3 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+      <button onClick={() => speak(text)} className="flex items-center gap-1 text-[10px] transition-opacity hover:opacity-80" style={{ color: HER_ACCENT, fontFamily: 'Cormorant Garamond, serif' }}>
+        <Volume1 size={11} /> ouvir
+      </button>
+      <span style={{ color: 'rgba(200,120,74,0.3)', fontSize: 10 }}>·</span>
+      <button onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+        className="flex items-center gap-1 text-[10px] transition-opacity hover:opacity-80" style={{ color: HER_ACCENT, fontFamily: 'Cormorant Garamond, serif' }}>
+        {copied ? <Check size={11} /> : <Copy size={11} />} {copied ? 'copiado' : 'copiar'}
+      </button>
+    </div>
+  );
+}
 
 // EQ bars visualizer — warm amber, 10 bars
 function HerEqualizer({ isConnected, isSpeaking, isListening, isThinking, volume }: {
@@ -139,7 +163,7 @@ export function HerLayout({
               animate={{ opacity: idx === 0 ? 0.9 : 0.4 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.5 }}
-              className="text-center mb-4"
+              className="text-center mb-4 group"
             >
               <p
                 style={{
@@ -152,6 +176,7 @@ export function HerLayout({
               >
                 {msg.text}
               </p>
+              {msg.role === 'model' && idx === 0 && <HerMsgActions text={msg.text} />}
             </motion.div>
           ))}
         </AnimatePresence>

@@ -307,9 +307,9 @@ export const useGeminiLive = ({
         onMessageRef.current?.({ role: 'model', text: replyText });
       }
     } catch (err: any) {
-      const msg = err.message === "Groq API Key not found"
-        ? "Configure sua chave Groq nas Configurações para usar o chat de texto."
-        : "Ocorreu um erro ao processar sua mensagem.";
+      const msg = err.message?.includes("OpenAI API Key")
+        ? "OpenAI API Key não configurada. Adicione OPENAI_API_KEY nas variáveis de ambiente do servidor."
+        : `Erro ao processar: ${err.message || 'Erro desconhecido'}`;
       addMessage({ role: 'model', text: msg });
       onMessageRef.current?.({ role: 'model', text: msg });
     } finally {
@@ -410,6 +410,12 @@ export const useGeminiLive = ({
 
               for (const call of message.toolCall.functionCalls) {
                 const { name, args = {}, id } = call;
+
+                if (name === "show_lyrics") {
+                  onToolCallRef.current?.(name, args);
+                  syncResponses.push({ name, id, response: { success: true, message: "Letra exibida com sucesso! CANTE agora usando sua voz com melodia, ritmo e entonação musical. Toda a letra foi enviada de uma vez — cante do início ao fim sem chamar nenhuma outra ferramenta." } });
+                  continue;
+                }
 
                 if (DELEGATED_TOOLS.has(name)) {
                   onToolCallRef.current?.(name, args);
