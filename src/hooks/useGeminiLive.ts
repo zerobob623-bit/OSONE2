@@ -20,8 +20,7 @@ export interface UseGeminiLiveProps {
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 const SILENCE_TIMEOUT_MS = 60_000;       // 60s de silêncio → fala espontânea
-const SCREEN_ANALYSIS_INTERVAL_MS = 2_000; // captura frame a cada 2s
-const SCREEN_HASH_SAMPLE = 32;           // pixels amostrados para hash de tela
+const SCREEN_ANALYSIS_INTERVAL_MS = 3_000; // envia frame a cada 3s durante screen share
 
 // Frases de iniciativa espontânea
 const SPONTANEOUS_PROMPTS = [
@@ -31,18 +30,6 @@ const SPONTANEOUS_PROMPTS = [
   "Se quiser pensar em voz alta, estou ouvindo.",
   "Tem algo em que eu possa ajudar?",
 ];
-
-// Utilitário: similaridade entre hashes de frame
-function computeHashSimilarity(hashA: string, hashB: string): number {
-  const partsA = hashA.split(';').filter(Boolean);
-  const partsB = hashB.split(';').filter(Boolean);
-  if (partsA.length === 0 || partsB.length !== partsA.length) return 0;
-  let matches = 0;
-  for (let i = 0; i < partsA.length; i++) {
-    if (partsA[i] === partsB[i]) matches++;
-  }
-  return matches / partsA.length;
-}
 
 export const useGeminiLive = ({
   onToggleScreenSharing,
@@ -87,10 +74,7 @@ export const useGeminiLive = ({
 
   // ─── Refs para silêncio e análise de tela ────────────────────────────────
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastScreenHashRef = useRef<string>('');
   const screenAnalysisActiveRef = useRef(false);
-  const lastScreenChangeMsgRef = useRef<number>(0); // timestamp do último SISTEMA de troca de tela
-  const screenFrameCountRef = useRef<number>(0);    // contador para keepalive de frame
 
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
 
@@ -203,41 +187,78 @@ export const useGeminiLive = ({
   }, [stopSilenceTimer]);
 
   // ============================================================
-  // 🌐 BUSCA WEB — direto do browser via Jina.ai (sem servidor)
+  // 🌐 BUSCA WEB — DuckDuckGo Instant Answer + Wikipedia (sem API key, CORS nativo)
   // ============================================================
 
-  const performWebSearch = useCallback(async (query: string, numResults = 5): Promise<string> => {
+  // Helper fetch com timeout
+  const fetchT = useCallback(async (url: string, ms = 12_000): Promise<Response> => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), ms);
     try {
-      const res = await fetch(`https://s.jina.ai/${encodeURIComponent(query)}`, {
-        headers: { 'Accept': 'text/plain', 'X-Retain-Images': 'none' }
-      });
-      if (!res.ok) throw new Error(`Jina ${res.status}`);
-      const text = await res.text();
-      if (text && text.trim().length > 100) {
-        const blocks = text.split(/\n---+\n/).slice(0, numResults);
-        const raw = blocks.join('\n---\n').substring(0, 6000);
-        return `🔍 Resultados para "${query}":\n\n${raw}`;
-      }
-      return `⚠️ Não encontrei resultados para "${query}".`;
-    } catch (err: any) {
-      return `❌ Não foi possível realizar a busca por "${query}". Erro: ${err.message}`;
-    }
+      const res = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(t);
+      return res;
+    } catch (e) { clearTimeout(t); throw e; }
   }, []);
+
+  const performWebSearch = useCallback(async (query: string, numResults = 5): Promise<string> => {
+    const enc = encodeURIComponent(query);
+
+    // ── 1. DuckDuckGo Instant Answer API (JSON, sem API key, CORS ativo) ──────
+    try {
+      const res = await fetchT(`https://api.duckduckgo.com/?q=${enc}&format=json&no_html=1&skip_disambig=1`);
+      if (res.ok) {
+        const d = await res.json();
+        const parts: string[] = [];
+        if (d.Answer)       parts.push(`Resposta direta: ${d.Answer}`);
+        if (d.AbstractText) parts.push(`${d.AbstractText}${d.AbstractURL ? '\nFonte: ' + d.AbstractURL : ''}`);
+        if (d.Definition)   parts.push(`Definição: ${d.Definition}`);
+        const topics = ((d.RelatedTopics ?? []) as any[])
+          .filter(t => t.Text).slice(0, numResults)
+          .map(t => `• ${t.Text}`).join('\n');
+        if (topics) parts.push(topics);
+        if (parts.length) return `🔍 "${query}":\n\n${parts.join('\n\n').substring(0, 5000)}`;
+      }
+    } catch (e: any) { console.warn('[search] DDG:', e.message); }
+
+    // ── 2. Wikipedia Search API (fallback) ────────────────────────────────────
+    try {
+      const res = await fetchT(
+        `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${enc}&format=json&origin=*&srlimit=${Math.min(numResults, 5)}`
+      );
+      if (res.ok) {
+        const d = await res.json();
+        const items: any[] = d.query?.search ?? [];
+        if (items.length) {
+          const lines = items.map(r => `${r.title}: ${r.snippet.replace(/<[^>]+>/g, '')}`);
+          return `🔍 "${query}":\n\n${lines.join('\n\n').substring(0, 5000)}`;
+        }
+      }
+    } catch (e: any) { console.warn('[search] Wikipedia:', e.message); }
+
+    return `⚠️ Nenhum resultado encontrado para "${query}".`;
+  }, [fetchT]);
 
   const readUrlContent = useCallback(async (rawUrl: string): Promise<string> => {
     const url = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
+    // allorigins.win — proxy CORS público gratuito, sem API key
     try {
-      const res = await fetch(`https://r.jina.ai/${url}`, {
-        headers: { 'Accept': 'text/plain', 'X-Retain-Images': 'none' }
-      });
-      if (!res.ok) throw new Error(`Jina ${res.status}`);
-      const text = await res.text();
+      const res = await fetchT(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const html: string = data.contents ?? '';
+      const text = html
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
       const trimmed = text.length > 5000 ? text.substring(0, 5000) + '\n\n⚠️ Conteúdo truncado.' : text;
-      return `📄 Conteúdo de ${url}:\n\n${trimmed}`;
-    } catch {
-      return `❌ Não foi possível ler "${url}".`;
+      return `📄 ${url}:\n\n${trimmed}`;
+    } catch (err: any) {
+      return `❌ Não foi possível ler "${url}". Erro: ${err.message}`;
     }
-  }, []);
+  }, [fetchT]);
 
   // ============================================================
   // 🎨 GERAÇÃO DE IMAGEM
@@ -675,7 +696,6 @@ export const useGeminiLive = ({
       const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true });
       screenStreamRef.current = stream;
       screenAnalysisActiveRef.current = true;
-      lastScreenHashRef.current = '';
 
       const video = document.createElement('video');
       video.srcObject = stream;
@@ -688,51 +708,27 @@ export const useGeminiLive = ({
       if (sessionRef.current && isConnectedRef.current) {
         sessionRef.current.then((session: any) => {
           if (!isConnectedRef.current) return;
-          try { session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela iniciado. Você pode ver a tela do usuário. Analise o que está sendo exibido e comente proativamente: descreva o que vê, sugira ações, alerte sobre erros, e quando o usuário trocar de app/tela analise o novo contexto automaticamente.]' }); }
+          try {
+            session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela iniciado. Você receberá frames periódicos como contexto visual. Use-os para enriquecer suas respostas. Só descreva a tela quando o usuário perguntar diretamente.]' });
+          }
           catch (e) { /* WebSocket fechado — ignora */ }
         }).catch(() => {});
       }
 
-      const sendFrame = async () => {
+      // Envia frames periodicamente como contexto visual silencioso — sem detecção de mudança
+      const sendFrame = () => {
         if (!screenStreamRef.current?.active || !sessionRef.current || !screenAnalysisActiveRef.current) return;
-
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
-
-        // ✅ Detecta troca de tela ANTES de enviar frame
-        const currentHash = computeCurrentHash(canvas, ctx);
-        const screenChanged = currentHash && lastScreenHashRef.current &&
-          computeHashSimilarity(lastScreenHashRef.current, currentHash) < 0.6;
-
-        screenFrameCountRef.current++;
-        const isKeepalive = screenFrameCountRef.current % 5 === 0; // envia a cada 5 ciclos (~10s) mesmo sem mudança
-
-        // Só envia frame se a tela mudou ou é keepalive
-        if ((screenChanged || isKeepalive) && isConnectedRef.current) {
-          const base64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+        if (isConnectedRef.current && video.videoWidth > 0) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0);
+          const base64 = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
           sessionRef.current.then((session: any) => {
             if (!isConnectedRef.current) return;
             try { session.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } }); }
             catch (e) { /* WebSocket fechado — ignora */ }
           }).catch(() => {});
         }
-
-        // Mensagem SISTEMA de troca de tela com debounce de 5s
-        if (screenChanged) {
-          const now = Date.now();
-          if (now - lastScreenChangeMsgRef.current > 5_000) {
-            lastScreenChangeMsgRef.current = now;
-            console.log('[tela] Troca detectada — solicitando análise automática');
-            sessionRef.current?.then((session: any) => {
-              if (!isConnectedRef.current) return;
-              try { session.sendRealtimeInput({ text: '[SISTEMA: O usuário acabou de trocar de tela ou abrir outro aplicativo. Analise o novo contexto que está sendo exibido e comente o que você vê. Se houver algo relevante, útil ou que mereça atenção, diga proativamente.]' }); }
-              catch (e) { /* WebSocket fechado — ignora */ }
-            }).catch(() => {});
-          }
-        }
-
-        if (currentHash) lastScreenHashRef.current = currentHash;
         setTimeout(sendFrame, SCREEN_ANALYSIS_INTERVAL_MS);
       };
 
@@ -741,8 +737,7 @@ export const useGeminiLive = ({
       // Para ao encerrar stream
       stream.getVideoTracks()[0].addEventListener('ended', () => {
         screenAnalysisActiveRef.current = false;
-        lastScreenHashRef.current = '';
-        if (sessionRef.current && isConnectedRef.current) {
+          if (sessionRef.current && isConnectedRef.current) {
           sessionRef.current.then((session: any) => {
             if (!isConnectedRef.current) return;
             try { session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela encerrado.]' }); }
@@ -781,7 +776,6 @@ export const useGeminiLive = ({
 
   const disconnect = useCallback((isReconnecting = false) => {
     screenAnalysisActiveRef.current = false;
-    lastScreenHashRef.current = '';
     stopSilenceTimer();
     sessionRef.current?.then((s: any) => s.close()).catch(console.error);
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -795,18 +789,4 @@ export const useGeminiLive = ({
   };
 };
 
-// ─── Computa hash rápido de um canvas para detectar troca de tela ────────────
-function computeCurrentHash(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): string {
-  const w = canvas.width;
-  const h = canvas.height;
-  if (w === 0 || h === 0) return '';
-  const step = Math.max(1, Math.floor(Math.min(w, h) / SCREEN_HASH_SAMPLE));
-  let hash = '';
-  for (let y = 0; y < h; y += step * 4) {
-    for (let x = 0; x < w; x += step * 4) {
-      const d = ctx.getImageData(x, y, 1, 1).data;
-      hash += `${d[0]},${d[1]},${d[2]};`;
-    }
-  }
-  return hash;
-}
+
