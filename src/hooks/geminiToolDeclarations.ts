@@ -292,6 +292,25 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     }
   },
 
+  {
+    name: "alexa_control",
+    description: "Controla dispositivos Amazon Alexa (Echo). Use para tocar música, pausar, ajustar volume, ligar/desligar dispositivos smart home vinculados à Alexa, ou dar qualquer comando de voz à Alexa.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        command: {
+          type: Type.STRING,
+          description: "Comando em português. Ex: 'tocar música', 'pausar', 'volume 50', 'ligar a luz da sala', 'que horas são'."
+        },
+        device: {
+          type: Type.STRING,
+          description: "Nome do dispositivo Echo alvo. Deixe vazio para usar o primeiro encontrado. Ex: 'Echo da sala', 'Echo do quarto'."
+        }
+      },
+      required: ["command"]
+    }
+  },
+
   // ── CONTROLE DO PC (local only) ────────────────────────────────────────────
   {
     name: "control_pc",

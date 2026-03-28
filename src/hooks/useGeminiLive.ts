@@ -661,6 +661,23 @@ export const useGeminiLive = ({
                   continue;
                 }
 
+                if (name === "alexa_control") {
+                  asyncPending++;
+                  fetch('/api/alexa/control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: args.command, device: args.device })
+                  })
+                    .then(r => r.json())
+                    .then(data => {
+                      onToolCallRef.current?.(name, args);
+                      safeSend({ name, id, response: data.success ? { success: true, result: data.message } : { success: false, error: data.error } });
+                    })
+                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
+                    .finally(finishAsync);
+                  continue;
+                }
+
                 if (name === "generate_image") {
                   asyncPending++;
                   generateImage(args.prompt, args.aspect_ratio ?? "1:1")

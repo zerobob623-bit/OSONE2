@@ -347,49 +347,129 @@ app.post("/api/whatsapp/incoming", async (req, res) => {
   }
 });
 
-// ─── ALEXA / CASA INTELIGENTE ─────────────────────────────────────────────────
-app.post("/api/alexa/control", async (req, res) => {
+// ─── ALEXA (alexa-remote2 — login via proxy, sem cookie manual) ──────────────
+const AlexaRemote = require('alexa-remote2');
+const ALEXA_SESSION_FILE = path.join(os.homedir(), '.osone-alexa.json');
+const ALEXA_PROXY_PORT = 3002;
+
+let alexaInstance: any = null;
+let alexaReady = false;
+let alexaAuthPending = false;
+
+function saveAlexaSession(instance: any) {
+  try { fs.writeFileSync(ALEXA_SESSION_FILE, JSON.stringify(instance.cookieData)); } catch {}
+}
+
+function startAlexaInit(savedData?: any) {
+  const instance = new AlexaRemote();
+  alexaInstance = instance;
+  alexaReady = false;
+  alexaAuthPending = !savedData; // pending = user needs to login via proxy
+
+  const opts: any = {
+    alexaServiceHost: 'alexa.amazon.com.br',
+    amazonPage: 'amazon.com.br',
+    amazonPageProxyLanguage: 'pt_BR',
+    cookieRefreshInterval: 7 * 24 * 60 * 60 * 1000,
+    bluetooth: false,
+    useWsMqtt: false,
+  };
+
+  if (savedData) {
+    opts.formerRegistrationData = savedData;
+  } else {
+    opts.proxyOnly = true;
+    opts.setupProxy = true;
+    opts.proxyOwnIp = 'localhost';
+    opts.proxyPort = ALEXA_PROXY_PORT;
+  }
+
+  instance.init(opts, (err: any) => {
+    alexaAuthPending = false;
+    if (err) {
+      console.error('Alexa init error:', String(err));
+      alexaReady = false;
+      alexaInstance = null;
+    } else {
+      alexaReady = true;
+      saveAlexaSession(instance);
+    }
+  });
+}
+
+// Restore session from file on startup
+try {
+  if (fs.existsSync(ALEXA_SESSION_FILE)) {
+    const saved = JSON.parse(fs.readFileSync(ALEXA_SESSION_FILE, 'utf-8'));
+    if (saved) startAlexaInit(saved);
+  }
+} catch {}
+
+app.post('/api/alexa/start-auth', (_req, res) => {
+  if (alexaReady) return res.json({ success: true, alreadyConnected: true });
+  if (!alexaAuthPending) startAlexaInit(); // kick off proxy
+  setTimeout(() => res.json({ success: true, authUrl: `http://localhost:${ALEXA_PROXY_PORT}`, waiting: true }), 800);
+});
+
+app.get('/api/alexa/auth-status', (_req, res) => {
+  res.json({ ready: alexaReady, pending: alexaAuthPending });
+});
+
+app.delete('/api/alexa/disconnect', (_req, res) => {
+  alexaReady = false;
+  alexaAuthPending = false;
+  alexaInstance = null;
+  try { if (fs.existsSync(ALEXA_SESSION_FILE)) fs.unlinkSync(ALEXA_SESSION_FILE); } catch {}
+  res.json({ success: true });
+});
+
+app.post('/api/alexa/devices', (_req, res) => {
+  if (!alexaReady || !alexaInstance) return res.status(503).json({ error: 'Alexa não autenticada.' });
+  try {
+    alexaInstance.getDevices((err: any, data: any) => {
+      if (err) return res.status(500).json({ success: false, error: String(err) });
+      const devices = Object.values(data?.devices || {});
+      res.json({ success: true, devices });
+    });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.post('/api/alexa/control', (req, res) => {
   const { command, device, value } = req.body;
   if (!command) return res.status(400).json({ error: 'Comando necessário' });
-
-  const ALEXA_COOKIE = process.env.ALEXA_COOKIE;
-  if (!ALEXA_COOKIE) return res.status(500).json({ error: 'ALEXA_COOKIE não configurado no servidor' });
+  if (!alexaReady || !alexaInstance) return res.status(503).json({ error: 'Alexa não autenticada. Configure nas Integrações.' });
 
   try {
-    const devicesRes = await axios.get(
-      'https://alexa.amazon.com.br/api/devices-v2/device?cached=false',
-      { headers: { 'Cookie': ALEXA_COOKIE, 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 }
-    );
-    const devices: any[] = devicesRes.data?.devices || [];
-    if (devices.length === 0) return res.status(404).json({ error: 'Nenhum dispositivo encontrado. Verifique o cookie da Alexa.' });
+    alexaInstance.getDevices((err: any, data: any) => {
+      if (err) return res.status(500).json({ success: false, error: String(err) });
+      const devices: any[] = Object.values(data?.devices || {});
+      if (!devices.length) return res.status(404).json({ error: 'Nenhum dispositivo Alexa encontrado.' });
 
-    const targetName = (device || 'echo').toLowerCase();
-    const found = devices.find((d: any) =>
-      d.accountName?.toLowerCase().includes(targetName) ||
-      d.description?.toLowerCase().includes(targetName)
-    ) || devices[0];
+      const targetName = (device || '').toLowerCase();
+      const found: any = (targetName
+        ? devices.find((d: any) => d.accountName?.toLowerCase().includes(targetName))
+        : null) || devices[0];
 
-    let actionPayload: any = {};
-    const cmd = command.toLowerCase();
-    if (cmd.includes('ligar') || cmd.includes('on') || cmd.includes('acend')) actionPayload = { type: 'turnOn' };
-    else if (cmd.includes('deslig') || cmd.includes('off') || cmd.includes('apag')) actionPayload = { type: 'turnOff' };
-    else if (cmd.includes('volume')) actionPayload = { type: 'VolumeLevelCommand', volumeLevel: value || 50 };
-    else if (cmd.includes('brilho') || cmd.includes('dimm')) actionPayload = { type: 'setBrightness', brightness: value || 50 };
-    else if (cmd.includes('pausar') || cmd.includes('parar') || cmd.includes('stop')) actionPayload = { type: 'PauseCommand' };
-    else if (cmd.includes('tocar') || cmd.includes('music') || cmd.includes('play') || cmd.includes('spotify')) actionPayload = { type: 'PlayCommand' };
-    else actionPayload = { type: 'AlexaClientCompatibleCommand', command };
+      const cmd = command.toLowerCase();
+      let actionType = 'TextCommand';
+      let actionPayload: any = { type: 'AlexaClientCompatibleCommand', command };
 
-    await axios.post(
-      `https://alexa.amazon.com.br/api/np/command?deviceSerialNumber=${found.serialNumber}&deviceType=${found.deviceType}`,
-      { action: JSON.stringify(actionPayload) },
-      { headers: { 'Cookie': ALEXA_COOKIE, 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 }
-    );
-    res.json({ success: true, message: `"${command}" executado em "${found.accountName}"!`, device: found.accountName });
-  } catch (error: any) {
-    const msg = error.response?.status === 401
-      ? 'Cookie da Alexa expirado. Atualize o ALEXA_COOKIE no Vercel.'
-      : error.message;
-    res.status(500).json({ success: false, error: msg });
+      if (cmd.includes('volume')) actionPayload = { type: 'VolumeLevelCommand', volumeLevel: value || 50 };
+      else if (cmd.includes('pausar') || cmd.includes('parar') || cmd.includes('stop')) actionPayload = { type: 'PauseCommand' };
+      else if (cmd.includes('tocar') || cmd.includes('play') || cmd.includes('continuar')) actionPayload = { type: 'PlayCommand' };
+      else if (cmd.includes('próxima') || cmd.includes('proxima') || cmd.includes('next')) actionPayload = { type: 'NextCommand' };
+      else if (cmd.includes('anterior') || cmd.includes('prev')) actionPayload = { type: 'PreviousCommand' };
+
+      // Use alexa-remote2's executeCommand
+      alexaInstance.executeCommand(found.serialNumber, found.deviceType, actionPayload, (cmdErr: any, response: any) => {
+        if (cmdErr) return res.status(500).json({ success: false, error: String(cmdErr) });
+        res.json({ success: true, message: `"${command}" executado em "${found.accountName}"`, device: found.accountName });
+      });
+    });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
