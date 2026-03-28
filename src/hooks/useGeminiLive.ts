@@ -576,7 +576,7 @@ export const useGeminiLive = ({
 
                 if (name === "control_device") {
                   asyncPending++;
-                  const { tuyaClientId, tuyaSecret, tuyaRegion } = useAppStore.getState();
+                  const { tuyaClientId, tuyaSecret, tuyaRegion, tuyaUserId } = useAppStore.getState();
                   fetch('/api/tuya/control', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -587,6 +587,7 @@ export const useGeminiLive = ({
                       clientId: tuyaClientId,
                       secret: tuyaSecret,
                       region: tuyaRegion || 'us',
+                      userId: tuyaUserId || '',
                     })
                   })
                     .then(r => r.json())

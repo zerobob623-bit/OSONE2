@@ -168,38 +168,58 @@ app.get('/api/tuya/devices', async (req, res) => {
   const clientId = (req.query.clientId as string) || process.env.TUYA_CLIENT_ID;
   const secret = (req.query.secret as string) || process.env.TUYA_SECRET;
   const region = (req.query.region as string) || process.env.TUYA_REGION || 'us';
+  const userId = (req.query.userId as string) || process.env.TUYA_USER_ID || '';
   const baseUrl = TUYA_REGION_URLS[region] || TUYA_REGION_URLS.us;
 
   if (!clientId || !secret) return res.status(400).json({ error: 'Configure Client ID e Secret nas Integrações.' });
 
   try {
     tuyaTokenCache = null;
-    const data = await tuyaRequest('GET', '/v1.0/iot-03/devices?page_size=50&page_no=1', null, clientId, secret, baseUrl);
-    const devices = (data.result?.list || []).map((d: any) => ({
-      id: d.id,
-      name: d.name,
-      category: d.category,
-      online: d.online,
-    }));
+    let devices: any[] = [];
+
+    if (userId) {
+      // Smart Home project: use user-based endpoint
+      const data = await tuyaRequest('GET', `/v1.0/users/${userId}/devices`, null, clientId, secret, baseUrl);
+      devices = (data.result || []).map((d: any) => ({
+        id: d.id, name: d.name, category: d.category, online: d.online,
+      }));
+    } else {
+      // Try industry endpoint (works for industry-type projects)
+      const data = await tuyaRequest('GET', '/v1.0/iot-03/devices?page_size=50&page_no=1', null, clientId, secret, baseUrl);
+      devices = (data.result?.list || []).map((d: any) => ({
+        id: d.id, name: d.name, category: d.category, online: d.online,
+      }));
+    }
+
     res.json({ success: true, devices });
   } catch (err: any) {
-    console.error('[Tuya] list error:', err.message);
-    res.status(500).json({ error: err.message });
+    const msg = err.message?.includes('ip') || err.message?.includes('access')
+      ? `${err.message} — Adicione seu User ID da conta SmartLife no campo abaixo.`
+      : err.message;
+    console.error('[Tuya] list error:', msg);
+    res.status(500).json({ error: msg });
   }
 });
 
 app.post('/api/tuya/control', async (req, res) => {
-  const { device_name, action, value, clientId: bClientId, secret: bSecret, region: bRegion } = req.body;
+  const { device_name, action, value, clientId: bClientId, secret: bSecret, region: bRegion, userId: bUserId } = req.body;
   const clientId = bClientId || process.env.TUYA_CLIENT_ID;
   const secret = bSecret || process.env.TUYA_SECRET;
   const region = bRegion || process.env.TUYA_REGION || 'us';
+  const userId = bUserId || process.env.TUYA_USER_ID || '';
   const baseUrl = TUYA_REGION_URLS[region] || TUYA_REGION_URLS.us;
 
   if (!clientId || !secret) return res.status(400).json({ error: 'Configure as credenciais Tuya nas Integrações.' });
 
   try {
-    const devData = await tuyaRequest('GET', '/v1.0/iot-03/devices?page_size=50&page_no=1', null, clientId, secret, baseUrl);
-    const devices: any[] = devData.result?.list || [];
+    let devices: any[] = [];
+    if (userId) {
+      const devData = await tuyaRequest('GET', `/v1.0/users/${userId}/devices`, null, clientId, secret, baseUrl);
+      devices = devData.result || [];
+    } else {
+      const devData = await tuyaRequest('GET', '/v1.0/iot-03/devices?page_size=50&page_no=1', null, clientId, secret, baseUrl);
+      devices = devData.result?.list || [];
+    }
 
     if (action === 'list') {
       const names = devices.map((d: any) => `${d.name}${d.online ? '' : ' (offline)'}`).join(', ');

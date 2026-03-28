@@ -152,6 +152,8 @@ interface AppState {
   setTuyaSecret: (secret: string) => void;
   tuyaRegion: string;
   setTuyaRegion: (region: string) => void;
+  tuyaUserId: string;
+  setTuyaUserId: (id: string) => void;
 
   // Alexa
   alexaCookie: string;
@@ -282,6 +284,8 @@ export const useAppStore = create<AppState>()(
       setTuyaSecret: (tuyaSecret) => set({ tuyaSecret }),
       tuyaRegion: 'us',
       setTuyaRegion: (tuyaRegion) => set({ tuyaRegion }),
+      tuyaUserId: '',
+      setTuyaUserId: (tuyaUserId) => set({ tuyaUserId }),
 
       // Alexa
       alexaCookie: '',
@@ -362,6 +366,7 @@ export const useAppStore = create<AppState>()(
         tuyaClientId: state.tuyaClientId,
         tuyaSecret: state.tuyaSecret,
         tuyaRegion: state.tuyaRegion,
+        tuyaUserId: state.tuyaUserId,
         alexaCookie: state.alexaCookie,
       }),
     }

@@ -435,6 +435,7 @@ export default function App() {
     tuyaClientId, setTuyaClientId,
     tuyaSecret, setTuyaSecret,
     tuyaRegion, setTuyaRegion,
+    tuyaUserId, setTuyaUserId,
     apiKey, setApiKey,
     openaiApiKey, setOpenaiApiKey,
     groqApiKey, setGroqApiKey,
@@ -1648,13 +1649,24 @@ export default function App() {
                               <option value="in">Índia (in)</option>
                             </select>
                           </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase tracking-widest opacity-40">User ID <span className="opacity-50 normal-case">(UID da conta SmartLife)</span></label>
+                            <input
+                              type="text"
+                              placeholder="ay1234567890abcdef (opcional)"
+                              value={tuyaUserId}
+                              onChange={(e) => setTuyaUserId(e.target.value.trim())}
+                              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
+                            />
+                            <p className="text-[10px] text-white/20">Obrigatório se der erro de IP. Veja em: iot.tuya.com → Devices → clique no usuário vinculado.</p>
+                          </div>
                           <button
                             disabled={!tuyaClientId || !tuyaSecret || tuyaLoading}
                             onClick={async () => {
                               setTuyaLoading(true);
                               setTuyaDevices([]);
                               try {
-                                const r = await fetch(`/api/tuya/devices?clientId=${encodeURIComponent(tuyaClientId)}&secret=${encodeURIComponent(tuyaSecret)}&region=${tuyaRegion}`);
+                                const r = await fetch(`/api/tuya/devices?clientId=${encodeURIComponent(tuyaClientId)}&secret=${encodeURIComponent(tuyaSecret)}&region=${tuyaRegion}&userId=${encodeURIComponent(tuyaUserId)}`);
                                 const d = await r.json();
                                 if (d.success) setTuyaDevices(d.devices);
                                 else setSmartHomeStatus(`❌ ${d.error}`);
