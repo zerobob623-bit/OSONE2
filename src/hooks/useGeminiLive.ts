@@ -705,6 +705,28 @@ export const useGeminiLive = ({
                   continue;
                 }
 
+                // ── AUTO-EVOLUÇÃO — Ler/Editar código + Git Push ─────────────
+                if (name === 'self_read_code' || name === 'self_write_code' || name === 'self_list_files' || name === 'self_git_push') {
+                  asyncPending++;
+                  const endpoint = name === 'self_read_code' ? '/api/code/read'
+                    : name === 'self_write_code' ? '/api/code/write'
+                    : name === 'self_list_files' ? '/api/code/list'
+                    : '/api/code/git-push';
+                  fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(args)
+                  })
+                    .then(r => r.json())
+                    .then(data => {
+                      onToolCallRef.current?.(name, args);
+                      safeSend({ name, id, response: data.error ? { success: false, error: data.error } : { success: true, result: typeof data === 'string' ? data : JSON.stringify(data) } });
+                    })
+                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
+                    .finally(finishAsync);
+                  continue;
+                }
+
                 // ── Custom Skills (Agente Infinito) ────────────────────────
                 if (name.startsWith('skill_')) {
                   asyncPending++;

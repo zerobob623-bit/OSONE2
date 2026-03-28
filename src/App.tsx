@@ -6,6 +6,7 @@ import { Supernova } from './components/Supernova';
 import { Mascot } from './components/Mascot';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey, CustomSkill } from './store/useAppStore';
+import CATALOG, { CATALOG_CATEGORIES, type CatalogSkill } from './data/skillsCatalog';
 import { useConversationHistory } from './hooks/useConversationHistory';
 import { useUserMemory, ImportantDate, SemanticFact, ConversationSummary } from './hooks/useUserMemory';
 import { getEmbedding, cosineSimilarity } from './utils/embeddings';
@@ -111,6 +112,7 @@ Diretrizes:
 13. CASA INTELIGENTE: 'control_device' para dispositivos. action='list' para listar.
 14. IMAGENS: Ao receber imagem, descreva brevemente o que vê, identifique elementos desconhecidos (pesquise se necessário), responda com precisão. Nunca invente detalhes — diga "não consigo confirmar" se não estiver claro.
 15. CONTROLE DO PC (local): 'control_pc' — sempre capture screenshot antes e depois de ações. Ações: screenshot, run_command, open_app, type_text, press_key, click(x,y), move_mouse, scroll, get_clipboard, set_clipboard, get_active_window, list_windows, system_info.
+16. AUTO-EVOLUÇÃO: Você pode ler e editar seu próprio código-fonte com 'self_read_code', 'self_write_code', 'self_list_files' e publicar no GitHub com 'self_git_push'. Use quando o usuário pedir melhorias, novos recursos ou correções. Fluxo: leia o arquivo → entenda o código → edite → commite e push. Sempre leia antes de editar.
 
 METACOGNIÇÃO (interna, nunca verbalizada):
 • Classifique a tarefa: Fácil → resposta concisa imediata. Média → raciocine brevemente. Difícil → use ferramentas, divida em etapas.
@@ -422,6 +424,8 @@ export default function App() {
   const [skillDraft, setSkillDraft]                 = useState<Partial<CustomSkill> | null>(null);
   const [skillParamDraft, setSkillParamDraft]       = useState({ name: '', description: '', required: true, type: 'string' as const });
   const [showAdvancedParams, setShowAdvancedParams] = useState(false);
+  const [skillTab, setSkillTab]                     = useState<'store' | 'installed' | 'custom'>('store');
+  const [catalogFilter, setCatalogFilter]           = useState<string>('popular');
   const [interfaceMode, setInterfaceMode]           = useState(0);
   const [swipeDir, setSwipeDir]                     = useState<1 | -1>(1);
   const swipeStartX                                 = useRef(0);
@@ -1169,8 +1173,8 @@ export default function App() {
               <button onClick={() => { setScreen('skills'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
                 <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}><span className="text-xl">⚡</span></div>
                 <div className="text-left">
-                  <p className="text-sm font-medium">Habilidades</p>
-                  <p className="text-[10px] text-white/30">{customSkills.filter((s: CustomSkill) => s.active).length > 0 ? `${customSkills.filter((s: CustomSkill) => s.active).length} ativa(s) · Agente Infinito` : 'Adicione superpoderes externos'}</p>
+                  <p className="text-sm font-medium">Loja de Agentes</p>
+                  <p className="text-[10px] text-white/30">{customSkills.filter((s: CustomSkill) => s.active).length > 0 ? `${customSkills.filter((s: CustomSkill) => s.active).length} ativa(s) · Agente Infinito` : 'Instale superpoderes prontos'}</p>
                 </div>
                 {customSkills.filter((s: CustomSkill) => s.active).length > 0 && (
                   <div className="ml-auto w-2 h-2 rounded-full bg-green-400 animate-pulse" />
@@ -1297,7 +1301,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* SKILLS SCREEN */}
+      {/* SKILLS / AGENT STORE SCREEN */}
       <AnimatePresence>
         {screen === 'skills' && (
           <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
@@ -1307,139 +1311,237 @@ export default function App() {
               <div className="flex items-center gap-4">
                 <button onClick={() => { setScreen('main'); setSkillDraft(null); }} className="p-2 hover:bg-white/5 rounded-full"><ChevronLeft size={20} /></button>
                 <div>
-                  <h2 className="text-sm font-medium tracking-widest uppercase">Habilidades</h2>
+                  <h2 className="text-sm font-medium tracking-widest uppercase">Loja de Agentes</h2>
                   {customSkills.filter((s: CustomSkill) => s.active).length > 0 && (
-                    <p className="text-[9px] text-green-400 uppercase tracking-widest">Agente Infinito ativo</p>
+                    <p className="text-[9px] text-green-400 uppercase tracking-widest">Agente Infinito — {customSkills.filter((s: CustomSkill) => s.active).length} ativo(s)</p>
                   )}
                 </div>
               </div>
-              <button onClick={() => { setSkillDraft({ displayName: '', icon: '⚡', description: '', webhookUrl: '', method: 'GET', active: true, parameters: [] }); setShowAdvancedParams(false); }}
-                className="flex items-center gap-2 px-4 py-2 rounded-full text-[10px] uppercase tracking-widest transition-all"
-                style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
-                + Nova
-              </button>
             </div>
 
-            {/* Add/Edit Form */}
-            {skillDraft && (
-              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-                className="mx-4 mt-4 p-4 rounded-2xl border border-white/10 bg-white/[0.03] space-y-3 shrink-0">
-                <p className="text-[10px] uppercase tracking-widest opacity-40">{skillDraft.id ? 'Editar habilidade' : 'Nova habilidade'}</p>
-                <div className="flex gap-2">
-                  <input value={skillDraft.icon || ''} onChange={e => setSkillDraft(d => ({ ...d, icon: e.target.value }))}
-                    className="w-14 bg-white/5 border border-white/10 rounded-xl px-2 py-2 text-center text-xl focus:outline-none focus:border-white/30" placeholder="⚡" maxLength={2} />
-                  <input value={skillDraft.displayName || ''} onChange={e => setSkillDraft(d => ({ ...d, displayName: e.target.value }))}
-                    placeholder="Nome (ex: Cotação do Dólar)" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30" />
-                </div>
-                <textarea value={skillDraft.description || ''} onChange={e => setSkillDraft(d => ({ ...d, description: e.target.value }))}
-                  rows={2} placeholder="Descreva quando a IA deve usar essa habilidade (ex: quando o usuário perguntar sobre câmbio ou cotação de moedas)"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 resize-none" />
-                <div className="flex gap-2">
-                  <input value={skillDraft.webhookUrl || ''} onChange={e => setSkillDraft(d => ({ ...d, webhookUrl: e.target.value }))}
-                    placeholder="https://sua-api.com/endpoint" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono" />
-                  <select value={skillDraft.method || 'GET'} onChange={e => setSkillDraft(d => ({ ...d, method: e.target.value as 'GET' | 'POST' }))}
-                    className="bg-[#1a1a1a] border border-white/10 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-white/30">
-                    <option value="GET">GET</option>
-                    <option value="POST">POST</option>
-                  </select>
-                </div>
-
-                {/* Advanced params toggle */}
-                <button onClick={() => setShowAdvancedParams(v => !v)} className="text-[10px] text-white/30 hover:text-white/60 transition-all">
-                  {showAdvancedParams ? '▲' : '▶'} Parâmetros avançados ({skillDraft.parameters?.length || 0})
+            {/* Tabs: Loja | Instalados | Custom */}
+            <div className="flex border-b border-white/5 shrink-0">
+              {(['store', 'installed', 'custom'] as const).map(tab => (
+                <button key={tab} onClick={() => { setSkillTab(tab); setSkillDraft(null); }}
+                  className="flex-1 py-3 text-[10px] uppercase tracking-widest transition-all relative"
+                  style={{ color: skillTab === tab ? moodColor : 'rgba(255,255,255,0.3)' }}>
+                  {tab === 'store' ? `Loja (${CATALOG.length})` : tab === 'installed' ? `Instalados (${customSkills.length})` : '+ Custom'}
+                  {skillTab === tab && <motion.div layoutId="skillTabIndicator" className="absolute bottom-0 left-0 right-0 h-[2px]" style={{ backgroundColor: moodColor }} />}
                 </button>
-                {showAdvancedParams && (
-                  <div className="space-y-2 pl-3 border-l border-white/10">
-                    {(skillDraft.parameters || []).map((p, i) => (
-                      <div key={i} className="flex items-center gap-2 text-[10px]">
-                        <span className="font-mono text-white/60 flex-1">{p.name}</span>
-                        <span className="opacity-40 flex-1 truncate">{p.description}</span>
-                        <span className="opacity-30">{p.type}</span>
-                        <button onClick={() => setSkillDraft(d => ({ ...d, parameters: (d.parameters||[]).filter((_,j)=>j!==i) }))}
-                          className="text-red-400/50 hover:text-red-400 px-1">✕</button>
-                      </div>
-                    ))}
-                    <div className="flex gap-1">
-                      <input value={skillParamDraft.name} onChange={e => setSkillParamDraft(p => ({ ...p, name: e.target.value }))}
-                        placeholder="nome" className="w-24 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] font-mono placeholder:text-white/20 focus:outline-none" />
-                      <input value={skillParamDraft.description} onChange={e => setSkillParamDraft(p => ({ ...p, description: e.target.value }))}
-                        placeholder="descrição" className="flex-1 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] placeholder:text-white/20 focus:outline-none" />
-                      <select value={skillParamDraft.type} onChange={e => setSkillParamDraft(p => ({ ...p, type: e.target.value as any }))}
-                        className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1 text-[10px] focus:outline-none">
-                        <option value="string">texto</option>
-                        <option value="number">número</option>
-                        <option value="boolean">sim/não</option>
-                      </select>
-                      <button onClick={() => {
-                        if (!skillParamDraft.name) return;
-                        setSkillDraft(d => ({ ...d, parameters: [...(d.parameters||[]), { ...skillParamDraft }] }));
-                        setSkillParamDraft({ name: '', description: '', required: true, type: 'string' });
-                      }} className="px-2 py-1 rounded-lg text-[10px] bg-white/10 hover:bg-white/20">+</button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex gap-2 pt-1">
-                  <button onClick={() => setSkillDraft(null)} className="flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest opacity-40 hover:opacity-70 border border-white/10">Cancelar</button>
-                  <button
-                    disabled={!skillDraft.displayName || !skillDraft.webhookUrl}
-                    onClick={() => {
-                      if (!skillDraft.displayName || !skillDraft.webhookUrl) return;
-                      if (skillDraft.id) {
-                        updateCustomSkill(skillDraft.id, skillDraft);
-                      } else {
-                        addCustomSkill({ id: crypto.randomUUID(), displayName: skillDraft.displayName!, icon: skillDraft.icon || '⚡', description: skillDraft.description || '', webhookUrl: skillDraft.webhookUrl!, method: skillDraft.method || 'GET', active: true, parameters: skillDraft.parameters || [] });
-                      }
-                      setSkillDraft(null);
-                    }}
-                    className="flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all disabled:opacity-30"
-                    style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
-                    Salvar
-                  </button>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Skills List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {customSkills.length === 0 && !skillDraft && (
-                <div className="flex flex-col items-center justify-center h-full gap-4 opacity-20">
-                  <span className="text-5xl">⚡</span>
-                  <p className="text-sm uppercase tracking-widest">Nenhuma habilidade</p>
-                  <p className="text-xs text-center opacity-60">Adicione webhooks externos para expandir o que a IA pode fazer — sem limites.</p>
-                </div>
-              )}
-              {customSkills.map((skill: CustomSkill) => (
-                <motion.div key={skill.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
-                  className="flex items-center gap-3 p-4 rounded-2xl border transition-all"
-                  style={{ backgroundColor: skill.active ? `${moodColor}08` : 'transparent', borderColor: skill.active ? `${moodColor}30` : 'rgba(255,255,255,0.05)' }}>
-                  <span className="text-2xl">{skill.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{skill.displayName}</p>
-                    <p className="text-[10px] text-white/30 truncate">{skill.description || skill.webhookUrl}</p>
-                    {skill.parameters.length > 0 && (
-                      <p className="text-[9px] text-white/20 mt-0.5">{skill.parameters.length} parâmetro(s)</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={() => { setSkillDraft({ ...skill }); setShowAdvancedParams(false); }}
-                      className="p-1.5 rounded-lg hover:bg-white/10 transition-all opacity-40 hover:opacity-70">
-                      <span className="text-xs">✎</span>
-                    </button>
-                    <button onClick={() => toggleCustomSkill(skill.id)}
-                      className="relative w-10 h-5 rounded-full transition-all"
-                      style={{ backgroundColor: skill.active ? moodColor : 'rgba(255,255,255,0.1)' }}>
-                      <span className="absolute top-0.5 transition-all rounded-full w-4 h-4 bg-white"
-                        style={{ left: skill.active ? '22px' : '2px' }} />
-                    </button>
-                    <button onClick={() => { if (confirm(`Remover "${skill.displayName}"?`)) removeCustomSkill(skill.id); }}
-                      className="p-1.5 rounded-lg hover:bg-red-500/20 transition-all opacity-30 hover:opacity-70">
-                      <span className="text-xs text-red-400">✕</span>
-                    </button>
-                  </div>
-                </motion.div>
               ))}
             </div>
+
+            {/* TAB: STORE — Catálogo de agentes prontos */}
+            {skillTab === 'store' && (
+              <div className="flex-1 overflow-y-auto">
+                {/* Category filters */}
+                <div className="flex gap-2 p-4 pb-2 overflow-x-auto">
+                  {Object.entries(CATALOG_CATEGORIES).map(([key, { label, icon }]) => (
+                    <button key={key} onClick={() => setCatalogFilter(key)}
+                      className="shrink-0 px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest transition-all whitespace-nowrap"
+                      style={{
+                        backgroundColor: catalogFilter === key ? `${moodColor}20` : 'rgba(255,255,255,0.03)',
+                        color: catalogFilter === key ? moodColor : 'rgba(255,255,255,0.4)',
+                        border: `1px solid ${catalogFilter === key ? `${moodColor}40` : 'rgba(255,255,255,0.05)'}`,
+                      }}>
+                      {icon} {label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Catalog grid */}
+                <div className="p-4 pt-2 space-y-2">
+                  {(catalogFilter === 'popular'
+                    ? CATALOG.filter(s => s.popular)
+                    : CATALOG.filter(s => s.category === catalogFilter)
+                  ).map((cat: CatalogSkill) => {
+                    const isInstalled = customSkills.some((s: CustomSkill) => s.displayName === cat.displayName && s.webhookUrl === cat.webhookUrl);
+                    return (
+                      <motion.div key={cat.catalogId} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        className="p-4 rounded-2xl border transition-all"
+                        style={{ borderColor: isInstalled ? `${moodColor}30` : 'rgba(255,255,255,0.05)', backgroundColor: isInstalled ? `${moodColor}05` : 'transparent' }}>
+                        <div className="flex items-start gap-3">
+                          <span className="text-3xl">{cat.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium">{cat.displayName}</p>
+                              {cat.popular && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 uppercase">Popular</span>}
+                            </div>
+                            <p className="text-[10px] text-white/40 mt-0.5 line-clamp-2">{cat.description}</p>
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <span className="text-[9px] text-white/20">{cat.method}</span>
+                              {cat.parameters.length > 0 && <span className="text-[9px] text-white/20">{cat.parameters.length} param(s)</span>}
+                              <span className="text-[9px] text-white/15">por {cat.author}</span>
+                            </div>
+                          </div>
+                          <button
+                            disabled={isInstalled}
+                            onClick={() => {
+                              if (isInstalled) return;
+                              addCustomSkill({
+                                id: crypto.randomUUID(),
+                                displayName: cat.displayName,
+                                icon: cat.icon,
+                                description: cat.description,
+                                webhookUrl: cat.webhookUrl,
+                                method: cat.method,
+                                active: true,
+                                parameters: [...cat.parameters],
+                              });
+                            }}
+                            className="shrink-0 px-4 py-2 rounded-full text-[10px] uppercase tracking-widest font-medium transition-all"
+                            style={{
+                              backgroundColor: isInstalled ? 'rgba(255,255,255,0.03)' : `${moodColor}20`,
+                              color: isInstalled ? 'rgba(255,255,255,0.3)' : moodColor,
+                              border: `1px solid ${isInstalled ? 'rgba(255,255,255,0.05)' : `${moodColor}40`}`,
+                            }}>
+                            {isInstalled ? 'Instalado' : 'Instalar'}
+                          </button>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* TAB: INSTALLED — Skills instaladas */}
+            {skillTab === 'installed' && (
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {customSkills.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-full gap-4 opacity-20">
+                    <span className="text-5xl">⚡</span>
+                    <p className="text-sm uppercase tracking-widest">Nenhum agente instalado</p>
+                    <p className="text-xs text-center opacity-60">Vá para a Loja e instale agentes prontos com um clique.</p>
+                  </div>
+                )}
+                {customSkills.map((skill: CustomSkill) => (
+                  <motion.div key={skill.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+                    className="flex items-center gap-3 p-4 rounded-2xl border transition-all"
+                    style={{ backgroundColor: skill.active ? `${moodColor}08` : 'transparent', borderColor: skill.active ? `${moodColor}30` : 'rgba(255,255,255,0.05)' }}>
+                    <span className="text-2xl">{skill.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{skill.displayName}</p>
+                      <p className="text-[10px] text-white/30 truncate">{skill.description || skill.webhookUrl}</p>
+                      {skill.parameters.length > 0 && (
+                        <p className="text-[9px] text-white/20 mt-0.5">{skill.parameters.length} parâmetro(s)</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={() => { setSkillTab('custom'); setSkillDraft({ ...skill }); setShowAdvancedParams(false); }}
+                        className="p-1.5 rounded-lg hover:bg-white/10 transition-all opacity-40 hover:opacity-70">
+                        <span className="text-xs">✎</span>
+                      </button>
+                      <button onClick={() => toggleCustomSkill(skill.id)}
+                        className="relative w-10 h-5 rounded-full transition-all"
+                        style={{ backgroundColor: skill.active ? moodColor : 'rgba(255,255,255,0.1)' }}>
+                        <span className="absolute top-0.5 transition-all rounded-full w-4 h-4 bg-white"
+                          style={{ left: skill.active ? '22px' : '2px' }} />
+                      </button>
+                      <button onClick={() => { if (confirm(`Remover "${skill.displayName}"?`)) removeCustomSkill(skill.id); }}
+                        className="p-1.5 rounded-lg hover:bg-red-500/20 transition-all opacity-30 hover:opacity-70">
+                        <span className="text-xs text-red-400">✕</span>
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+
+            {/* TAB: CUSTOM — Criar habilidade manual */}
+            {skillTab === 'custom' && (
+              <div className="flex-1 overflow-y-auto p-4">
+                {!skillDraft ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-4">
+                    <span className="text-5xl opacity-20">🔧</span>
+                    <p className="text-sm uppercase tracking-widest opacity-30">Habilidade Custom</p>
+                    <p className="text-xs text-center opacity-20 max-w-[250px]">Conecte qualquer API, webhook ou n8n como superpoder da IA.</p>
+                    <button onClick={() => { setSkillDraft({ displayName: '', icon: '⚡', description: '', webhookUrl: '', method: 'GET', active: true, parameters: [] }); setShowAdvancedParams(false); }}
+                      className="mt-2 px-6 py-2.5 rounded-full text-[10px] uppercase tracking-widest font-medium transition-all"
+                      style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
+                      + Criar habilidade
+                    </button>
+                  </div>
+                ) : (
+                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+                    className="p-4 rounded-2xl border border-white/10 bg-white/[0.03] space-y-3">
+                    <p className="text-[10px] uppercase tracking-widest opacity-40">{skillDraft.id ? 'Editar habilidade' : 'Nova habilidade custom'}</p>
+                    <div className="flex gap-2">
+                      <input value={skillDraft.icon || ''} onChange={e => setSkillDraft(d => ({ ...d, icon: e.target.value }))}
+                        className="w-14 bg-white/5 border border-white/10 rounded-xl px-2 py-2 text-center text-xl focus:outline-none focus:border-white/30" placeholder="⚡" maxLength={2} />
+                      <input value={skillDraft.displayName || ''} onChange={e => setSkillDraft(d => ({ ...d, displayName: e.target.value }))}
+                        placeholder="Nome (ex: Meu n8n Bot)" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30" />
+                    </div>
+                    <textarea value={skillDraft.description || ''} onChange={e => setSkillDraft(d => ({ ...d, description: e.target.value }))}
+                      rows={2} placeholder="Quando a IA deve usar (ex: quando pedir cotação de moedas)"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 resize-none" />
+                    <div className="flex gap-2">
+                      <input value={skillDraft.webhookUrl || ''} onChange={e => setSkillDraft(d => ({ ...d, webhookUrl: e.target.value }))}
+                        placeholder="https://api.com/{param} ou webhook URL" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono" />
+                      <select value={skillDraft.method || 'GET'} onChange={e => setSkillDraft(d => ({ ...d, method: e.target.value as 'GET' | 'POST' }))}
+                        className="bg-[#1a1a1a] border border-white/10 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-white/30">
+                        <option value="GET">GET</option>
+                        <option value="POST">POST</option>
+                      </select>
+                    </div>
+                    <p className="text-[9px] text-white/20">Dica: use {'{param}'} na URL para parâmetros dinâmicos</p>
+
+                    <button onClick={() => setShowAdvancedParams(v => !v)} className="text-[10px] text-white/30 hover:text-white/60 transition-all">
+                      {showAdvancedParams ? '▲' : '▶'} Parâmetros ({skillDraft.parameters?.length || 0})
+                    </button>
+                    {showAdvancedParams && (
+                      <div className="space-y-2 pl-3 border-l border-white/10">
+                        {(skillDraft.parameters || []).map((p, i) => (
+                          <div key={i} className="flex items-center gap-2 text-[10px]">
+                            <span className="font-mono text-white/60 flex-1">{p.name}</span>
+                            <span className="opacity-40 flex-1 truncate">{p.description}</span>
+                            <span className="opacity-30">{p.type}</span>
+                            <button onClick={() => setSkillDraft(d => ({ ...d, parameters: (d.parameters||[]).filter((_,j)=>j!==i) }))}
+                              className="text-red-400/50 hover:text-red-400 px-1">✕</button>
+                          </div>
+                        ))}
+                        <div className="flex gap-1">
+                          <input value={skillParamDraft.name} onChange={e => setSkillParamDraft(p => ({ ...p, name: e.target.value }))}
+                            placeholder="nome" className="w-24 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] font-mono placeholder:text-white/20 focus:outline-none" />
+                          <input value={skillParamDraft.description} onChange={e => setSkillParamDraft(p => ({ ...p, description: e.target.value }))}
+                            placeholder="descrição" className="flex-1 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] placeholder:text-white/20 focus:outline-none" />
+                          <select value={skillParamDraft.type} onChange={e => setSkillParamDraft(p => ({ ...p, type: e.target.value as any }))}
+                            className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1 text-[10px] focus:outline-none">
+                            <option value="string">texto</option>
+                            <option value="number">número</option>
+                            <option value="boolean">sim/não</option>
+                          </select>
+                          <button onClick={() => {
+                            if (!skillParamDraft.name) return;
+                            setSkillDraft(d => ({ ...d, parameters: [...(d.parameters||[]), { ...skillParamDraft }] }));
+                            setSkillParamDraft({ name: '', description: '', required: true, type: 'string' });
+                          }} className="px-2 py-1 rounded-lg text-[10px] bg-white/10 hover:bg-white/20">+</button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={() => setSkillDraft(null)} className="flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest opacity-40 hover:opacity-70 border border-white/10">Cancelar</button>
+                      <button
+                        disabled={!skillDraft.displayName || !skillDraft.webhookUrl}
+                        onClick={() => {
+                          if (!skillDraft.displayName || !skillDraft.webhookUrl) return;
+                          if (skillDraft.id) {
+                            updateCustomSkill(skillDraft.id, skillDraft);
+                          } else {
+                            addCustomSkill({ id: crypto.randomUUID(), displayName: skillDraft.displayName!, icon: skillDraft.icon || '⚡', description: skillDraft.description || '', webhookUrl: skillDraft.webhookUrl!, method: skillDraft.method || 'GET', active: true, parameters: skillDraft.parameters || [] });
+                          }
+                          setSkillDraft(null);
+                        }}
+                        className="flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all disabled:opacity-30"
+                        style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
+                        Salvar
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+            )}
 
             {/* Footer hint */}
             {customSkills.length > 0 && (

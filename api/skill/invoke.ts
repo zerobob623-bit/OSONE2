@@ -18,13 +18,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    // Suporte a URL templates: {param} é substituído pelo valor real
+    let finalUrl = webhookUrl;
+    const remainingParams: Record<string, any> = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (finalUrl.includes(`{${k}}`)) {
+        finalUrl = finalUrl.replace(`{${k}}`, encodeURIComponent(String(v)));
+      } else {
+        (remainingParams as any)[k] = v;
+      }
+    }
+
     const isGet = method.toUpperCase() === 'GET';
+    const hasRemaining = Object.keys(remainingParams).length > 0;
     const response = await axios({
       method: method.toUpperCase(),
-      url: isGet
-        ? `${webhookUrl}?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString()}`
-        : webhookUrl,
-      data: isGet ? undefined : params,
+      url: isGet && hasRemaining
+        ? `${finalUrl}${finalUrl.includes('?') ? '&' : '?'}${new URLSearchParams(Object.entries(remainingParams).map(([k, v]) => [k, String(v)])).toString()}`
+        : finalUrl,
+      data: isGet ? undefined : (hasRemaining ? remainingParams : undefined),
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       timeout: 15000,
     });

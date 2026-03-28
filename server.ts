@@ -532,13 +532,25 @@ app.post('/api/skill/invoke', async (req, res) => {
   }
 
   try {
+    // Suporte a URL templates: {param} é substituído pelo valor real
+    let finalUrl = webhookUrl;
+    const remainingParams: Record<string, any> = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (finalUrl.includes(`{${k}}`)) {
+        finalUrl = finalUrl.replace(`{${k}}`, encodeURIComponent(String(v)));
+      } else {
+        remainingParams[k] = v;
+      }
+    }
+
     const isGet = method.toUpperCase() === 'GET';
+    const hasRemaining = Object.keys(remainingParams).length > 0;
     const response = await axios({
       method: method.toUpperCase(),
-      url: isGet
-        ? `${webhookUrl}?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString()}`
-        : webhookUrl,
-      data: isGet ? undefined : params,
+      url: isGet && hasRemaining
+        ? `${finalUrl}${finalUrl.includes('?') ? '&' : '?'}${new URLSearchParams(Object.entries(remainingParams).map(([k, v]) => [k, String(v)])).toString()}`
+        : finalUrl,
+      data: isGet ? undefined : (hasRemaining ? remainingParams : undefined),
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       timeout: 15000,
     });
@@ -546,6 +558,122 @@ app.post('/api/skill/invoke', async (req, res) => {
   } catch (error: any) {
     const msg = error.response?.data?.message || error.response?.data?.error || error.message;
     res.status(500).json({ error: `Erro ao chamar habilidade: ${msg}` });
+  }
+});
+
+// ─── AUTO-EVOLUÇÃO — Ler/Editar código e Git Push ────────────────────────────
+const PROJECT_ROOT = process.cwd();
+const execAsync = promisify(exec);
+
+// Segurança: caminho deve ser relativo e dentro do projeto
+function safePath(rel: string): string | null {
+  const resolved = path.resolve(PROJECT_ROOT, rel);
+  if (!resolved.startsWith(PROJECT_ROOT)) return null;
+  // Bloquear .env, .git internals, node_modules
+  if (rel.includes('.env') || rel.startsWith('.git/') || rel.includes('node_modules/')) return null;
+  return resolved;
+}
+
+app.post('/api/code/read', async (req, res) => {
+  const { filePath, startLine, endLine } = req.body;
+  if (!filePath) return res.status(400).json({ error: 'filePath é obrigatório' });
+  const abs = safePath(filePath);
+  if (!abs) return res.status(403).json({ error: 'Acesso negado a este caminho.' });
+  try {
+    if (!fs.existsSync(abs)) return res.status(404).json({ error: 'Arquivo não encontrado.' });
+    const content = fs.readFileSync(abs, 'utf-8');
+    const lines = content.split('\n');
+    const start = Math.max(1, startLine || 1);
+    const end = Math.min(lines.length, endLine || lines.length);
+    const slice = lines.slice(start - 1, end);
+    res.json({ filePath, totalLines: lines.length, startLine: start, endLine: end, content: slice.join('\n') });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/code/write', async (req, res) => {
+  const { filePath, search, replace, createIfMissing } = req.body;
+  if (!filePath) return res.status(400).json({ error: 'filePath é obrigatório' });
+  if (replace === undefined) return res.status(400).json({ error: 'replace é obrigatório' });
+  const abs = safePath(filePath);
+  if (!abs) return res.status(403).json({ error: 'Acesso negado a este caminho.' });
+  try {
+    if (!fs.existsSync(abs)) {
+      if (!createIfMissing) return res.status(404).json({ error: 'Arquivo não encontrado. Use createIfMissing=true para criar.' });
+      const dir = path.dirname(abs);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(abs, replace, 'utf-8');
+      return res.json({ success: true, action: 'created', filePath });
+    }
+    if (!search) {
+      // Reescrita total
+      fs.writeFileSync(abs, replace, 'utf-8');
+      return res.json({ success: true, action: 'overwritten', filePath });
+    }
+    const content = fs.readFileSync(abs, 'utf-8');
+    if (!content.includes(search)) {
+      return res.status(400).json({ error: 'Trecho "search" não encontrado no arquivo. Leia o arquivo primeiro para garantir o conteúdo exato.' });
+    }
+    const updated = content.replace(search, replace);
+    fs.writeFileSync(abs, updated, 'utf-8');
+    res.json({ success: true, action: 'replaced', filePath });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/code/list', async (req, res) => {
+  const { directory = '', recursive = false } = req.body || {};
+  const abs = safePath(directory || '.');
+  if (!abs) return res.status(403).json({ error: 'Acesso negado.' });
+  try {
+    if (!fs.existsSync(abs)) return res.status(404).json({ error: 'Diretório não encontrado.' });
+    const entries = fs.readdirSync(abs, { withFileTypes: true });
+    const result: string[] = [];
+    for (const e of entries) {
+      if (e.name.startsWith('.') || e.name === 'node_modules' || e.name === 'dist') continue;
+      const rel = path.join(directory || '', e.name);
+      result.push(e.isDirectory() ? `${rel}/` : rel);
+      if (recursive && e.isDirectory() && result.length < 200) {
+        try {
+          const sub = fs.readdirSync(path.join(abs, e.name), { withFileTypes: true });
+          for (const s of sub) {
+            if (s.name.startsWith('.')) continue;
+            result.push(s.isDirectory() ? `${rel}/${s.name}/` : `${rel}/${s.name}`);
+          }
+        } catch { /* skip unreadable */ }
+      }
+    }
+    res.json({ directory: directory || '.', files: result });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/code/git-push', async (req, res) => {
+  const { commitMessage, files } = req.body;
+  if (!commitMessage) return res.status(400).json({ error: 'commitMessage é obrigatório' });
+  try {
+    // Add files
+    if (files) {
+      const fileList = files.split(',').map((f: string) => f.trim()).filter(Boolean);
+      for (const f of fileList) {
+        if (!safePath(f)) return res.status(403).json({ error: `Acesso negado: ${f}` });
+      }
+      await execAsync(`git add ${fileList.join(' ')}`, { cwd: PROJECT_ROOT });
+    } else {
+      await execAsync('git add -A', { cwd: PROJECT_ROOT });
+    }
+    // Commit
+    await execAsync(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, { cwd: PROJECT_ROOT });
+    // Push (detect current branch)
+    const { stdout: branch } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: PROJECT_ROOT });
+    const branchName = branch.trim();
+    await execAsync(`git push -u origin ${branchName}`, { cwd: PROJECT_ROOT });
+    res.json({ success: true, branch: branchName, message: commitMessage });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -585,8 +713,6 @@ app.post("/api/chat", async (req, res) => {
 // 🖥️ CONTROLE DO PC (apenas local — bloqueado em deploy)
 // Requer: xdotool, xclip, scrot (Linux)
 // ============================================================
-
-const execAsync = promisify(exec);
 
 async function runCmd(cmd: string): Promise<{ stdout: string; stderr: string }> {
   try {

@@ -369,6 +369,58 @@ Ações: screenshot, run_command, open_app, type_text, press_key, click, move_mo
       required: ["action"]
     }
   },
+  // ── AUTO-EVOLUÇÃO — Ler/Editar código e atualizar GitHub ─────────────────────
+  {
+    name: "self_read_code",
+    description: `Lê o conteúdo de um arquivo do projeto OSONE. Use para inspecionar código antes de modificar.`,
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        filePath: { type: Type.STRING, description: "Caminho relativo do arquivo (ex: src/App.tsx, server.ts, src/hooks/useGeminiLive.ts)" },
+        startLine: { type: Type.NUMBER, description: "Linha inicial (opcional, padrão 1)" },
+        endLine: { type: Type.NUMBER, description: "Linha final (opcional, padrão até o fim)" },
+      },
+      required: ["filePath"]
+    }
+  },
+  {
+    name: "self_write_code",
+    description: `Edita um arquivo do projeto OSONE. Pode substituir trecho específico ou reescrever arquivo inteiro. Use com cuidado — sempre leia o arquivo antes.`,
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        filePath: { type: Type.STRING, description: "Caminho relativo do arquivo (ex: src/App.tsx)" },
+        search: { type: Type.STRING, description: "Texto exato a encontrar e substituir (se vazio, sobrescreve o arquivo inteiro)" },
+        replace: { type: Type.STRING, description: "Texto de substituição" },
+        createIfMissing: { type: Type.BOOLEAN, description: "Se true, cria o arquivo caso não exista" },
+      },
+      required: ["filePath", "replace"]
+    }
+  },
+  {
+    name: "self_list_files",
+    description: `Lista arquivos e pastas do projeto OSONE. Use para explorar a estrutura antes de editar.`,
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        directory: { type: Type.STRING, description: "Caminho relativo da pasta (ex: src, src/hooks, api). Vazio = raiz do projeto." },
+        recursive: { type: Type.BOOLEAN, description: "Se true, lista recursivamente (padrão false)" },
+      },
+      required: []
+    }
+  },
+  {
+    name: "self_git_push",
+    description: `Faz commit e push das alterações do projeto OSONE para o GitHub. Use após editar código para salvar e publicar as mudanças.`,
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        commitMessage: { type: Type.STRING, description: "Mensagem descritiva do commit (ex: 'Adicionada função de busca por voz')" },
+        files: { type: Type.STRING, description: "Arquivos a incluir no commit, separados por vírgula (ex: 'src/App.tsx,server.ts'). Vazio = todos os modificados." },
+      },
+      required: ["commitMessage"]
+    }
+  },
 ];
 
 // ── Custom Skills (Agente Infinito) ──────────────────────────────────────────
