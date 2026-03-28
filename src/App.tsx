@@ -5,7 +5,7 @@ import { VoiceOrb } from './components/VoiceOrb';
 import { Supernova } from './components/Supernova';
 import { Mascot } from './components/Mascot';
 import { useGeminiLive } from './hooks/useGeminiLive';
-import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey } from './store/useAppStore';
+import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey, CustomSkill } from './store/useAppStore';
 import { useConversationHistory } from './hooks/useConversationHistory';
 import { useUserMemory, ImportantDate, SemanticFact, ConversationSummary } from './hooks/useUserMemory';
 import { getEmbedding, cosineSimilarity } from './utils/embeddings';
@@ -25,7 +25,7 @@ async function sendWhatsApp(phone: string, message: string) {
   if (!res.ok) throw new Error(`WhatsApp send error: ${res.status}`);
 }
 
-type Screen = 'main' | 'history' | 'diary' | 'workspace';
+type Screen = 'main' | 'history' | 'diary' | 'workspace' | 'skills';
 
 const MOOD_CONFIG: Record<Mood, { color: string; label: string; emoji: string }> = {
   happy:       { color: '#feca57', label: 'Animada',     emoji: '😄' },
@@ -436,6 +436,7 @@ export default function App() {
     tuyaSecret, setTuyaSecret,
     tuyaRegion, setTuyaRegion,
     tuyaUserId, setTuyaUserId,
+    customSkills, addCustomSkill, updateCustomSkill, removeCustomSkill, toggleCustomSkill,
     apiKey, setApiKey,
     openaiApiKey, setOpenaiApiKey,
     groqApiKey, setGroqApiKey,
@@ -492,6 +493,9 @@ export default function App() {
   const [alexaAuthUrl, setAlexaAuthUrl]             = useState<string | null>(null);
   const [alexaPending, setAlexaPending]             = useState(false);
   const alexaPollRef                                = useRef<any>(null);
+  const [skillDraft, setSkillDraft]                 = useState<Partial<CustomSkill> | null>(null);
+  const [skillParamDraft, setSkillParamDraft]       = useState({ name: '', description: '', required: true, type: 'string' as const });
+  const [showAdvancedParams, setShowAdvancedParams] = useState(false);
   const [interfaceMode, setInterfaceMode]           = useState(0);
   const [swipeDir, setSwipeDir]                     = useState<1 | -1>(1);
   const swipeStartX                                 = useRef(0);
@@ -622,10 +626,15 @@ export default function App() {
       ? `\n\nMemória desta conversa:\n${activePersonalityMemory.facts.slice(-5).map(f => `- ${f}`).join('\n')}`
       : '';
 
-    return base + workspaceCtx + personalityCtx;
+    const activeSkills = customSkills.filter((s: CustomSkill) => s.active);
+    const skillsCtx = activeSkills.length > 0
+      ? `\n\nHABILIDADES EXTERNAS ATIVAS (chame-as usando skill_<id> quando o contexto indicar):\n${activeSkills.map((s: CustomSkill) => `• ${s.displayName} (skill_${s.id}): ${s.description}`).join('\n')}`
+      : '';
+
+    return base + workspaceCtx + personalityCtx + skillsCtx;
   }, [personality, assistantName, memory.userName, memory.facts, memory.preferences,
       memory.semanticMemory, memory.importantDates, memory.workspace,
-      mood, focusMode, upcomingDates, voice, activePersonalityMemory]);
+      mood, focusMode, upcomingDates, voice, activePersonalityMemory, customSkills]);
 
   const moodColor = personality === 'ezer' ? PERSONALITY_CONFIG.ezer.color : MOOD_CONFIG[mood].color;
 
@@ -1231,6 +1240,16 @@ export default function App() {
                 <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}><span className="text-xl">👾</span></div>
                 <div className="text-left"><p className="text-sm font-medium">Mascote</p><p className="text-[10px] text-white/30">{isMascotVisible ? 'Visível' : 'Oculto'}</p></div>
               </button>
+              <button onClick={() => { setScreen('skills'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}><span className="text-xl">⚡</span></div>
+                <div className="text-left">
+                  <p className="text-sm font-medium">Habilidades</p>
+                  <p className="text-[10px] text-white/30">{customSkills.filter((s: CustomSkill) => s.active).length > 0 ? `${customSkills.filter((s: CustomSkill) => s.active).length} ativa(s) · Agente Infinito` : 'Adicione superpoderes externos'}</p>
+                </div>
+                {customSkills.filter((s: CustomSkill) => s.active).length > 0 && (
+                  <div className="ml-auto w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                )}
+              </button>
             </motion.div>
           </motion.div>
         )}
@@ -1348,6 +1367,162 @@ export default function App() {
                 </motion.div>
               )}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* SKILLS SCREEN */}
+      <AnimatePresence>
+        {screen === 'skills' && (
+          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            className="fixed inset-0 z-[100] bg-[#0a0505] flex flex-col">
+            {/* Header */}
+            <div className="h-14 px-5 flex items-center justify-between border-b border-white/5 shrink-0">
+              <div className="flex items-center gap-4">
+                <button onClick={() => { setScreen('main'); setSkillDraft(null); }} className="p-2 hover:bg-white/5 rounded-full"><ChevronLeft size={20} /></button>
+                <div>
+                  <h2 className="text-sm font-medium tracking-widest uppercase">Habilidades</h2>
+                  {customSkills.filter((s: CustomSkill) => s.active).length > 0 && (
+                    <p className="text-[9px] text-green-400 uppercase tracking-widest">Agente Infinito ativo</p>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => { setSkillDraft({ displayName: '', icon: '⚡', description: '', webhookUrl: '', method: 'GET', active: true, parameters: [] }); setShowAdvancedParams(false); }}
+                className="flex items-center gap-2 px-4 py-2 rounded-full text-[10px] uppercase tracking-widest transition-all"
+                style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
+                + Nova
+              </button>
+            </div>
+
+            {/* Add/Edit Form */}
+            {skillDraft && (
+              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+                className="mx-4 mt-4 p-4 rounded-2xl border border-white/10 bg-white/[0.03] space-y-3 shrink-0">
+                <p className="text-[10px] uppercase tracking-widest opacity-40">{skillDraft.id ? 'Editar habilidade' : 'Nova habilidade'}</p>
+                <div className="flex gap-2">
+                  <input value={skillDraft.icon || ''} onChange={e => setSkillDraft(d => ({ ...d, icon: e.target.value }))}
+                    className="w-14 bg-white/5 border border-white/10 rounded-xl px-2 py-2 text-center text-xl focus:outline-none focus:border-white/30" placeholder="⚡" maxLength={2} />
+                  <input value={skillDraft.displayName || ''} onChange={e => setSkillDraft(d => ({ ...d, displayName: e.target.value }))}
+                    placeholder="Nome (ex: Cotação do Dólar)" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30" />
+                </div>
+                <textarea value={skillDraft.description || ''} onChange={e => setSkillDraft(d => ({ ...d, description: e.target.value }))}
+                  rows={2} placeholder="Descreva quando a IA deve usar essa habilidade (ex: quando o usuário perguntar sobre câmbio ou cotação de moedas)"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 resize-none" />
+                <div className="flex gap-2">
+                  <input value={skillDraft.webhookUrl || ''} onChange={e => setSkillDraft(d => ({ ...d, webhookUrl: e.target.value }))}
+                    placeholder="https://sua-api.com/endpoint" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono" />
+                  <select value={skillDraft.method || 'GET'} onChange={e => setSkillDraft(d => ({ ...d, method: e.target.value as 'GET' | 'POST' }))}
+                    className="bg-[#1a1a1a] border border-white/10 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-white/30">
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                  </select>
+                </div>
+
+                {/* Advanced params toggle */}
+                <button onClick={() => setShowAdvancedParams(v => !v)} className="text-[10px] text-white/30 hover:text-white/60 transition-all">
+                  {showAdvancedParams ? '▲' : '▶'} Parâmetros avançados ({skillDraft.parameters?.length || 0})
+                </button>
+                {showAdvancedParams && (
+                  <div className="space-y-2 pl-3 border-l border-white/10">
+                    {(skillDraft.parameters || []).map((p, i) => (
+                      <div key={i} className="flex items-center gap-2 text-[10px]">
+                        <span className="font-mono text-white/60 flex-1">{p.name}</span>
+                        <span className="opacity-40 flex-1 truncate">{p.description}</span>
+                        <span className="opacity-30">{p.type}</span>
+                        <button onClick={() => setSkillDraft(d => ({ ...d, parameters: (d.parameters||[]).filter((_,j)=>j!==i) }))}
+                          className="text-red-400/50 hover:text-red-400 px-1">✕</button>
+                      </div>
+                    ))}
+                    <div className="flex gap-1">
+                      <input value={skillParamDraft.name} onChange={e => setSkillParamDraft(p => ({ ...p, name: e.target.value }))}
+                        placeholder="nome" className="w-24 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] font-mono placeholder:text-white/20 focus:outline-none" />
+                      <input value={skillParamDraft.description} onChange={e => setSkillParamDraft(p => ({ ...p, description: e.target.value }))}
+                        placeholder="descrição" className="flex-1 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] placeholder:text-white/20 focus:outline-none" />
+                      <select value={skillParamDraft.type} onChange={e => setSkillParamDraft(p => ({ ...p, type: e.target.value as any }))}
+                        className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1 text-[10px] focus:outline-none">
+                        <option value="string">texto</option>
+                        <option value="number">número</option>
+                        <option value="boolean">sim/não</option>
+                      </select>
+                      <button onClick={() => {
+                        if (!skillParamDraft.name) return;
+                        setSkillDraft(d => ({ ...d, parameters: [...(d.parameters||[]), { ...skillParamDraft }] }));
+                        setSkillParamDraft({ name: '', description: '', required: true, type: 'string' });
+                      }} className="px-2 py-1 rounded-lg text-[10px] bg-white/10 hover:bg-white/20">+</button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setSkillDraft(null)} className="flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest opacity-40 hover:opacity-70 border border-white/10">Cancelar</button>
+                  <button
+                    disabled={!skillDraft.displayName || !skillDraft.webhookUrl}
+                    onClick={() => {
+                      if (!skillDraft.displayName || !skillDraft.webhookUrl) return;
+                      if (skillDraft.id) {
+                        updateCustomSkill(skillDraft.id, skillDraft);
+                      } else {
+                        addCustomSkill({ id: crypto.randomUUID(), displayName: skillDraft.displayName!, icon: skillDraft.icon || '⚡', description: skillDraft.description || '', webhookUrl: skillDraft.webhookUrl!, method: skillDraft.method || 'GET', active: true, parameters: skillDraft.parameters || [] });
+                      }
+                      setSkillDraft(null);
+                    }}
+                    className="flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all disabled:opacity-30"
+                    style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
+                    Salvar
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Skills List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {customSkills.length === 0 && !skillDraft && (
+                <div className="flex flex-col items-center justify-center h-full gap-4 opacity-20">
+                  <span className="text-5xl">⚡</span>
+                  <p className="text-sm uppercase tracking-widest">Nenhuma habilidade</p>
+                  <p className="text-xs text-center opacity-60">Adicione webhooks externos para expandir o que a IA pode fazer — sem limites.</p>
+                </div>
+              )}
+              {customSkills.map((skill: CustomSkill) => (
+                <motion.div key={skill.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+                  className="flex items-center gap-3 p-4 rounded-2xl border transition-all"
+                  style={{ backgroundColor: skill.active ? `${moodColor}08` : 'transparent', borderColor: skill.active ? `${moodColor}30` : 'rgba(255,255,255,0.05)' }}>
+                  <span className="text-2xl">{skill.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{skill.displayName}</p>
+                    <p className="text-[10px] text-white/30 truncate">{skill.description || skill.webhookUrl}</p>
+                    {skill.parameters.length > 0 && (
+                      <p className="text-[9px] text-white/20 mt-0.5">{skill.parameters.length} parâmetro(s)</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button onClick={() => { setSkillDraft({ ...skill }); setShowAdvancedParams(false); }}
+                      className="p-1.5 rounded-lg hover:bg-white/10 transition-all opacity-40 hover:opacity-70">
+                      <span className="text-xs">✎</span>
+                    </button>
+                    <button onClick={() => toggleCustomSkill(skill.id)}
+                      className="relative w-10 h-5 rounded-full transition-all"
+                      style={{ backgroundColor: skill.active ? moodColor : 'rgba(255,255,255,0.1)' }}>
+                      <span className="absolute top-0.5 transition-all rounded-full w-4 h-4 bg-white"
+                        style={{ left: skill.active ? '22px' : '2px' }} />
+                    </button>
+                    <button onClick={() => { if (confirm(`Remover "${skill.displayName}"?`)) removeCustomSkill(skill.id); }}
+                      className="p-1.5 rounded-lg hover:bg-red-500/20 transition-all opacity-30 hover:opacity-70">
+                      <span className="text-xs text-red-400">✕</span>
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Footer hint */}
+            {customSkills.length > 0 && (
+              <div className="px-5 py-3 border-t border-white/5 shrink-0">
+                <p className="text-[9px] text-white/20 text-center uppercase tracking-widest">
+                  Reconecte a IA para ativar novas habilidades
+                </p>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

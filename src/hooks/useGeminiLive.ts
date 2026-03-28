@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { useAppStore, VoiceName, VOICE_MAPPING } from '../store/useAppStore';
-import { TOOL_DECLARATIONS, DELEGATED_TOOLS } from './geminiToolDeclarations';
+import { TOOL_DECLARATIONS, DELEGATED_TOOLS, buildCustomToolDeclarations } from './geminiToolDeclarations';
 
 export interface UseGeminiLiveProps {
   onToggleScreenSharing?: (enabled: boolean) => void;
@@ -453,7 +453,7 @@ export const useGeminiLive = ({
             voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAPPING[voice] || 'Kore' } },
           },
           tools: [
-            { functionDeclarations: TOOL_DECLARATIONS },
+            { functionDeclarations: [...TOOL_DECLARATIONS, ...buildCustomToolDeclarations(useAppStore.getState().customSkills)] },
             { googleSearch: {} } as any,  // Google Search grounding nativo
           ]
         },
@@ -702,6 +702,31 @@ export const useGeminiLive = ({
                     })
                     .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
                     .finally(finishAsync);
+                  continue;
+                }
+
+                // ── Custom Skills (Agente Infinito) ────────────────────────
+                if (name.startsWith('skill_')) {
+                  asyncPending++;
+                  const skillId = name.replace('skill_', '');
+                  const skill = useAppStore.getState().customSkills.find((s: any) => s.id === skillId && s.active);
+                  if (!skill) {
+                    safeSend({ name, id, response: { success: false, error: 'Habilidade não encontrada ou desativada.' } });
+                    finishAsync();
+                  } else {
+                    fetch('/api/skill/invoke', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ webhookUrl: skill.webhookUrl, method: skill.method, params: args })
+                    })
+                      .then(r => r.json())
+                      .then(data => {
+                        onToolCallRef.current?.(name, { skillName: skill.displayName, ...args });
+                        safeSend({ name, id, response: { success: true, result: typeof data === 'string' ? data : JSON.stringify(data) } });
+                      })
+                      .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
+                      .finally(finishAsync);
+                  }
                   continue;
                 }
 

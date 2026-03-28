@@ -48,6 +48,24 @@ export interface ChatMessage {
   imageUrl?: string;
 }
 
+export interface CustomSkillParam {
+  name: string;
+  description: string;
+  required: boolean;
+  type: 'string' | 'number' | 'boolean';
+}
+
+export interface CustomSkill {
+  id: string;
+  displayName: string;
+  icon: string;
+  description: string;
+  webhookUrl: string;
+  method: 'GET' | 'POST';
+  active: boolean;
+  parameters: CustomSkillParam[];
+}
+
 export interface SystemMetrics {
   cpu: number;
   mem: number;
@@ -158,6 +176,13 @@ interface AppState {
   // Alexa
   alexaCookie: string;
   setAlexaCookie: (cookie: string) => void;
+
+  // Custom Skills (Agente Infinito)
+  customSkills: CustomSkill[];
+  addCustomSkill: (skill: CustomSkill) => void;
+  updateCustomSkill: (id: string, updates: Partial<CustomSkill>) => void;
+  removeCustomSkill: (id: string) => void;
+  toggleCustomSkill: (id: string) => void;
 
   // ✅ Memória por personagem
   personalityMemories: Record<PersonalityKey, PersonalityMemory>;
@@ -291,6 +316,13 @@ export const useAppStore = create<AppState>()(
       alexaCookie: '',
       setAlexaCookie: (alexaCookie) => set({ alexaCookie }),
 
+      // Custom Skills
+      customSkills: [],
+      addCustomSkill: (skill) => set(s => ({ customSkills: [...s.customSkills, skill] })),
+      updateCustomSkill: (id, updates) => set(s => ({ customSkills: s.customSkills.map(sk => sk.id === id ? { ...sk, ...updates } : sk) })),
+      removeCustomSkill: (id) => set(s => ({ customSkills: s.customSkills.filter(sk => sk.id !== id) })),
+      toggleCustomSkill: (id) => set(s => ({ customSkills: s.customSkills.map(sk => sk.id === id ? { ...sk, active: !sk.active } : sk) })),
+
       // ✅ Memória por personagem
       personalityMemories: {
         osone:  defaultPersonalityMemory(),
@@ -368,6 +400,7 @@ export const useAppStore = create<AppState>()(
         tuyaRegion: state.tuyaRegion,
         tuyaUserId: state.tuyaUserId,
         alexaCookie: state.alexaCookie,
+        customSkills: state.customSkills,
       }),
     }
   )
