@@ -1,16 +1,10 @@
 {
-    "buildCommand": "npm run build",
-    "devCommand": "tsx server.ts",
-    "installCommand": "npm install",
-    "framework": "vite",
-    "outputDirectory": "dist",
-    "env": {
-          "NODE_ENV": "production"
-    },
-    "rewrites": [
-          {
-                  "source": "/((?!api/).*)",
-                  "destination": "/"
-          }
-    ]
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "outputDirectory": "dist",
+  "framework": null,
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/:path*" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
 }
