@@ -5,6 +5,10 @@ import dotenv from "dotenv";
 import crypto from "crypto";
 import axios from "axios";
 import { convert } from "html-to-text";
+import { exec } from "child_process";
+import { promisify } from "util";
+import fs from "fs";
+import os from "os";
 
 dotenv.config();
 
@@ -365,6 +369,233 @@ app.post("/api/chat", async (req, res) => {
   } catch (error: any) {
     console.error('[chat] Erro OpenAI:', error.response?.data || error.message);
     res.status(500).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+// ============================================================
+// 🖥️ CONTROLE DO PC (apenas local — bloqueado em deploy)
+// Requer: xdotool, xclip, scrot (Linux)
+// ============================================================
+
+const execAsync = promisify(exec);
+
+async function runCmd(cmd: string): Promise<{ stdout: string; stderr: string }> {
+  try {
+    const r = await execAsync(cmd, { timeout: 20_000, maxBuffer: 20 * 1024 * 1024 });
+    return { stdout: r.stdout || '', stderr: r.stderr || '' };
+  } catch (e: any) {
+    return { stdout: e.stdout || '', stderr: e.stderr || e.message || String(e) };
+  }
+}
+
+// Padrões de comandos bloqueados por segurança
+const BLOCKED = [
+  /rm\s+-rf\s*\//,
+  /mkfs\b/,
+  /\bdd\s+if=/,
+  /:.*\(.*\{.*\|.*\}.*\)/,   // fork bomb
+  /format\s+c:/i,
+  /shutdown\s+(\/s|\/r|-h|-r)/i,
+  /\bhalt\b/,
+  /\bpoweroff\b/,
+];
+
+app.post('/api/pc/control', async (req, res) => {
+  // ── Segurança: só aceita de localhost ─────────────────────────────────────
+  const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '');
+  const isLocal = ['127.0.0.1', '::1', '::ffff:127.0.0.1', 'localhost', '0.0.0.0'].some(a => ip.includes(a));
+  if (!isLocal) return res.status(403).json({ error: 'PC control disponível apenas quando rodando localmente.' });
+
+  const { action, command, app: appName, text, key, x, y, button = 1, content } = req.body;
+  const plat = process.platform; // 'linux' | 'darwin' | 'win32'
+
+  try {
+    // ── SCREENSHOT ────────────────────────────────────────────────────────
+    if (action === 'screenshot') {
+      const tmp = path.join(os.tmpdir(), `osone_ss_${Date.now()}.png`);
+      if (plat === 'linux') {
+        await runCmd(
+          `scrot "${tmp}" 2>/dev/null || ` +
+          `gnome-screenshot -f "${tmp}" 2>/dev/null || ` +
+          `import -window root "${tmp}" 2>/dev/null || ` +
+          `ffmpeg -y -f x11grab -video_size $(xdpyinfo|awk '/dimensions/{print $2}') -i $DISPLAY -vframes 1 "${tmp}" 2>/dev/null`
+        );
+      } else if (plat === 'darwin') {
+        await runCmd(`screencapture -x "${tmp}"`);
+      } else {
+        await runCmd(
+          `powershell -Command "Add-Type -AssemblyName System.Drawing,System.Windows.Forms; ` +
+          `$b=New-Object System.Drawing.Bitmap([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width,[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height); ` +
+          `$g=[System.Drawing.Graphics]::FromImage($b); ` +
+          `$g.CopyFromScreen([System.Drawing.Point]::Empty,[System.Drawing.Point]::Empty,$b.Size); ` +
+          `$b.Save('${tmp}'); $g.Dispose(); $b.Dispose()"`
+        );
+      }
+      if (!fs.existsSync(tmp)) {
+        return res.status(500).json({ error: 'Screenshot falhou. Instale scrot: sudo apt install scrot' });
+      }
+      const image = fs.readFileSync(tmp).toString('base64');
+      try { fs.unlinkSync(tmp); } catch {}
+      return res.json({ success: true, image, mimeType: 'image/png' });
+    }
+
+    // ── RUN COMMAND ───────────────────────────────────────────────────────
+    if (action === 'run_command') {
+      if (!command) return res.status(400).json({ error: 'Parâmetro command é obrigatório.' });
+      if (BLOCKED.some(p => p.test(command))) return res.status(400).json({ error: 'Comando bloqueado por segurança.' });
+      const { stdout, stderr } = await runCmd(command);
+      return res.json({ success: true, stdout: stdout.substring(0, 4000), stderr: stderr.substring(0, 500) });
+    }
+
+    // ── OPEN APP ──────────────────────────────────────────────────────────
+    if (action === 'open_app') {
+      if (!appName) return res.status(400).json({ error: 'Parâmetro app é obrigatório.' });
+      if (plat === 'linux') {
+        runCmd(`(xdg-open "${appName}" 2>/dev/null || ${appName} 2>/dev/null) &`);
+      } else if (plat === 'darwin') {
+        runCmd(`open -a "${appName}" 2>/dev/null || open "${appName}" &`);
+      } else {
+        runCmd(`start "" "${appName}"`);
+      }
+      return res.json({ success: true, message: `Abrindo ${appName}` });
+    }
+
+    // ── TYPE TEXT ─────────────────────────────────────────────────────────
+    if (action === 'type_text') {
+      if (!text) return res.status(400).json({ error: 'Parâmetro text é obrigatório.' });
+      if (plat === 'linux') {
+        const esc = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        await runCmd(`xdotool type --clearmodifiers --delay 30 '${esc}'`);
+      } else if (plat === 'darwin') {
+        const esc = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        await runCmd(`osascript -e 'tell application "System Events" to keystroke "${esc}"'`);
+      } else {
+        const esc = text.replace(/[+^%~{}[\]()]/g, '{$&}').replace(/'/g, "''");
+        await runCmd(`powershell -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${esc}')"`);
+      }
+      return res.json({ success: true });
+    }
+
+    // ── PRESS KEY ─────────────────────────────────────────────────────────
+    if (action === 'press_key') {
+      if (!key) return res.status(400).json({ error: 'Parâmetro key é obrigatório. Ex: ctrl+c, super, Return, ctrl+alt+t' });
+      if (plat === 'linux') {
+        await runCmd(`xdotool key ${key}`);
+      } else if (plat === 'darwin') {
+        const k = key.replace('ctrl', 'control').replace('super', 'command').replace('alt', 'option');
+        await runCmd(`osascript -e 'tell application "System Events" to keystroke "${k.split('+').pop()}" using {${k.split('+').slice(0,-1).map((m: string)=>m+' down').join(', ')}}'`);
+      } else {
+        const winKey = key.replace('ctrl+', '^').replace('alt+', '%').replace('shift+', '+').replace('super', '#');
+        await runCmd(`powershell -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${winKey}')"`);
+      }
+      return res.json({ success: true });
+    }
+
+    // ── CLICK ─────────────────────────────────────────────────────────────
+    if (action === 'click') {
+      if (x == null || y == null) return res.status(400).json({ error: 'Parâmetros x e y são obrigatórios.' });
+      if (plat === 'linux') {
+        await runCmd(`xdotool mousemove ${Math.round(x)} ${Math.round(y)} click ${button}`);
+      } else if (plat === 'darwin') {
+        await runCmd(`cliclick c:${Math.round(x)},${Math.round(y)}`);
+      } else {
+        await runCmd(
+          `powershell -Command "Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class M{[DllImport(\\"user32.dll\\")]public static extern bool SetCursorPos(int x,int y);[DllImport(\\"user32.dll\\")]public static extern void mouse_event(int f,int x,int y,int d,int i);}'; [M]::SetCursorPos(${Math.round(x)},${Math.round(y)}); [M]::mouse_event(2,0,0,0,0); [M]::mouse_event(4,0,0,0,0)"`
+        );
+      }
+      return res.json({ success: true });
+    }
+
+    // ── MOVE MOUSE ────────────────────────────────────────────────────────
+    if (action === 'move_mouse') {
+      if (x == null || y == null) return res.status(400).json({ error: 'Parâmetros x e y são obrigatórios.' });
+      if (plat === 'linux') {
+        await runCmd(`xdotool mousemove ${Math.round(x)} ${Math.round(y)}`);
+      } else if (plat === 'darwin') {
+        await runCmd(`cliclick m:${Math.round(x)},${Math.round(y)}`);
+      }
+      return res.json({ success: true });
+    }
+
+    // ── SCROLL ────────────────────────────────────────────────────────────
+    if (action === 'scroll') {
+      const dir = req.body.direction === 'up' ? 4 : 5;
+      const amount = req.body.amount || 3;
+      if (plat === 'linux') {
+        for (let i = 0; i < amount; i++) await runCmd(`xdotool click ${dir}`);
+      }
+      return res.json({ success: true });
+    }
+
+    // ── GET CLIPBOARD ────────────────────────────────────────────────────
+    if (action === 'get_clipboard') {
+      let { stdout } = { stdout: '' };
+      if (plat === 'linux') {
+        ({ stdout } = await runCmd(`xclip -o -selection clipboard 2>/dev/null || xsel --clipboard --output 2>/dev/null`));
+      } else if (plat === 'darwin') {
+        ({ stdout } = await runCmd(`pbpaste`));
+      } else {
+        ({ stdout } = await runCmd(`powershell -Command "Get-Clipboard"`));
+      }
+      return res.json({ success: true, content: stdout.trim() });
+    }
+
+    // ── SET CLIPBOARD ────────────────────────────────────────────────────
+    if (action === 'set_clipboard') {
+      if (content == null) return res.status(400).json({ error: 'Parâmetro content é obrigatório.' });
+      const tmp2 = path.join(os.tmpdir(), `osone_clip_${Date.now()}.txt`);
+      fs.writeFileSync(tmp2, content);
+      if (plat === 'linux') {
+        await runCmd(`cat "${tmp2}" | xclip -selection clipboard 2>/dev/null || cat "${tmp2}" | xsel --clipboard --input`);
+      } else if (plat === 'darwin') {
+        await runCmd(`cat "${tmp2}" | pbcopy`);
+      } else {
+        await runCmd(`powershell -Command "Get-Content '${tmp2}' | Set-Clipboard"`);
+      }
+      try { fs.unlinkSync(tmp2); } catch {}
+      return res.json({ success: true });
+    }
+
+    // ── GET ACTIVE WINDOW ────────────────────────────────────────────────
+    if (action === 'get_active_window') {
+      let { stdout } = { stdout: '' };
+      if (plat === 'linux') {
+        ({ stdout } = await runCmd(`xdotool getactivewindow getwindowname 2>/dev/null`));
+      } else if (plat === 'darwin') {
+        ({ stdout } = await runCmd(`osascript -e 'tell application "System Events" to get name of first application process whose frontmost is true'`));
+      } else {
+        ({ stdout } = await runCmd(`powershell -Command "Get-Process | Where-Object {$_.MainWindowTitle} | Sort-Object CPU -Desc | Select -First 1 -ExpandProperty MainWindowTitle"`));
+      }
+      return res.json({ success: true, window: stdout.trim() });
+    }
+
+    // ── LIST WINDOWS ─────────────────────────────────────────────────────
+    if (action === 'list_windows') {
+      let { stdout } = { stdout: '' };
+      if (plat === 'linux') {
+        ({ stdout } = await runCmd(`wmctrl -l 2>/dev/null | head -20 || xdotool search --onlyvisible --name '.' getwindowname 2>/dev/null | head -15`));
+      } else if (plat === 'darwin') {
+        ({ stdout } = await runCmd(`osascript -e 'tell application "System Events" to get name of every application process whose visible is true'`));
+      } else {
+        ({ stdout } = await runCmd(`powershell -Command "Get-Process | Where-Object {$_.MainWindowTitle} | Select -ExpandProperty MainWindowTitle"`));
+      }
+      return res.json({ success: true, windows: stdout.trim() });
+    }
+
+    // ── SYSTEM INFO ──────────────────────────────────────────────────────
+    if (action === 'system_info') {
+      const { stdout: uptime } = await runCmd(plat === 'win32' ? 'powershell -Command "(Get-Date) - (gcim Win32_OperatingSystem).LastBootUpTime"' : 'uptime -p 2>/dev/null || uptime');
+      const { stdout: disk }   = await runCmd(plat === 'win32' ? 'powershell -Command "Get-PSDrive C | Select-Object Used,Free"' : 'df -h / 2>/dev/null | tail -1');
+      const { stdout: mem }    = await runCmd(plat === 'win32' ? 'powershell -Command "Get-CimInstance Win32_OperatingSystem | Select-Object FreePhysicalMemory,TotalVisibleMemorySize"' : 'free -h 2>/dev/null | grep Mem');
+      const { stdout: cpu }    = await runCmd(plat === 'win32' ? 'powershell -Command "(Get-CimInstance Win32_Processor).LoadPercentage"' : 'top -bn1 2>/dev/null | grep "%Cpu" | head -1');
+      return res.json({ success: true, uptime: uptime.trim(), disk: disk.trim(), memory: mem.trim(), cpu: cpu.trim(), platform: plat, hostname: os.hostname() });
+    }
+
+    return res.status(400).json({ error: `Ação desconhecida: ${action}` });
+
+  } catch (err: any) {
+    console.error('[pc-control]', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -275,7 +275,50 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       },
       required: ["message"]
     }
-  }
+  },
+
+  // ── CONTROLE DO PC (local only) ────────────────────────────────────────────
+  {
+    name: "control_pc",
+    description: `Controla o computador localmente via servidor. Disponível APENAS quando o app está rodando em localhost.
+Fluxo recomendado: 1) capture screenshot para ver a tela atual, 2) analise o que está visível, 3) execute a ação adequada.
+Ações: screenshot, run_command, open_app, type_text, press_key, click, move_mouse, scroll, get_clipboard, set_clipboard, get_active_window, list_windows, system_info.`,
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        action: {
+          type: Type.STRING,
+          description: "Ação a executar.",
+          enum: [
+            "screenshot",        // Captura a tela inteira → retorna imagem para análise visual
+            "run_command",       // Executa comando shell (terminal)
+            "open_app",          // Abre um aplicativo pelo nome ou caminho
+            "type_text",         // Digita texto na janela ativa (requer foco)
+            "press_key",         // Pressiona tecla ou combinação: ctrl+c, super, Return, ctrl+alt+t
+            "click",             // Clica em coordenadas (x,y) na tela
+            "move_mouse",        // Move o mouse para (x,y) sem clicar
+            "scroll",            // Rola a tela: direction=up|down, amount=número de cliques
+            "get_clipboard",     // Retorna conteúdo atual da área de transferência
+            "set_clipboard",     // Define conteúdo da área de transferência
+            "get_active_window", // Retorna o nome da janela ativa
+            "list_windows",      // Lista janelas abertas
+            "system_info"        // CPU, RAM, disco, uptime, hostname
+          ]
+        },
+        command:   { type: Type.STRING, description: "Comando shell para run_command. Ex: 'ls -la', 'cat arquivo.txt', 'python script.py'" },
+        app:       { type: Type.STRING, description: "Nome do aplicativo para open_app. Ex: 'firefox', 'nautilus', 'code', 'spotify'" },
+        text:      { type: Type.STRING, description: "Texto a digitar para type_text." },
+        key:       { type: Type.STRING, description: "Tecla/combinação para press_key. Ex: 'ctrl+c', 'ctrl+v', 'super', 'Return', 'ctrl+alt+t', 'alt+F4'" },
+        x:         { type: Type.NUMBER, description: "Coordenada X em pixels para click/move_mouse." },
+        y:         { type: Type.NUMBER, description: "Coordenada Y em pixels para click/move_mouse." },
+        button:    { type: Type.NUMBER, description: "Botão do mouse para click: 1=esquerdo (padrão), 2=meio, 3=direito." },
+        direction: { type: Type.STRING, description: "Direção para scroll: 'up' ou 'down'." },
+        amount:    { type: Type.NUMBER, description: "Quantidade de cliques de scroll (padrão: 3)." },
+        content:   { type: Type.STRING, description: "Conteúdo para set_clipboard." }
+      },
+      required: ["action"]
+    }
+  },
 ];
 
 // Tools tratadas externamente (via onToolCall callback)
