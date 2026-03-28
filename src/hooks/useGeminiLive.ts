@@ -433,7 +433,10 @@ export const useGeminiLive = ({
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAPPING[voice] || 'Kore' } },
           },
-          tools: [{ functionDeclarations: TOOL_DECLARATIONS }]
+          tools: [
+            { functionDeclarations: TOOL_DECLARATIONS },
+            { googleSearch: {} } as any,  // Google Search grounding nativo
+          ]
         },
         callbacks: {
           onopen: () => {
@@ -511,6 +514,7 @@ export const useGeminiLive = ({
 
                 if (name === "search_web") {
                   asyncPending++;
+                  onToolCallRef.current?.('search_web_start', { query: args.query }); // UI indicator
                   performWebSearch(args.query, args.num_results ?? 5)
                     .then(content => {
                       onToolCallRef.current?.(name, { ...args, result: content });

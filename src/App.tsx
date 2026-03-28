@@ -411,6 +411,8 @@ export default function App() {
   const [isShowingLyrics, setIsShowingLyrics]       = useState(false);
   const [inputText, setInputText]                   = useState('');
   const [webSearchResult, setWebSearchResult]       = useState<string | null>(null);
+  const [isSearching, setIsSearching]               = useState(false);
+  const [memoryToast, setMemoryToast]               = useState<string | null>(null);
   const [attachPreview, setAttachPreview]           = useState<{ type: string; name: string; data: string } | null>(null);
   const [installPrompt, setInstallPrompt]           = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner]   = useState(false);
@@ -667,21 +669,31 @@ export default function App() {
         setUserProfile({ [args.field]: args.value });
       }
       if (toolName === 'save_memory') {
+        const memParts: string[] = [];
         if (args.userName) {
           saveMemory({ userName: args.userName });
           setPersonalityUserName(personality as PersonalityKey, args.userName);
+          memParts.push(args.userName);
         }
         if (args.fact) {
           addFact(args.fact);
           addPersonalityFact(personality as PersonalityKey, args.fact);
+          memParts.push(args.fact);
         }
         if (args.preference) {
           addFact(`Preferência: ${args.preference}`);
           addPersonalityFact(personality as PersonalityKey, `Preferência: ${args.preference}`);
+          memParts.push(args.preference);
         }
         if (args.note) {
           addFact(`Nota: ${args.note}`);
           addPersonalityFact(personality as PersonalityKey, `Nota: ${args.note}`);
+          memParts.push(args.note);
+        }
+        if (memParts.length > 0) {
+          const label = memParts[0].length > 48 ? memParts[0].substring(0, 48) + '…' : memParts[0];
+          setMemoryToast(label);
+          setTimeout(() => setMemoryToast(null), 3500);
         }
       }
       if (toolName === 'add_important_date' && args.label && args.date) {
@@ -706,9 +718,16 @@ export default function App() {
       if (toolName === 'save_conversation_summary' && args.summary && args.topics) {
         handleSaveSummary(args.summary, args.topics);
       }
+      if (toolName === 'search_web_start') {
+        setIsSearching(true);
+        setWebSearchResult(null);
+      }
       if (toolName === 'search_web' && args.result) {
-        setWebSearchResult(`🔍 Pesquisei por "${args.query}"`);
-        setTimeout(() => setWebSearchResult(null), 4000);
+        setIsSearching(false);
+        const q = (args.query as string) || '';
+        const label = q.length > 44 ? q.substring(0, 44) + '…' : q;
+        setWebSearchResult(label);
+        setTimeout(() => setWebSearchResult(null), 5000);
       }
       // ✅ SMART HOME — feedback visual
       if (toolName === 'control_device' && args.result) {
@@ -983,6 +1002,20 @@ export default function App() {
       {/* Hidden file input */}
       <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls" className="hidden" onChange={handleFileChange} />
 
+      {/* BADGE DE MEMÓRIA — canto superior direito, sempre visível quando há memórias */}
+      {(memory.facts?.length > 0 || memory.userName) && (
+        <div
+          className="fixed top-4 right-4 z-[55] flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+          style={{ backgroundColor: 'rgba(168,132,80,0.12)', border: '1px solid rgba(168,132,80,0.22)', backdropFilter: 'blur(8px)' }}
+          title={`${memory.facts?.length ?? 0} memórias salvas${memory.userName ? ` · ${memory.userName}` : ''}`}
+        >
+          <span style={{ fontSize: 9 }}>📝</span>
+          <span style={{ fontSize: 9, color: 'rgba(220,190,130,0.7)', letterSpacing: '0.05em' }}>
+            {memory.facts?.length ?? 0}
+          </span>
+        </div>
+      )}
+
       {/* TOAST SMART HOME */}
       <AnimatePresence>
         {smartHomeStatus && (
@@ -1005,13 +1038,44 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* TOAST WEB SEARCH */}
+      {/* TOAST MEMÓRIA SALVA */}
       <AnimatePresence>
-        {webSearchResult && (
-          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="fixed bottom-44 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-2xl text-xs text-center max-w-xs"
-            style={{ backgroundColor: `${moodColor}15`, border: `1px solid ${moodColor}30`, color: moodColor }}>
-            🔍 {webSearchResult}
+        {memoryToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.95 }}
+            className="fixed bottom-44 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 px-4 py-2 rounded-2xl text-xs max-w-[280px]"
+            style={{ backgroundColor: 'rgba(168,132,80,0.15)', border: '1px solid rgba(168,132,80,0.30)', color: 'rgba(220,190,130,0.9)' }}>
+            <span style={{ fontSize: 13 }}>📝</span>
+            <span className="truncate">Memorizado: {memoryToast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* TOAST PESQUISA — searching + resultado */}
+      <AnimatePresence>
+        {(isSearching || webSearchResult) && (
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.95 }}
+            className="fixed bottom-56 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 px-4 py-2 rounded-2xl text-xs max-w-[300px]"
+            style={{ backgroundColor: `${moodColor}18`, border: `1px solid ${moodColor}35`, color: moodColor }}>
+            {isSearching ? (
+              <>
+                <motion.span
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
+                  style={{ display: 'inline-block', fontSize: 13 }}>⟳</motion.span>
+                <span>Pesquisando na internet…</span>
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: 13 }}>🔍</span>
+                <span className="truncate">Pesquisei: {webSearchResult}</span>
+              </>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
