@@ -305,27 +305,43 @@ export const useGeminiLive = ({
   const generateImage = useCallback(async (prompt: string, aspectRatio: "1:1" | "16:9" | "9:16" = "1:1") => {
     setIsThinking(true);
     try {
-      const apiKey = storedApiKey || process.env.GEMINI_API_KEY;
-      if (!apiKey) throw new Error("API Key não encontrada.");
-      const genAI = new GoogleGenAI({ apiKey });
-      const response = await genAI.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: { parts: [{ text: prompt }] },
-        config: { imageConfig: { aspectRatio } },
-      });
-      const imagePart = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-      if (!imagePart?.inlineData) throw new Error("Nenhuma imagem gerada.");
-      const imageUrl = `data:image/png;base64,${imagePart.inlineData.data}`;
-      addMessage({ role: 'model', text: `Imagem gerada para: "${prompt}"`, imageUrl });
-      onMessageRef.current?.({ role: 'model', text: `Imagem gerada para: "${prompt}"`, imageUrl });
-    } catch {
-      const msg = "Não consegui gerar a imagem. Verifique se sua chave API suporta geração de imagens.";
+      const sizeMap: Record<string, string> = { '1:1': '1024x1024', '16:9': '1792x1024', '9:16': '1024x1792' };
+      const [w, h] = (sizeMap[aspectRatio] || '1024x1024').split('x');
+      let imageUrl: string | null = null;
+      let source = '';
+
+      // ── Primário: DALL-E 3 (OpenAI) ────────────────────────────────────────
+      if (openaiApiKey) {
+        try {
+          const resp = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+            body: JSON.stringify({ model: 'dall-e-3', prompt, n: 1, size: `${w}x${h}`, response_format: 'url' }),
+          });
+          const data = await resp.json();
+          if (resp.ok && data.data?.[0]?.url) {
+            imageUrl = data.data[0].url;
+            source = 'DALL-E 3';
+          }
+        } catch { /* cai para fallback */ }
+      }
+
+      // ── Fallback: Pollinations.AI (gratuito, sem chave) ─────────────────────
+      if (!imageUrl) {
+        imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&nologo=true&enhance=true&model=flux`;
+        source = 'Pollinations (grátis)';
+      }
+
+      addMessage({ role: 'model', text: `Imagem gerada para: "${prompt}" · via ${source}`, imageUrl });
+      onMessageRef.current?.({ role: 'model', text: `Imagem gerada para: "${prompt}" · via ${source}`, imageUrl });
+    } catch (e: any) {
+      const msg = `Não consegui gerar a imagem: ${e.message}`;
       addMessage({ role: 'model', text: msg });
       onMessageRef.current?.({ role: 'model', text: msg });
     } finally {
       setIsThinking(false);
     }
-  }, [storedApiKey, addMessage, setIsThinking]);
+  }, [openaiApiKey, addMessage, setIsThinking]);
 
   // ============================================================
   // 💬 ENVIO DE MENSAGEM (modo texto)
