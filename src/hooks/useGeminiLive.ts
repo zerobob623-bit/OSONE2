@@ -663,11 +663,10 @@ export const useGeminiLive = ({
 
                 if (name === "alexa_control") {
                   asyncPending++;
-                  const { alexaCookie } = useAppStore.getState();
                   fetch('/api/alexa/control', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: args.command, device: args.device, cookie: alexaCookie })
+                    body: JSON.stringify({ command: args.command, device: args.device })
                   })
                     .then(r => r.json())
                     .then(data => {

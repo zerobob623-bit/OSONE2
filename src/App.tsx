@@ -435,7 +435,6 @@ export default function App() {
     tuyaClientId, setTuyaClientId,
     tuyaSecret, setTuyaSecret,
     tuyaRegion, setTuyaRegion,
-    alexaCookie, setAlexaCookie,
     apiKey, setApiKey,
     openaiApiKey, setOpenaiApiKey,
     groqApiKey, setGroqApiKey,
@@ -488,6 +487,10 @@ export default function App() {
   const [alexaStatus, setAlexaStatus]               = useState<string | null>(null);
   const [alexaLoading, setAlexaLoading]             = useState(false);
   const [alexaDevices, setAlexaDevices]             = useState<any[]>([]);
+  const [alexaConnected, setAlexaConnected]         = useState(false);
+  const [alexaAuthUrl, setAlexaAuthUrl]             = useState<string | null>(null);
+  const [alexaPending, setAlexaPending]             = useState(false);
+  const alexaPollRef                                = useRef<any>(null);
   const [interfaceMode, setInterfaceMode]           = useState(0);
   const [swipeDir, setSwipeDir]                     = useState<1 | -1>(1);
   const swipeStartX                                 = useRef(0);
@@ -638,6 +641,15 @@ export default function App() {
     const t2 = setInterval(() => setSystemMetrics({ cpu: Math.floor(Math.random() * 15) + 5, mem: 40 + Math.floor(Math.random() * 5) }), 3000);
     return () => { clearInterval(t1); clearInterval(t2); };
   }, []);
+
+  // Check Alexa connection status when integrations tab opens
+  useEffect(() => {
+    if (activeSettingsTab !== 'integrations') return;
+    fetch('/api/alexa/auth-status').then(r => r.json()).then(d => {
+      setAlexaConnected(!!d.ready);
+      setAlexaPending(!!d.pending);
+    }).catch(() => {});
+  }, [activeSettingsTab]);
 
   useEffect(() => {
     const handleInstallPrompt = (e: any) => { 
@@ -1682,78 +1694,128 @@ export default function App() {
                             <p className="text-sm font-medium">Amazon Alexa</p>
                             <p className="text-[10px] opacity-40">Controle Echo e dispositivos smart home via Alexa</p>
                           </div>
-                          <div className={`ml-auto w-2 h-2 rounded-full ${alexaCookie ? 'bg-green-500 animate-pulse' : 'bg-zinc-600'}`} />
+                          <div className={`ml-auto w-2 h-2 rounded-full ${alexaConnected ? 'bg-green-500 animate-pulse' : alexaPending ? 'bg-yellow-500 animate-pulse' : 'bg-zinc-600'}`} />
                         </div>
 
-                        <div className="space-y-2">
-                          <label className="text-[10px] uppercase tracking-widest opacity-40">Cookie da Alexa</label>
-                          <textarea
-                            rows={3}
-                            placeholder="Cole aqui o cookie copiado do site alexa.amazon.com.br"
-                            value={alexaCookie}
-                            onChange={(e) => setAlexaCookie(e.target.value.trim())}
-                            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono resize-none"
-                          />
-                        </div>
-
-                        <div className="flex gap-2">
-                          <button
-                            disabled={!alexaCookie || alexaLoading}
-                            onClick={async () => {
-                              setAlexaLoading(true);
-                              setAlexaStatus(null);
-                              setAlexaDevices([]);
-                              try {
-                                const r = await fetch('/api/alexa/devices', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ cookie: alexaCookie })
-                                });
-                                const d = await r.json();
-                                if (d.success) {
-                                  setAlexaDevices(d.devices || []);
-                                  setAlexaStatus(`✅ ${d.devices?.length || 0} dispositivo(s) encontrado(s)`);
-                                } else {
-                                  setAlexaStatus(`❌ ${d.error}`);
-                                }
-                              } catch (e: any) {
-                                setAlexaStatus(`❌ ${e.message}`);
-                              } finally {
-                                setAlexaLoading(false);
-                              }
-                            }}
-                            className="flex-1 py-2.5 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all disabled:opacity-30"
-                            style={{ backgroundColor: '#1DB9C320', color: '#1DB9C3', border: '1px solid #1DB9C340' }}>
-                            {alexaLoading ? 'Conectando...' : 'Testar conexão'}
-                          </button>
-                        </div>
-
-                        {alexaStatus && (
-                          <p className="text-[10px] text-white/50">{alexaStatus}</p>
-                        )}
-                        {alexaDevices.length > 0 && (
-                          <div className="space-y-1">
-                            {alexaDevices.map((d: any, i: number) => (
-                              <div key={i} className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded-xl text-xs">
-                                <span>🔵</span>
-                                <span className="flex-1">{d.accountName || d.name}</span>
-                                <span className="opacity-30 text-[10px]">{d.deviceFamily || d.deviceType}</span>
+                        {alexaConnected ? (
+                          <div className="space-y-2">
+                            <p className="text-[10px] text-green-400">Conectado à Amazon</p>
+                            {alexaDevices.length > 0 && (
+                              <div className="space-y-1">
+                                {alexaDevices.map((d: any, i: number) => (
+                                  <div key={i} className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded-xl text-xs">
+                                    <span>🔵</span>
+                                    <span className="flex-1">{d.accountName || d.name}</span>
+                                    <span className="opacity-30 text-[10px]">{d.deviceFamily}</span>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
+                            )}
+                            <div className="flex gap-2">
+                              <button
+                                onClick={async () => {
+                                  setAlexaLoading(true);
+                                  setAlexaDevices([]);
+                                  try {
+                                    const r = await fetch('/api/alexa/devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                                    const d = await r.json();
+                                    if (d.success) setAlexaDevices(d.devices || []);
+                                  } catch {} finally { setAlexaLoading(false); }
+                                }}
+                                disabled={alexaLoading}
+                                className="flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest disabled:opacity-30"
+                                style={{ backgroundColor: '#1DB9C320', color: '#1DB9C3', border: '1px solid #1DB9C340' }}>
+                                {alexaLoading ? 'Buscando...' : 'Ver dispositivos'}
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  await fetch('/api/alexa/disconnect', { method: 'DELETE' });
+                                  setAlexaConnected(false);
+                                  setAlexaDevices([]);
+                                  setAlexaStatus(null);
+                                  setAlexaAuthUrl(null);
+                                  clearInterval(alexaPollRef.current);
+                                }}
+                                className="px-4 py-2 rounded-xl text-[10px] uppercase tracking-widest"
+                                style={{ backgroundColor: '#ff444420', color: '#ff6666', border: '1px solid #ff444440' }}>
+                                Desconectar
+                              </button>
+                            </div>
+                          </div>
+                        ) : alexaPending ? (
+                          <div className="space-y-3">
+                            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3 space-y-2">
+                              <p className="text-[10px] text-yellow-400 font-medium">Aguardando autorização...</p>
+                              <p className="text-[10px] text-white/40 leading-relaxed">Uma página de login foi aberta. Faça login com sua conta Amazon para autorizar o OSONE.</p>
+                              {alexaAuthUrl && (
+                                <a href={alexaAuthUrl} target="_blank" rel="noreferrer"
+                                  className="block w-full text-center py-2.5 rounded-xl text-[10px] uppercase tracking-widest font-medium"
+                                  style={{ backgroundColor: '#1DB9C320', color: '#1DB9C3', border: '1px solid #1DB9C340' }}>
+                                  Abrir página de login →
+                                </a>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => {
+                                clearInterval(alexaPollRef.current);
+                                setAlexaPending(false);
+                                setAlexaAuthUrl(null);
+                                setAlexaStatus(null);
+                              }}
+                              className="w-full py-2 rounded-xl text-[10px] uppercase tracking-widest opacity-40 hover:opacity-70"
+                              style={{ border: '1px solid #ffffff20', color: 'white' }}>
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {alexaStatus && <p className="text-[10px] text-red-400">{alexaStatus}</p>}
+                            <button
+                              disabled={alexaLoading}
+                              onClick={async () => {
+                                setAlexaLoading(true);
+                                setAlexaStatus(null);
+                                try {
+                                  const r = await fetch('/api/alexa/start-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                                  const d = await r.json();
+                                  if (d.alreadyConnected) {
+                                    setAlexaConnected(true);
+                                  } else if (d.authUrl) {
+                                    setAlexaAuthUrl(d.authUrl);
+                                    setAlexaPending(true);
+                                    window.open(d.authUrl, '_blank');
+                                    // Poll for auth completion
+                                    clearInterval(alexaPollRef.current);
+                                    alexaPollRef.current = setInterval(async () => {
+                                      try {
+                                        const sr = await fetch('/api/alexa/auth-status');
+                                        const sd = await sr.json();
+                                        if (sd.ready) {
+                                          clearInterval(alexaPollRef.current);
+                                          setAlexaConnected(true);
+                                          setAlexaPending(false);
+                                          setAlexaAuthUrl(null);
+                                          setAlexaStatus(null);
+                                        }
+                                      } catch {}
+                                    }, 3000);
+                                  }
+                                } catch (e: any) {
+                                  setAlexaStatus(`❌ ${e.message}`);
+                                } finally {
+                                  setAlexaLoading(false);
+                                }
+                              }}
+                              className="w-full py-2.5 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all disabled:opacity-30"
+                              style={{ backgroundColor: '#1DB9C320', color: '#1DB9C3', border: '1px solid #1DB9C340' }}>
+                              {alexaLoading ? 'Iniciando...' : 'Conectar com Amazon'}
+                            </button>
+                            <p className="text-[10px] text-white/20 leading-relaxed">
+                              Abre uma página de login. Faça login com sua Amazon — sem precisar copiar cookies.
+                              Funciona apenas na instalação local.
+                            </p>
                           </div>
                         )}
-
-                        <div className="bg-white/5 rounded-xl p-3 space-y-1.5">
-                          <p className="text-[10px] text-white/50 font-medium">Como obter o cookie:</p>
-                          <ol className="text-[10px] text-white/30 space-y-1 list-decimal pl-4">
-                            <li>Acesse <span className="text-white/50">alexa.amazon.com.br</span> no navegador</li>
-                            <li>Faça login com sua conta Amazon</li>
-                            <li>Pressione F12 → aba "Rede" (Network)</li>
-                            <li>Recarregue a página e clique em qualquer requisição</li>
-                            <li>Em "Headers" → "Cookie:" — copie todo o valor</li>
-                            <li>Cole acima e clique em Testar</li>
-                          </ol>
-                        </div>
                       </div>
 
                     </motion.div>
