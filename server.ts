@@ -352,8 +352,8 @@ app.post("/api/alexa/control", async (req, res) => {
   const { command, device, value } = req.body;
   if (!command) return res.status(400).json({ error: 'Comando necessário' });
 
-  const ALEXA_COOKIE = process.env.ALEXA_COOKIE;
-  if (!ALEXA_COOKIE) return res.status(500).json({ error: 'ALEXA_COOKIE não configurado no servidor' });
+  const ALEXA_COOKIE = process.env.ALEXA_COOKIE || req.body.cookie;
+  if (!ALEXA_COOKIE) return res.status(500).json({ error: 'Cookie da Alexa não configurado. Adicione nas Integrações do OSONE.' });
 
   try {
     const devicesRes = await axios.get(
@@ -389,6 +389,23 @@ app.post("/api/alexa/control", async (req, res) => {
     const msg = error.response?.status === 401
       ? 'Cookie da Alexa expirado. Atualize o ALEXA_COOKIE no Vercel.'
       : error.message;
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
+// ─── ALEXA — listar dispositivos ──────────────────────────────────────────────
+app.post("/api/alexa/devices", async (req, res) => {
+  const cookie = req.body.cookie || process.env.ALEXA_COOKIE;
+  if (!cookie) return res.status(500).json({ error: 'Cookie da Alexa não configurado.' });
+  try {
+    const r = await axios.get(
+      'https://alexa.amazon.com.br/api/devices-v2/device?cached=false',
+      { headers: { 'Cookie': cookie, 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 }
+    );
+    const devices: any[] = r.data?.devices || [];
+    res.json({ success: true, devices });
+  } catch (error: any) {
+    const msg = error.response?.status === 401 ? 'Cookie inválido ou expirado.' : error.message;
     res.status(500).json({ success: false, error: msg });
   }
 });

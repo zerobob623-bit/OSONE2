@@ -435,6 +435,7 @@ export default function App() {
     tuyaClientId, setTuyaClientId,
     tuyaSecret, setTuyaSecret,
     tuyaRegion, setTuyaRegion,
+    alexaCookie, setAlexaCookie,
     apiKey, setApiKey,
     openaiApiKey, setOpenaiApiKey,
     groqApiKey, setGroqApiKey,
@@ -484,6 +485,9 @@ export default function App() {
   const [smartHomeStatus, setSmartHomeStatus]       = useState<string | null>(null);
   const [tuyaDevices, setTuyaDevices]               = useState<any[]>([]);
   const [tuyaLoading, setTuyaLoading]               = useState(false);
+  const [alexaStatus, setAlexaStatus]               = useState<string | null>(null);
+  const [alexaLoading, setAlexaLoading]             = useState(false);
+  const [alexaDevices, setAlexaDevices]             = useState<any[]>([]);
   const [interfaceMode, setInterfaceMode]           = useState(0);
   const [swipeDir, setSwipeDir]                     = useState<1 | -1>(1);
   const swipeStartX                                 = useRef(0);
@@ -1668,6 +1672,88 @@ export default function App() {
                         <p className="text-[10px] text-white/20 leading-relaxed">
                           Crie um projeto em <span className="text-white/40">iot.tuya.com</span>, vincule o app Positivo/SmartLife e copie o Client ID e Secret.
                         </p>
+                      </div>
+
+                      {/* ✅ ALEXA */}
+                      <div className="p-4 rounded-2xl border space-y-3" style={{ backgroundColor: '#1DB9C310', borderColor: '#1DB9C330' }}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: '#1DB9C320' }}>🔵</div>
+                          <div>
+                            <p className="text-sm font-medium">Amazon Alexa</p>
+                            <p className="text-[10px] opacity-40">Controle Echo e dispositivos smart home via Alexa</p>
+                          </div>
+                          <div className={`ml-auto w-2 h-2 rounded-full ${alexaCookie ? 'bg-green-500 animate-pulse' : 'bg-zinc-600'}`} />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest opacity-40">Cookie da Alexa</label>
+                          <textarea
+                            rows={3}
+                            placeholder="Cole aqui o cookie copiado do site alexa.amazon.com.br"
+                            value={alexaCookie}
+                            onChange={(e) => setAlexaCookie(e.target.value.trim())}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono resize-none"
+                          />
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            disabled={!alexaCookie || alexaLoading}
+                            onClick={async () => {
+                              setAlexaLoading(true);
+                              setAlexaStatus(null);
+                              setAlexaDevices([]);
+                              try {
+                                const r = await fetch('/api/alexa/devices', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ cookie: alexaCookie })
+                                });
+                                const d = await r.json();
+                                if (d.success) {
+                                  setAlexaDevices(d.devices || []);
+                                  setAlexaStatus(`✅ ${d.devices?.length || 0} dispositivo(s) encontrado(s)`);
+                                } else {
+                                  setAlexaStatus(`❌ ${d.error}`);
+                                }
+                              } catch (e: any) {
+                                setAlexaStatus(`❌ ${e.message}`);
+                              } finally {
+                                setAlexaLoading(false);
+                              }
+                            }}
+                            className="flex-1 py-2.5 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all disabled:opacity-30"
+                            style={{ backgroundColor: '#1DB9C320', color: '#1DB9C3', border: '1px solid #1DB9C340' }}>
+                            {alexaLoading ? 'Conectando...' : 'Testar conexão'}
+                          </button>
+                        </div>
+
+                        {alexaStatus && (
+                          <p className="text-[10px] text-white/50">{alexaStatus}</p>
+                        )}
+                        {alexaDevices.length > 0 && (
+                          <div className="space-y-1">
+                            {alexaDevices.map((d: any, i: number) => (
+                              <div key={i} className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded-xl text-xs">
+                                <span>🔵</span>
+                                <span className="flex-1">{d.accountName || d.name}</span>
+                                <span className="opacity-30 text-[10px]">{d.deviceFamily || d.deviceType}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="bg-white/5 rounded-xl p-3 space-y-1.5">
+                          <p className="text-[10px] text-white/50 font-medium">Como obter o cookie:</p>
+                          <ol className="text-[10px] text-white/30 space-y-1 list-decimal pl-4">
+                            <li>Acesse <span className="text-white/50">alexa.amazon.com.br</span> no navegador</li>
+                            <li>Faça login com sua conta Amazon</li>
+                            <li>Pressione F12 → aba "Rede" (Network)</li>
+                            <li>Recarregue a página e clique em qualquer requisição</li>
+                            <li>Em "Headers" → "Cookie:" — copie todo o valor</li>
+                            <li>Cole acima e clique em Testar</li>
+                          </ol>
+                        </div>
                       </div>
 
                     </motion.div>

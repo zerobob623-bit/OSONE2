@@ -153,6 +153,10 @@ interface AppState {
   tuyaRegion: string;
   setTuyaRegion: (region: string) => void;
 
+  // Alexa
+  alexaCookie: string;
+  setAlexaCookie: (cookie: string) => void;
+
   // ✅ Memória por personagem
   personalityMemories: Record<PersonalityKey, PersonalityMemory>;
   addPersonalityFact: (personality: PersonalityKey, fact: string) => void;
@@ -279,6 +283,10 @@ export const useAppStore = create<AppState>()(
       tuyaRegion: 'us',
       setTuyaRegion: (tuyaRegion) => set({ tuyaRegion }),
 
+      // Alexa
+      alexaCookie: '',
+      setAlexaCookie: (alexaCookie) => set({ alexaCookie }),
+
       // ✅ Memória por personagem
       personalityMemories: {
         osone:  defaultPersonalityMemory(),
@@ -354,6 +362,7 @@ export const useAppStore = create<AppState>()(
         tuyaClientId: state.tuyaClientId,
         tuyaSecret: state.tuyaSecret,
         tuyaRegion: state.tuyaRegion,
+        alexaCookie: state.alexaCookie,
       }),
     }
   )
