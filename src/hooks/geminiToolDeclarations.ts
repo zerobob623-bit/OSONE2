@@ -1,4 +1,5 @@
 import { Type, FunctionDeclaration } from "@google/genai";
+import type { CustomSkill } from '../store/useAppStore';
 
 export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
@@ -369,6 +370,30 @@ Ações: screenshot, run_command, open_app, type_text, press_key, click, move_mo
     }
   },
 ];
+
+// ── Custom Skills (Agente Infinito) ──────────────────────────────────────────
+const SKILL_TYPE_MAP: Record<string, any> = {
+  string: Type.STRING,
+  number: Type.NUMBER,
+  boolean: Type.BOOLEAN,
+};
+
+export function buildCustomToolDeclarations(skills: CustomSkill[]): FunctionDeclaration[] {
+  return skills.filter(s => s.active).map(s => {
+    const hasParams = s.parameters.length > 0;
+    const properties = hasParams
+      ? Object.fromEntries(s.parameters.map(p => [p.name, { type: SKILL_TYPE_MAP[p.type] ?? Type.STRING, description: p.description }]))
+      : { input: { type: Type.STRING, description: 'Entrada ou pergunta para esta habilidade' } };
+    const required = hasParams
+      ? s.parameters.filter(p => p.required).map(p => p.name)
+      : ['input'];
+    return {
+      name: `skill_${s.id}`,
+      description: `[HABILIDADE EXTERNA: ${s.displayName}] ${s.description}`,
+      parameters: { type: Type.OBJECT, properties, required },
+    };
+  });
+}
 
 // Tools tratadas externamente (via onToolCall callback)
 export const DELEGATED_TOOLS = new Set([
