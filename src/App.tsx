@@ -10,7 +10,7 @@ import { useConversationHistory } from './hooks/useConversationHistory';
 import { useUserMemory, ImportantDate, SemanticFact, ConversationSummary } from './hooks/useUserMemory';
 import { getEmbedding, cosineSimilarity } from './utils/embeddings';
 import { DefaultLayout } from './components/layouts/DefaultLayout';
-import { HerLayout } from './components/layouts/HerLayout';
+import { NeuralLayout } from './components/layouts/NeuralLayout';
 import { OrbLayout } from './components/layouts/OrbLayout';
 
 // ─── EVOLUTION API (WHATSAPP) ─────────────────────────────────────────────────
@@ -429,7 +429,7 @@ export default function App() {
   const [smartHomeStatus, setSmartHomeStatus]       = useState<string | null>(null);
   const [tuyaDevices, setTuyaDevices]               = useState<any[]>([]);
   const [tuyaLoading, setTuyaLoading]               = useState(false);
-  const [interfaceMode, setInterfaceMode]           = useState(1);
+  const [interfaceMode, setInterfaceMode]           = useState(0);
   const [swipeDir, setSwipeDir]                     = useState<1 | -1>(1);
   const swipeStartX                                 = useRef(0);
   const swipeStartY                                 = useRef(0);
@@ -974,9 +974,9 @@ export default function App() {
           transition={{ type: 'spring', damping: 28, stiffness: 260 }}
           className="fixed inset-0"
         >
-          {interfaceMode === 0 && <HerLayout {...layoutProps} />}
-          {interfaceMode === 1 && <DefaultLayout {...layoutProps} />}
-          {interfaceMode === 2 && <OrbLayout {...layoutProps} />}
+          {interfaceMode === 0 && <DefaultLayout {...layoutProps} />}
+          {interfaceMode === 1 && <OrbLayout {...layoutProps} />}
+          {interfaceMode === 2 && <NeuralLayout {...layoutProps} />}
         </motion.div>
       </AnimatePresence>
 
