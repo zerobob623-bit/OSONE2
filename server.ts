@@ -296,26 +296,48 @@ app.post("/api/whatsapp/send-audio", async (req, res) => {
       audioParts.push(Buffer.from(r.data));
     }
 
-    const audioBuffer = Buffer.concat(audioParts);
-    const audioBase64 = audioBuffer.toString('base64');
+    const audioBase64 = Buffer.concat(audioParts).toString('base64');
 
-    // 2. Envia via Evolution API como mensagem de áudio
-    await axios.post(
-      `${EVOLUTION_URL}/message/sendMedia/${EVOLUTION_INSTANCE}`,
-      {
-        number: `${phone}@s.whatsapp.net`,
-        mediatype: 'audio',
-        mimetype: 'audio/mpeg',
-        media: audioBase64,
-        fileName: 'osone_audio.mp3',
-      },
-      { headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_KEY }, timeout: 20000 }
-    );
+    // Tenta enviar como nota de voz; se falhar, envia como arquivo de áudio
+    try {
+      await axios.post(
+        `${EVOLUTION_URL}/message/sendWhatsAppAudio/${EVOLUTION_INSTANCE}`,
+        { number: `${phone}@s.whatsapp.net`, audio: audioBase64, encoding: true },
+        { headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_KEY }, timeout: 25000 }
+      );
+    } catch {
+      await axios.post(
+        `${EVOLUTION_URL}/message/sendMedia/${EVOLUTION_INSTANCE}`,
+        { number: `${phone}@s.whatsapp.net`, mediatype: 'audio', mimetype: 'audio/mpeg', media: audioBase64, fileName: 'osone_audio.mp3' },
+        { headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_KEY }, timeout: 20000 }
+      );
+    }
 
     res.json({ success: true, to: phone, chars: text.length });
   } catch (error: any) {
     console.error('[whatsapp-audio]', error.message);
     res.status(500).json({ error: `Falha ao enviar áudio: ${error.message}` });
+  }
+});
+
+// ─── WHATSAPP SEND IMAGE ───────────────────────────────────────────────────────
+app.post("/api/whatsapp/send-image", async (req, res) => {
+  const { imageUrl, caption, phone } = req.body;
+  if (!phone)    return res.status(400).json({ error: "phone é obrigatório" });
+  if (!imageUrl) return res.status(400).json({ error: "imageUrl é obrigatório" });
+  try {
+    const imgRes = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 20000 });
+    const imgBase64 = Buffer.from(imgRes.data).toString('base64');
+    const contentType = (imgRes.headers['content-type'] as string) || 'image/jpeg';
+    await axios.post(
+      `${EVOLUTION_URL}/message/sendMedia/${EVOLUTION_INSTANCE}`,
+      { number: `${phone}@s.whatsapp.net`, mediatype: 'image', mimetype: contentType, media: imgBase64, caption: caption || '', fileName: 'osone_image.jpg' },
+      { headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_KEY }, timeout: 25000 }
+    );
+    res.json({ success: true, to: phone });
+  } catch (error: any) {
+    console.error('[whatsapp-image]', error.message);
+    res.status(500).json({ error: `Falha ao enviar imagem: ${error.message}` });
   }
 });
 

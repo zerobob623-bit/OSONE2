@@ -662,6 +662,33 @@ export const useGeminiLive = ({
                   continue;
                 }
 
+                if (name === "send_whatsapp_image") {
+                  asyncPending++;
+                  const { myWhatsappNumber, whatsappContacts } = useAppStore.getState();
+                  let resolvedPhone = (args.phone || myWhatsappNumber || '').replace(/\D/g, '');
+                  if (args.contact_name) {
+                    const found = whatsappContacts.find((c: any) =>
+                      c.name.toLowerCase().includes(args.contact_name.toLowerCase()) ||
+                      args.contact_name.toLowerCase().includes(c.name.toLowerCase())
+                    );
+                    if (found) resolvedPhone = found.phone.replace(/\D/g, '');
+                  }
+                  const contactLabel = args.contact_name || resolvedPhone;
+                  fetch('/api/whatsapp/send-image', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ imageUrl: args.imageUrl, caption: args.caption, phone: resolvedPhone })
+                  })
+                    .then(r => r.json())
+                    .then(data => {
+                      onToolCallRef.current?.(name, { ...args, contact: contactLabel });
+                      safeSend({ name, id, response: data.success ? { success: true, to: contactLabel } : { success: false, error: data.error } });
+                    })
+                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
+                    .finally(finishAsync);
+                  continue;
+                }
+
                 if (name === "alexa_control") {
                   asyncPending++;
                   fetch('/api/alexa/control', {
