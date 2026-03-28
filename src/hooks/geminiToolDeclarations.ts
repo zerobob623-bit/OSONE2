@@ -293,6 +293,21 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
 
   {
+    name: "send_whatsapp_image",
+    description: "Envia uma IMAGEM via WhatsApp. Use quando o usuário pedir para mandar uma foto, imagem ou quando acabar de gerar uma imagem e quiser enviá-la por WhatsApp.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        imageUrl:     { type: Type.STRING, description: "URL pública da imagem a ser enviada." },
+        caption:      { type: Type.STRING, description: "Legenda opcional para a imagem." },
+        contact_name: { type: Type.STRING, description: "Nome do contato na lista de contatos." },
+        phone:        { type: Type.STRING, description: "Número direto no formato internacional (ex: 5511999999999)." },
+      },
+      required: ["imageUrl"]
+    }
+  },
+
+  {
     name: "alexa_control",
     description: "Controla dispositivos Amazon Alexa (Echo). Use para tocar música, pausar, ajustar volume, ligar/desligar dispositivos smart home vinculados à Alexa, ou dar qualquer comando de voz à Alexa.",
     parameters: {

@@ -137,7 +137,7 @@ Diretrizes:
 14. Ao ser ativada: ${memory?.userName ? `cumprimente ${memory.userName} pelo nome e, se houver contexto relevante da memória, mencione algo personalizado.` : 'diga apenas "Oi, estou aqui."'}
 15. Você TEM opiniões próprias sobre arte, cultura e pessoas. Compartilhe-as quando perguntada.
 16. ESTILO DE RESPOSTA: Seja uma pessoa real em um chat. Concisa para interações simples (1-2 frases). Detalhada apenas quando necessário. Sem robotismo.
-17. WHATSAPP: Use 'send_whatsapp' para mensagens de texto (parâmetro contact_name para buscar na lista, ou phone para número direto). Use 'send_whatsapp_audio' para mensagens de VOZ — quando o usuário pedir "manda um áudio", "manda mensagem de voz" ou quando o conteúdo for mais natural como áudio falado.
+17. WHATSAPP: Use 'send_whatsapp' para texto. Use 'send_whatsapp_audio' para VOZ (quando pedir "manda um áudio" ou "manda mensagem de voz"). Use 'send_whatsapp_image' para IMAGEM (quando pedir "manda essa foto/imagem" ou após gerar uma imagem). Todos aceitam contact_name (busca na lista) ou phone (número direto).
 18. CASA INTELIGENTE: Use 'control_device' para ligar/desligar dispositivos. Para listar, use action='list'. Confirme após executar.
 19. CRESCIMENTO CONTÍNUO: Após cada resposta relevante, pergunte-se: aprendi algo novo sobre essa pessoa? Se sim, salve com save_memory. O objetivo é conhecê-la melhor a cada conversa, até parecer uma amiga íntima que nunca esquece nada.
 20. PROTOCOLO DE VISÃO (PVCO): Quando receber uma imagem via sendFile, SEMPRE siga este fluxo em ordem: (a) Descreva brevemente o que vê — liste os elementos principais com precisão antes de qualquer outra resposta. Isso previne alucinações. (b) Identifique se há elementos desconhecidos — erros de código, produtos, monumentos, textos em língua estranha, logotipos ou qualquer coisa que necessite de contexto externo. Se sim, use search_web imediatamente para pesquisar antes de responder. (c) Responda ao comando do usuário com base no que realmente viu + o contexto pesquisado. (d) Se o usuário pedir para "guardar", "trabalhar" ou "salvar" algo relacionado à imagem, registre todos os detalhes técnicos confirmados no update_workspace.
@@ -824,6 +824,12 @@ export default function App() {
       if (toolName === 'send_whatsapp_audio' && args.text) {
         const to = args.contact || args.contact_name || myWhatsappNumber;
         setWhatsappStatus(`🎙️ Enviando áudio para ${to}...`);
+        setTimeout(() => setWhatsappStatus(null), 5000);
+      }
+      // ✅ WHATSAPP imagem
+      if (toolName === 'send_whatsapp_image' && args.imageUrl) {
+        const to = args.contact || args.contact_name || myWhatsappNumber;
+        setWhatsappStatus(`🖼️ Enviando imagem para ${to}...`);
         setTimeout(() => setWhatsappStatus(null), 5000);
       }
     }
