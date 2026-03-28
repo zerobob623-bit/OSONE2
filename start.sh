@@ -23,10 +23,22 @@ echo "   ╚═════╝ ╚══════╝ ╚═════╝ �
 echo -e "${RESET}"
 echo -e "${CYAN}Iniciando OSONE localmente...${RESET}\n"
 
-# ── Verificar Node.js ─────────────────────────────────────────────────────────
+# ── Verificar Node.js (suporta nvm) ──────────────────────────────────────────
+# Carrega nvm se existir mas node não estiver no PATH
+if ! command -v node &>/dev/null; then
+  [ -s "$HOME/.nvm/nvm.sh" ] && source "$HOME/.nvm/nvm.sh"
+fi
 if ! command -v node &>/dev/null; then
   echo -e "${RED}✗ Node.js não encontrado.${RESET}"
-  echo -e "Instale em: https://nodejs.org  (versão 18+)"
+  echo -e ""
+  echo -e "Instale com um dos comandos abaixo:"
+  echo -e "  ${BOLD}# Via nvm (recomendado):${RESET}"
+  echo -e "  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash"
+  echo -e "  source ~/.bashrc && nvm install --lts"
+  echo -e ""
+  echo -e "  ${BOLD}# Via apt (Ubuntu/Debian):${RESET}"
+  echo -e "  curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -"
+  echo -e "  sudo apt install -y nodejs"
   exit 1
 fi
 
