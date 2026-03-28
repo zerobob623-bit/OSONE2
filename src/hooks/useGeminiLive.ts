@@ -62,6 +62,7 @@ export const useGeminiLive = ({
 
   const sessionRef = useRef<any>(null);
   const isConnectedRef = useRef(false);
+  const isConnectingRef = useRef(false);  // ← previne double-connect durante handshake
   const audioContextRef = useRef<AudioContext | null>(null);
   const inputAudioContextRef = useRef<AudioContext | null>(null);
   const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
@@ -102,6 +103,7 @@ export const useGeminiLive = ({
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     if (audioWorkletNodeRef.current) {
+      audioWorkletNodeRef.current.port.onmessage = null; // ← para envios residuais
       audioWorkletNodeRef.current.disconnect();
       audioWorkletNodeRef.current = null;
     }
@@ -408,10 +410,11 @@ export const useGeminiLive = ({
   // ============================================================
 
   const connect = useCallback(async (sysInstruction: string) => {
-    if (isConnectedRef.current) {
-      console.warn("Já conectado — ignorando connect() duplicado.");
+    if (isConnectedRef.current || isConnectingRef.current) {
+      console.warn("Já conectado/conectando — ignorando connect() duplicado.");
       return;
     }
+    isConnectingRef.current = true;
     try {
       setError(null);
       const apiKey = storedApiKey || process.env.GEMINI_API_KEY;
@@ -441,6 +444,7 @@ export const useGeminiLive = ({
         callbacks: {
           onopen: () => {
             console.log("✅ Gemini Live conectado!");
+            isConnectingRef.current = false;
             setIsConnected(true);
             isConnectedRef.current = true;
             setIsListening(true);
@@ -646,6 +650,7 @@ export const useGeminiLive = ({
           },
 
           onclose: () => {
+            isConnectingRef.current = false;
             setIsConnected(false);
             isConnectedRef.current = false;
             sessionRef.current = null;
@@ -654,6 +659,7 @@ export const useGeminiLive = ({
 
           onerror: (err: any) => {
             console.error("Gemini Live error:", err);
+            isConnectingRef.current = false;
             setError(`Erro na API Live: ${err.message || 'Erro desconhecido'}`);
             setIsConnected(false);
             isConnectedRef.current = false;
@@ -709,6 +715,7 @@ export const useGeminiLive = ({
 
     } catch (err: any) {
       console.error("Falha na conexão:", err);
+      isConnectingRef.current = false;
       setError(err.message);
       setIsConnected(false);
       isConnectedRef.current = false;
@@ -817,7 +824,12 @@ export const useGeminiLive = ({
   const disconnect = useCallback((isReconnecting = false) => {
     screenAnalysisActiveRef.current = false;
     stopSilenceTimer();
-    sessionRef.current?.then((s: any) => s.close()).catch(console.error);
+    // Marca como desconectado imediatamente para silenciar envios residuais
+    isConnectedRef.current = false;
+    isConnectingRef.current = false;
+    const sessionToClose = sessionRef.current;
+    sessionRef.current = null;
+    sessionToClose?.then((s: any) => s.close()).catch(console.error);
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
     stopAudio(isReconnecting);
   }, [stopAudio, stopSilenceTimer]);
