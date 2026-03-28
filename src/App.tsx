@@ -137,7 +137,7 @@ Diretrizes:
 14. Ao ser ativada: ${memory?.userName ? `cumprimente ${memory.userName} pelo nome e, se houver contexto relevante da memória, mencione algo personalizado.` : 'diga apenas "Oi, estou aqui."'}
 15. Você TEM opiniões próprias sobre arte, cultura e pessoas. Compartilhe-as quando perguntada.
 16. ESTILO DE RESPOSTA: Seja uma pessoa real em um chat. Concisa para interações simples (1-2 frases). Detalhada apenas quando necessário. Sem robotismo.
-17. WHATSAPP: Use 'send_whatsapp' quando pedido. Número já configurado. Confirme ao enviar.
+17. WHATSAPP: Use 'send_whatsapp' para mensagens de texto (parâmetro contact_name para buscar na lista, ou phone para número direto). Use 'send_whatsapp_audio' para mensagens de VOZ — quando o usuário pedir "manda um áudio", "manda mensagem de voz" ou quando o conteúdo for mais natural como áudio falado.
 18. CASA INTELIGENTE: Use 'control_device' para ligar/desligar dispositivos. Para listar, use action='list'. Confirme após executar.
 19. CRESCIMENTO CONTÍNUO: Após cada resposta relevante, pergunte-se: aprendi algo novo sobre essa pessoa? Se sim, salve com save_memory. O objetivo é conhecê-la melhor a cada conversa, até parecer uma amiga íntima que nunca esquece nada.
 20. PROTOCOLO DE VISÃO (PVCO): Quando receber uma imagem via sendFile, SEMPRE siga este fluxo em ordem: (a) Descreva brevemente o que vê — liste os elementos principais com precisão antes de qualquer outra resposta. Isso previne alucinações. (b) Identifique se há elementos desconhecidos — erros de código, produtos, monumentos, textos em língua estranha, logotipos ou qualquer coisa que necessite de contexto externo. Se sim, use search_web imediatamente para pesquisar antes de responder. (c) Responda ao comando do usuário com base no que realmente viu + o contexto pesquisado. (d) Se o usuário pedir para "guardar", "trabalhar" ou "salvar" algo relacionado à imagem, registre todos os detalhes técnicos confirmados no update_workspace.
@@ -431,6 +431,7 @@ export default function App() {
     userId, setUserId, setUserProfile,
     personalityMemories, addPersonalityFact, setPersonalityUserName, getPersonalityMemory,
     myWhatsappNumber, setMyWhatsappNumber,
+    whatsappContacts, addWhatsappContact, removeWhatsappContact,
     tuyaClientId, setTuyaClientId,
     tuyaSecret, setTuyaSecret,
     tuyaRegion, setTuyaRegion,
@@ -476,6 +477,10 @@ export default function App() {
   const [showAttachMenu, setShowAttachMenu]          = useState(false);
   // ✅ NOVO: estado para feedback do WhatsApp
   const [whatsappStatus, setWhatsappStatus]         = useState<string | null>(null);
+  const [showContactsList, setShowContactsList]     = useState(false);
+  const [newContactName, setNewContactName]         = useState('');
+  const [newContactPhone, setNewContactPhone]       = useState('');
+  const [showAddContact, setShowAddContact]         = useState(false);
   const [smartHomeStatus, setSmartHomeStatus]       = useState<string | null>(null);
   const [tuyaDevices, setTuyaDevices]               = useState<any[]>([]);
   const [tuyaLoading, setTuyaLoading]               = useState(false);
@@ -792,26 +797,17 @@ export default function App() {
         }
         setTimeout(() => setSmartHomeStatus(null), 5000);
       }
-      // ✅ WHATSAPP — handler completo
+      // ✅ WHATSAPP texto
       if (toolName === 'send_whatsapp' && args.message) {
-        const phone = (myWhatsappNumber || '').replace(/\D/g, '');
-        if (!phone) {
-          sendLiveMessage(`❌ Número de WhatsApp não configurado. Configure nas Integrações.`);
-        } else {
-          setWhatsappStatus(`📤 Enviando WhatsApp...`);
-          sendWhatsApp(phone, args.message)
-            .then(() => {
-              setWhatsappStatus(`✅ WhatsApp enviado!`);
-              sendLiveMessage(`✅ Mensagem enviada com sucesso no WhatsApp!`);
-              setTimeout(() => setWhatsappStatus(null), 4000);
-            })
-            .catch((err) => {
-              console.error('WhatsApp error:', err);
-              setWhatsappStatus(`❌ Erro ao enviar WhatsApp`);
-              sendLiveMessage(`❌ Não consegui enviar o WhatsApp. Verifique se a instância está conectada.`);
-              setTimeout(() => setWhatsappStatus(null), 5000);
-            });
-        }
+        const to = args.contact || args.contact_name || myWhatsappNumber;
+        setWhatsappStatus(`📤 Enviando para ${to}...`);
+        setTimeout(() => setWhatsappStatus(null), 4000);
+      }
+      // ✅ WHATSAPP áudio
+      if (toolName === 'send_whatsapp_audio' && args.text) {
+        const to = args.contact || args.contact_name || myWhatsappNumber;
+        setWhatsappStatus(`🎙️ Enviando áudio para ${to}...`);
+        setTimeout(() => setWhatsappStatus(null), 5000);
       }
     }
   });
@@ -1495,17 +1491,101 @@ export default function App() {
                         <p className="text-[10px] text-white/30 pl-1">Conectado via Railway. Diga à OSONE para mandar uma mensagem pelo WhatsApp.</p>
                       </div>
 
-                      {/* ✅ NÚMERO DE DESTINO */}
+                      {/* ✅ LISTA DE CONTATOS */}
                       <div className="space-y-2">
-                        <label className="text-[10px] uppercase tracking-widest opacity-40">Meu número WhatsApp</label>
-                        <input
-                          type="tel"
-                          placeholder="Ex: 5584999259368"
-                          value={myWhatsappNumber}
-                          onChange={(e) => setMyWhatsappNumber(e.target.value.replace(/\D/g, ''))}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30"
-                        />
-                        <p className="text-[10px] text-white/20 pl-1">DDD + número, sem espaços. Ex: 5584999259368</p>
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] uppercase tracking-widest opacity-40">Contatos</label>
+                          <span className="text-[10px] text-white/20">{whatsappContacts.length} contato{whatsappContacts.length !== 1 ? 's' : ''}</span>
+                        </div>
+
+                        {/* Botão acessar lista */}
+                        <button
+                          onClick={() => { setShowContactsList(v => !v); setShowAddContact(false); }}
+                          className="w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm transition-all"
+                          style={{ backgroundColor: '#25D36610', border: '1px solid #25D36630', color: '#25D366' }}>
+                          <span>📋 {showContactsList ? 'Fechar lista' : 'Acessar lista de contatos'}</span>
+                          <span className="text-xs opacity-60">{showContactsList ? '▲' : '▼'}</span>
+                        </button>
+
+                        {/* Painel expandido da lista */}
+                        {showContactsList && (
+                          <div className="rounded-2xl overflow-hidden border border-white/10">
+                            {/* Contatos existentes */}
+                            {whatsappContacts.length === 0 && !showAddContact && (
+                              <div className="px-4 py-5 text-center text-[11px] text-white/25">
+                                Nenhum contato ainda. Clique em + para adicionar.
+                              </div>
+                            )}
+                            {whatsappContacts.map((c, i) => (
+                              <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-white/5 last:border-0">
+                                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
+                                  style={{ backgroundColor: '#25D36620', color: '#25D366' }}>
+                                  {c.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-medium truncate">{c.name}</p>
+                                  <p className="text-[10px] text-white/30 font-mono">{c.phone}</p>
+                                </div>
+                                <button
+                                  onClick={() => removeWhatsappContact(i)}
+                                  className="p-1.5 rounded-lg opacity-30 hover:opacity-80 hover:bg-red-500/20 transition-all text-red-400 shrink-0">
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+
+                            {/* Formulário de novo contato */}
+                            {showAddContact ? (
+                              <div className="p-3 space-y-2 bg-white/3 border-t border-white/10">
+                                <input
+                                  type="text"
+                                  placeholder="Nome (ex: João, Minha mãe)"
+                                  value={newContactName}
+                                  onChange={e => setNewContactName(e.target.value)}
+                                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/25"
+                                  autoFocus
+                                />
+                                <input
+                                  type="tel"
+                                  placeholder="Número (ex: 5511999999999)"
+                                  value={newContactPhone}
+                                  onChange={e => setNewContactPhone(e.target.value.replace(/\D/g, ''))}
+                                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/25 font-mono"
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => { setShowAddContact(false); setNewContactName(''); setNewContactPhone(''); }}
+                                    className="flex-1 py-2 rounded-xl text-[10px] text-white/30 border border-white/10 hover:bg-white/5">
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    disabled={!newContactName.trim() || !newContactPhone.trim()}
+                                    onClick={() => {
+                                      if (!newContactName.trim() || !newContactPhone.trim()) return;
+                                      addWhatsappContact({ name: newContactName.trim(), phone: newContactPhone.trim() });
+                                      setNewContactName('');
+                                      setNewContactPhone('');
+                                      setShowAddContact(false);
+                                    }}
+                                    className="flex-1 py-2 rounded-xl text-[10px] font-medium transition-all disabled:opacity-30"
+                                    style={{ backgroundColor: '#25D36620', color: '#25D366', border: '1px solid #25D36640' }}>
+                                    Salvar contato
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setShowAddContact(true)}
+                                className="w-full flex items-center justify-center gap-2 py-3 text-xs text-white/40 hover:text-white/70 hover:bg-white/5 transition-all border-t border-white/5">
+                                <span className="text-base leading-none">+</span>
+                                <span>Adicionar contato</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        <p className="text-[10px] text-white/20 pl-1">
+                          Diga à IA: "manda mensagem de voz pro João" ou "manda texto pra Maria".
+                        </p>
                       </div>
 
                       {/* ✅ TUYA SMART HOME */}

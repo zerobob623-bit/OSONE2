@@ -245,6 +245,59 @@ app.post('/api/tuya/control', async (req, res) => {
   }
 });
 
+// ─── WHATSAPP SEND AUDIO ──────────────────────────────────────────────────────
+app.post("/api/whatsapp/send-audio", async (req, res) => {
+  const { text, phone } = req.body;
+  if (!text)  return res.status(400).json({ error: "text é obrigatório" });
+  if (!phone) return res.status(400).json({ error: "phone é obrigatório" });
+
+  try {
+    // 1. Converte texto em áudio via Google Translate TTS (gratuito, sem chave)
+    //    Máx ~200 chars por request; divide se necessário
+    const chunks: string[] = [];
+    let remaining = text;
+    while (remaining.length > 0) {
+      const slice = remaining.substring(0, 200);
+      const cutAt = slice.lastIndexOf(' ');
+      const chunk = cutAt > 100 ? slice.substring(0, cutAt) : slice;
+      chunks.push(chunk);
+      remaining = remaining.substring(chunk.length).trim();
+    }
+
+    const audioParts: Buffer[] = [];
+    for (const chunk of chunks) {
+      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=pt-BR&client=tw-ob&ttsspeed=0.9`;
+      const r = await axios.get(ttsUrl, {
+        responseType: 'arraybuffer',
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        timeout: 15000,
+      });
+      audioParts.push(Buffer.from(r.data));
+    }
+
+    const audioBuffer = Buffer.concat(audioParts);
+    const audioBase64 = audioBuffer.toString('base64');
+
+    // 2. Envia via Evolution API como mensagem de áudio
+    await axios.post(
+      `${EVOLUTION_URL}/message/sendMedia/${EVOLUTION_INSTANCE}`,
+      {
+        number: `${phone}@s.whatsapp.net`,
+        mediatype: 'audio',
+        mimetype: 'audio/mpeg',
+        media: audioBase64,
+        fileName: 'osone_audio.mp3',
+      },
+      { headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_KEY }, timeout: 20000 }
+    );
+
+    res.json({ success: true, to: phone, chars: text.length });
+  } catch (error: any) {
+    console.error('[whatsapp-audio]', error.message);
+    res.status(500).json({ error: `Falha ao enviar áudio: ${error.message}` });
+  }
+});
+
 // ─── WHATSAPP INCOMING (webhook da Evolution API) ─────────────────────────────
 app.post("/api/whatsapp/incoming", async (req, res) => {
   res.status(200).json({ ok: true });
