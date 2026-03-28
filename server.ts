@@ -9,6 +9,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
 import os from "os";
+import AlexaRemote from "alexa-remote2";
 
 dotenv.config();
 
@@ -348,7 +349,6 @@ app.post("/api/whatsapp/incoming", async (req, res) => {
 });
 
 // ─── ALEXA (alexa-remote2 — login via proxy, sem cookie manual) ──────────────
-const AlexaRemote = require('alexa-remote2');
 const ALEXA_SESSION_FILE = path.join(os.homedir(), '.osone-alexa.json');
 const ALEXA_PROXY_PORT = 3002;
 
