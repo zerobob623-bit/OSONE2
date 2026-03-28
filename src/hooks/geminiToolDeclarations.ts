@@ -267,13 +267,28 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: "send_whatsapp",
-    description: "Envia uma mensagem de WhatsApp para o número do próprio usuário. Use após pesquisar na web para enviar resultados ou resumos ao usuário.",
+    description: "Envia uma mensagem de texto via WhatsApp. Pode enviar para um contato da lista (pelo nome) ou para um número específico. Use 'contact_name' quando o usuário mencionar o nome de alguém da lista de contatos.",
     parameters: {
       type: Type.OBJECT,
       properties: {
-        message: { type: Type.STRING, description: "Texto da mensagem a ser enviada." }
+        message:      { type: Type.STRING, description: "Texto da mensagem a ser enviada." },
+        contact_name: { type: Type.STRING, description: "Nome do contato na lista (ex: 'João', 'Minha mãe'). A IA buscará o número automaticamente." },
+        phone:        { type: Type.STRING, description: "Número direto no formato internacional (ex: 5511999999999). Usar quando não tiver o contato na lista." },
       },
       required: ["message"]
+    }
+  },
+  {
+    name: "send_whatsapp_audio",
+    description: "Envia uma mensagem de VOZ (áudio) via WhatsApp. Use quando o usuário pedir para mandar um áudio, uma mensagem de voz, ou quando o conteúdo for mais natural como áudio. O texto é convertido em voz em português antes de enviar.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        text:         { type: Type.STRING, description: "Texto que será convertido em áudio e enviado como mensagem de voz." },
+        contact_name: { type: Type.STRING, description: "Nome do contato na lista de contatos." },
+        phone:        { type: Type.STRING, description: "Número direto no formato internacional (ex: 5511999999999)." },
+      },
+      required: ["text"]
     }
   },
 

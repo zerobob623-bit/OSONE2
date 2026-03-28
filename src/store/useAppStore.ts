@@ -141,6 +141,9 @@ interface AppState {
   // WhatsApp
   myWhatsappNumber: string;
   setMyWhatsappNumber: (number: string) => void;
+  whatsappContacts: { name: string; phone: string }[];
+  addWhatsappContact: (contact: { name: string; phone: string }) => void;
+  removeWhatsappContact: (index: number) => void;
 
   // Tuya Smart Home
   tuyaClientId: string;
@@ -264,6 +267,9 @@ export const useAppStore = create<AppState>()(
       // WhatsApp
       myWhatsappNumber: '',
       setMyWhatsappNumber: (myWhatsappNumber) => set({ myWhatsappNumber }),
+      whatsappContacts: [],
+      addWhatsappContact: (contact) => set(s => ({ whatsappContacts: [...s.whatsappContacts, contact] })),
+      removeWhatsappContact: (index) => set(s => ({ whatsappContacts: s.whatsappContacts.filter((_, i) => i !== index) })),
 
       // Tuya Smart Home
       tuyaClientId: '',
@@ -344,6 +350,7 @@ export const useAppStore = create<AppState>()(
         mood: state.mood,
         personalityMemories: state.personalityMemories, // ✅ persiste memória por personagem
         myWhatsappNumber: state.myWhatsappNumber,
+        whatsappContacts: state.whatsappContacts,
         tuyaClientId: state.tuyaClientId,
         tuyaSecret: state.tuyaSecret,
         tuyaRegion: state.tuyaRegion,
