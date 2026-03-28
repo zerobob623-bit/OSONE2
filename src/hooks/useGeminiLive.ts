@@ -305,27 +305,32 @@ export const useGeminiLive = ({
   const generateImage = useCallback(async (prompt: string, aspectRatio: "1:1" | "16:9" | "9:16" = "1:1") => {
     setIsThinking(true);
     try {
-      const apiKey = storedApiKey || process.env.GEMINI_API_KEY;
-      if (!apiKey) throw new Error("API Key não encontrada.");
-      const genAI = new GoogleGenAI({ apiKey });
-      const response = await genAI.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: { parts: [{ text: prompt }] },
-        config: { imageConfig: { aspectRatio } },
+      if (!openaiApiKey) throw new Error("Chave OpenAI não configurada. Adicione em APIs.");
+
+      const sizeMap: Record<string, string> = { '1:1': '1024x1024', '16:9': '1792x1024', '9:16': '1024x1792' };
+      const size = sizeMap[aspectRatio] || '1024x1024';
+
+      const resp = await fetch('https://api.openai.com/v1/images/generations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+        body: JSON.stringify({ model: 'dall-e-3', prompt, n: 1, size, response_format: 'url' }),
       });
-      const imagePart = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-      if (!imagePart?.inlineData) throw new Error("Nenhuma imagem gerada.");
-      const imageUrl = `data:image/png;base64,${imagePart.inlineData.data}`;
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error?.message || 'Erro ao gerar imagem');
+
+      const imageUrl = data.data?.[0]?.url;
+      if (!imageUrl) throw new Error("Nenhuma imagem retornada.");
+
       addMessage({ role: 'model', text: `Imagem gerada para: "${prompt}"`, imageUrl });
       onMessageRef.current?.({ role: 'model', text: `Imagem gerada para: "${prompt}"`, imageUrl });
-    } catch {
-      const msg = "Não consegui gerar a imagem. Verifique se sua chave API suporta geração de imagens.";
+    } catch (e: any) {
+      const msg = `Não consegui gerar a imagem: ${e.message}`;
       addMessage({ role: 'model', text: msg });
       onMessageRef.current?.({ role: 'model', text: msg });
     } finally {
       setIsThinking(false);
     }
-  }, [storedApiKey, addMessage, setIsThinking]);
+  }, [openaiApiKey, addMessage, setIsThinking]);
 
   // ============================================================
   // 💬 ENVIO DE MENSAGEM (modo texto)
