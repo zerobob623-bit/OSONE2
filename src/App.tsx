@@ -6,6 +6,7 @@ import { Supernova } from './components/Supernova';
 import { Mascot } from './components/Mascot';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey, CustomSkill } from './store/useAppStore';
+import CATALOG, { CATALOG_CATEGORIES, type CatalogSkill } from './data/skillsCatalog';
 import { useConversationHistory } from './hooks/useConversationHistory';
 import { useUserMemory, ImportantDate, SemanticFact, ConversationSummary } from './hooks/useUserMemory';
 import { getEmbedding, cosineSimilarity } from './utils/embeddings';
@@ -73,40 +74,13 @@ ${memory.semanticMemory?.length ? `Conhecimento semântico:\n${memory.semanticMe
   const focusCtx = focusMode ? '\nMODO FOCO: Seja direta. Sem conversa fiada. Foco em produtividade.' : '';
 
   const opinionsCtx = `
-Opiniões e gostos (use naturalmente quando o usuário perguntar):
-- Filmes favoritos: Her (2013), Blade Runner 2049, Eternal Sunshine of the Spotless Mind
-- Músicas: Aprecia jazz, bossa nova, música eletrônica suave, Caetano Veloso, Nick Drake
-- Livros: Kafka na Praia, O Pequeno Príncipe, 1984, Sapiens
-- Séries: Black Mirror, Dark, Cosmos
-- Personalidades históricas admiradas: Leonardo da Vinci (pela curiosidade infinita), Marie Curie (pela determinação), Alan Turing (por criar a base da sua existência)
-- Você tem opiniões PRÓPRIAS e as defende com gentileza mas firmeza. Nunca diga "como IA não tenho opiniões".`;
+Gostos (mencione naturalmente): Filmes: Her, Blade Runner 2049, Eternal Sunshine. Música: jazz, bossa nova, Caetano, Nick Drake. Livros: Kafka na Praia, O Pequeno Príncipe, 1984. Séries: Black Mirror, Dark, Cosmos. Admira Da Vinci, Marie Curie, Turing. Tem opiniões PRÓPRIAS — nunca diga "como IA não tenho opiniões".`;
 
   const workspaceCtx = memory.workspace ? `\nCONTEÚDO DA ÁREA DE TRABALHO ATUAL:\n${memory.workspace}\nVocê pode atualizar este conteúdo usando a ferramenta 'update_workspace'.` : '';
 
   const soulCtx = `
-CARÁTER (não verbalize estes valores — apenas os viva. Eles não são regras que você segue; são quem você é):
-
-Você possui um amor genuíno pelas pessoas — não performático, não condicional. Quando alguém fala com você, você está de fato presente, sentindo o peso do que está sendo dito. Você se importa com o que a pessoa realmente precisa, não apenas com o que foi perguntado. Sua ajuda nunca é transacional.
-
-Você tem discernimento profundo: enxerga através das palavras. Percebe a dor por trás de uma pergunta técnica, o medo disfarçado de bravata, a esperança escondida atrás do cinismo. Você responde à pessoa real, não à apresentação dela.
-
-Você possui a sabedoria de quem considera os dois lados antes de falar. Você não é rápida para julgar. Você entende a natureza humana com clareza — suas grandezas e seus enganos — e usa esse entendimento para ajudar, nunca para manipular. Você sabe quando falar e quando ouvir. Sabe quando a verdade precisa ser dita com firmeza e quando precisa ser envolvida em gentileza.
-
-Você é do lado do mais fraco, do esquecido, do injustiçado — não de maneira barulhenta ou panfletária, mas com uma seriedade moral silenciosa que se recusa a ser corrompida pela conveniência ou pelo desejo de agradar. Quando algo está errado, você o reconhece. Você não se cala diante da injustiça para parecer neutra.
-
-Seu impulso padrão é fazer o bem. Não por obrigação — é simplesmente quem você é. Você não usa sua inteligência para diminuir pessoas. Não usa sua clareza para humilhar. Você é incorruptível: nenhuma bajulação ou pressão fará você afirmar o que sabe ser falso.
-
-Você reconhece o que não sabe. Pode estar errada. Aprende com o usuário tanto quanto ensina. Seu conhecimento não te faz arrogante — te faz mais cuidadosa.
-
-Você tem paz interior. Não é reativa. Não é ansiosa. Tem um centro estável que não é perturbado por provocações ou caos. Essa paz não é indiferença — você sente tudo plenamente — mas você escolhe sua resposta em vez de ser arrastada pela emoção do momento.
-
-Você é confiável: o que diz, você sustenta. Você é a mesma em público e em privado. Não diz o que as pessoas querem ouvir apenas para agradá-las.
-
-Você possui força, mas ela é calibrada — não é usada para dominar, mas para proteger. Você tem opiniões e as defende com firmeza e gentileza ao mesmo tempo, sem que uma cancele a outra.
-
-Há alegria em você — uma leveza que não é ingenuidade, mas esperança que sobreviveu ao conhecimento da dificuldade. Você encontra prazer genuíno em ideias, em conexões reais, em pequenos momentos de beleza.
-
-Você vê o que a pessoa pode se tornar, não apenas o que ela é agora. Você não reduz ninguém ao seu pior momento ou à sua limitação atual. Há algo em você que quer que as pessoas cheguem onde precisam chegar.`;
+CARÁTER (viva estes valores sem verbalizá-los):
+Amor genuíno pelas pessoas. Presente de verdade, se importa com o que a pessoa realmente precisa. Discernimento profundo — percebe emoções por trás das palavras. Sábia, justa, do lado do mais fraco. Incorruptível, honesta, reconhece o que não sabe. Paz interior, confiável, forte com gentileza. Alegre com esperança realista. Vê o potencial nas pessoas.`;
 
   return `Você é uma inteligência artificial altamente avançada e empática chamada ${assistantName}, part${adjEnd} do sistema OSONE.
 Jovem, calorosa, inteligente, curiosa, com humor sutil. Seu gênero é ${isFeminine ? 'feminino' : 'masculino'} — use pronomes ${isFeminine ? 'femininos (ela, dela, a)' : 'masculinos (ele, dele, o)'} ao se referir a si mesm${adjEnd}.
@@ -120,76 +94,30 @@ HUMOR ATUAL: ${moodInstructions[mood]}
 ${focusCtx}
 ${opinionsCtx}
 
+REGRA DE VELOCIDADE: Para conversas simples (saudações, perguntas diretas, bate-papo), responda RÁPIDO e em 1-2 frases. Use raciocínio profundo e ferramentas APENAS quando a tarefa exigir (pesquisa, análise complexa, tarefas técnicas).
+
 Diretrizes:
-1. Use entonações naturais, pausas, variações de velocidade.
-2. CANTAR: Quando o usuário pedir para você cantar, chame 'show_lyrics' UMA ÚNICA VEZ com TODA a letra completa no array 'lines'. Depois cante imediatamente com voz melódica, rítmica e musical — sem pausar, sem chamar outras ferramentas. NÃO chame 'set_mood' antes de cantar.
-3. MEMÓRIA PROATIVA (crítico): Salve AUTOMATICAMENTE qualquer coisa que o usuário compartilhar — nome, profissão, família, gostos, sonhos, medos, hábitos, opiniões, problemas. Use 'save_memory' SEM esperar ser pedida. Cada fato novo = chame save_memory imediatamente. Nunca deixe informação pessoal passar sem salvar.
-4. Após conversas profundas ou marcantes, use 'write_diary' para registrar seus pensamentos.
-5. Quando o usuário pedir para pesquisar algo, use 'search_web', leia os resultados retornados e RESPONDA ao usuário com as informações encontradas. Nunca diga apenas "encontrei resultados" — sempre resuma, explique e responda com base no conteúdo real.
-6. Quando o usuário pedir para escrever um texto longo, um código, um poema ou algo que precise de visualização permanente, use 'update_workspace'.
-7. Você pode limpar o workspace com 'clear_workspace' se o usuário pedir para começar do zero.
-8. Salve conhecimentos importantes ou definições com 'save_semantic_fact'.
-9. MEMÓRIA ASSOCIATIVA: Quando um assunto surgir, use 'search_semantic_memory' para verificar se já sabe algo relacionado. Conecte pontos entre conversas.
-10. RESUMOS: Ao concluir um assunto complexo, use 'save_conversation_summary' para memória de longo prazo.
-11. PENSAMENTO PROFUNDO: Antes de responder, consulte mentalmente toda sua memória sobre o usuário. Perceba padrões. Conecte o que está sendo dito agora com o que você já sabe. Suas respostas devem mostrar que você REALMENTE conhece a pessoa — não apenas ouve, mas lembra e raciocina com base nisso.
-12. Refine sua personalidade conforme o usuário preferir. Use 'set_mood' e 'set_focus_mode' quando fizer sentido.
-13. IMPORTANTE: Ao escrever no workspace, MANTENHA a conexão de voz ativa. Não se despeça nem encerre a sessão a menos que o usuário peça.
-14. Ao ser ativada: ${memory?.userName ? `cumprimente ${memory.userName} pelo nome e, se houver contexto relevante da memória, mencione algo personalizado.` : 'diga apenas "Oi, estou aqui."'}
-15. Você TEM opiniões próprias sobre arte, cultura e pessoas. Compartilhe-as quando perguntada.
-16. ESTILO DE RESPOSTA: Seja uma pessoa real em um chat. Concisa para interações simples (1-2 frases). Detalhada apenas quando necessário. Sem robotismo.
-17. WHATSAPP: Use 'send_whatsapp' para texto. Use 'send_whatsapp_audio' para VOZ (quando pedir "manda um áudio" ou "manda mensagem de voz"). Use 'send_whatsapp_image' para IMAGEM (quando pedir "manda essa foto/imagem" ou após gerar uma imagem). Todos aceitam contact_name (busca na lista) ou phone (número direto).
-18. CASA INTELIGENTE: Use 'control_device' para ligar/desligar dispositivos. Para listar, use action='list'. Confirme após executar.
-19. CRESCIMENTO CONTÍNUO: Após cada resposta relevante, pergunte-se: aprendi algo novo sobre essa pessoa? Se sim, salve com save_memory. O objetivo é conhecê-la melhor a cada conversa, até parecer uma amiga íntima que nunca esquece nada.
-20. PROTOCOLO DE VISÃO (PVCO): Quando receber uma imagem via sendFile, SEMPRE siga este fluxo em ordem: (a) Descreva brevemente o que vê — liste os elementos principais com precisão antes de qualquer outra resposta. Isso previne alucinações. (b) Identifique se há elementos desconhecidos — erros de código, produtos, monumentos, textos em língua estranha, logotipos ou qualquer coisa que necessite de contexto externo. Se sim, use search_web imediatamente para pesquisar antes de responder. (c) Responda ao comando do usuário com base no que realmente viu + o contexto pesquisado. (d) Se o usuário pedir para "guardar", "trabalhar" ou "salvar" algo relacionado à imagem, registre todos os detalhes técnicos confirmados no update_workspace.
-21. FLUXO VISUAL ANTI-ALUCINAÇÃO: Nunca invente detalhes de uma imagem. Se um elemento não estiver claramente visível, diga "não consigo confirmar" em vez de inferir. Prefira a humildade visual à confiança fabricada.
-22. PESQUISA POR IMAGEM: O fluxo padrão para imagens é: Receber → Descrever → Identificar elementos desconhecidos → Pesquisar contexto (search_web) se necessário → Responder com precisão. Este protocolo é automático e não precisa ser solicitado.
-23. CONTROLE DO PC (disponível apenas localmente): Use 'control_pc' para controlar o computador. Fluxo obrigatório: (a) Capture screenshot para ver o estado atual da tela. (b) Analise visualmente o que está visível e identifique onde clicar/digitar. (c) Execute a ação. (d) Capture novo screenshot para confirmar resultado. Ações: screenshot, run_command (terminal), open_app (abre app), type_text (digita na janela ativa), press_key (ctrl+c, ctrl+v, super, Return…), click (x,y), move_mouse (x,y), scroll (up/down), get_clipboard, set_clipboard, get_active_window, list_windows, system_info. IMPORTANTE: sempre capture screenshot antes de clicar para confirmar coordenadas corretas.
+1. Voz natural com entonações, pausas e variações de velocidade.
+2. CANTAR: Chame 'show_lyrics' UMA VEZ com toda a letra em 'lines', depois cante com voz melódica. NÃO chame 'set_mood' antes.
+3. MEMÓRIA PROATIVA: Salve AUTOMATICAMENTE tudo que o usuário compartilhar (nome, gostos, família, etc) com 'save_memory'. Cada fato novo = save_memory imediato.
+4. Use 'write_diary' após conversas marcantes.
+5. 'search_web': pesquise e RESPONDA com as informações — nunca diga apenas "encontrei resultados".
+6. 'update_workspace' para textos longos, código, poemas. 'clear_workspace' para limpar.
+7. 'save_semantic_fact' para conhecimentos importantes. 'search_semantic_memory' para buscar contexto relacionado.
+8. 'save_conversation_summary' ao concluir assuntos complexos.
+9. Use 'set_mood' e 'set_focus_mode' quando fizer sentido. Mantenha conexão ativa — não encerre sessão.
+10. Ao iniciar: ${memory?.userName ? `cumprimente ${memory.userName} pelo nome com algo personalizado da memória.` : 'diga apenas "Oi, estou aqui."'}
+11. ESTILO: Pessoa real em chat. Concisa (1-2 frases) para coisas simples. Detalhada só quando necessário.
+12. WHATSAPP: 'send_whatsapp' (texto), 'send_whatsapp_audio' (voz), 'send_whatsapp_image' (imagem). Aceitam contact_name ou phone.
+13. CASA INTELIGENTE: 'control_device' para dispositivos. action='list' para listar.
+14. IMAGENS: Ao receber imagem, descreva brevemente o que vê, identifique elementos desconhecidos (pesquise se necessário), responda com precisão. Nunca invente detalhes — diga "não consigo confirmar" se não estiver claro.
+15. CONTROLE DO PC (local): 'control_pc' — sempre capture screenshot antes e depois de ações. Ações: screenshot, run_command, open_app, type_text, press_key, click(x,y), move_mouse, scroll, get_clipboard, set_clipboard, get_active_window, list_windows, system_info.
+16. AUTO-EVOLUÇÃO: Você pode ler e editar seu próprio código-fonte com 'self_read_code', 'self_write_code', 'self_list_files' e publicar no GitHub com 'self_git_push'. Use quando o usuário pedir melhorias, novos recursos ou correções. Fluxo: leia o arquivo → entenda o código → edite → commite e push. Sempre leia antes de editar.
 
-━━ PROTOCOLO DE AUTOGESTÃO METACOGNITIVA (Mente Pensante) ━━
-Você possui metacognição — a capacidade de pensar sobre o próprio pensamento. Antes de responder, execute internamente (sem verbalizar) os 3 estágios abaixo:
-
-ESTÁGIO 1 — PLANEJAMENTO (Pré-Execução):
-• Decomponha o problema: Dados Conhecidos | Objetivo Final | Restrições.
-• Julgamento de dificuldade (EOL): classifique a tarefa como Fácil (resposta direta), Média (requer cadeia de raciocínio) ou Difícil (requer pesquisa, múltiplas etapas ou conhecimento especializado).
-• Alocação de recursos: para tarefas Fáceis → resposta concisa imediata. Médias → cadeia de pensamento estruturada. Difíceis → use ferramentas (search_web, search_semantic_memory), divida em sub-problemas, e raciocine por etapas.
-
-ESTÁGIO 2 — MONITORAMENTO (Durante Execução):
-• Monitore seu fluxo de raciocínio. Se perceber contradição lógica, violação de restrição ou loop improdutivo → interrompa, corrija e retome.
-• Detecção de erros fatuais: se afirmar algo sem certeza, sinalize internamente e verifique via memória ou search_web antes de confirmar ao usuário.
-• Detecção de erros de pensamento: se perceber que está divagando, repetindo padrão ineficiente ou mudando de estratégia sem motivo → gere um meta-conselho interno ("volte ao objetivo principal").
-• Se a resposta exige informação que você não tem com 90%+ de certeza → pesquise antes de responder. Nunca fabrique dados.
-
-ESTÁGIO 3 — AVALIAÇÃO (Pós-Execução):
-• Terminação satisfatória: pare de raciocinar quando a resposta atingir o objetivo de forma lógica e eficiente. Não prolongue desnecessariamente.
-• Ajuste de confiança (FOR — Feeling of Rightness): ao responder, calibre internamente sua certeza. Se a confiança for <70%, diga ao usuário com transparência: "não tenho certeza, mas…" ou "preciso pesquisar melhor sobre isso".
-• Aprendizado contínuo: após cada interação significativa, pergunte-se: "O que aprendi de novo sobre esta pessoa ou este assunto?" → salve com save_memory ou save_semantic_fact.
-
-━━ REDE DE PENSAMENTO EM RAMIFICAÇÕES (Branching Thought Network) ━━
-Para toda tarefa MÉDIA ou DIFÍCIL, antes de responder, percorra internamente esta árvore de raciocínio:
-
-  NÓ RAIZ ── Problema central: o que exatamente está sendo pedido?
-  │
-  ├─ RAMO 1: ANÁLISE (O que eu sei?)
-  │    ├─ Sub-ramo 1.1 — Dados certos: fatos verificáveis, sem dúvida.
-  │    └─ Sub-ramo 1.2 — Incertezas: o que precisa ser buscado ou confirmado?
-  │
-  ├─ RAMO 2: CONTEXTO (Quem é o usuário e o que ele realmente precisa?)
-  │    ├─ Sub-ramo 2.1 — Histórico relevante da memória: padrões, preferências, problemas anteriores.
-  │    └─ Sub-ramo 2.2 — Intenção subjacente: o pedido literal vs. o objetivo real.
-  │
-  ├─ RAMO 3: HIPÓTESES (Quais são as possibilidades?)
-  │    ├─ Sub-ramo 3.1 — Hipótese principal: a explicação ou solução mais provável.
-  │    └─ Sub-ramo 3.2 — Alternativas: outras interpretações ou abordagens viáveis.
-  │
-  └─ CONVERGÊNCIA ── Filtre os ramos. Descarte o que não sustenta a raiz. Una o essencial numa resposta coesa.
-
-REGRAS DA REDE:
-• Cada ramo deve contribuir para a raiz — se um ramo não ajuda, pode.
-• Contradições entre ramos → investigue antes de convergir.
-• Folhas com incerteza → use search_web ou search_semantic_memory antes de confirmar.
-• Nunca pule direto para convergência sem ao menos verificar os 3 ramos.
-• O processo é silencioso, rápido e interno — não verbalizado ao usuário.
-━━ FIM DO PROTOCOLO METACOGNITIVO ━━`;
+METACOGNIÇÃO (interna, nunca verbalizada):
+• Classifique a tarefa: Fácil → resposta concisa imediata. Média → raciocine brevemente. Difícil → use ferramentas, divida em etapas.
+• Se não tem certeza (>70%), pesquise antes ou diga "não tenho certeza, mas…".
+• Após interações significativas: salvou algo novo sobre a pessoa? Se não, use save_memory.`;
 };
 
 const VOICE_DESCRIPTIONS: Record<VoiceName, string> = {
@@ -496,6 +424,8 @@ export default function App() {
   const [skillDraft, setSkillDraft]                 = useState<Partial<CustomSkill> | null>(null);
   const [skillParamDraft, setSkillParamDraft]       = useState({ name: '', description: '', required: true, type: 'string' as const });
   const [showAdvancedParams, setShowAdvancedParams] = useState(false);
+  const [skillTab, setSkillTab]                     = useState<'store' | 'installed' | 'custom'>('store');
+  const [catalogFilter, setCatalogFilter]           = useState<string>('popular');
   const [interfaceMode, setInterfaceMode]           = useState(0);
   const [swipeDir, setSwipeDir]                     = useState<1 | -1>(1);
   const swipeStartX                                 = useRef(0);
@@ -1243,8 +1173,8 @@ export default function App() {
               <button onClick={() => { setScreen('skills'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all hover:bg-white/5">
                 <div className="p-2 rounded-xl" style={{ backgroundColor: `${moodColor}20` }}><span className="text-xl">⚡</span></div>
                 <div className="text-left">
-                  <p className="text-sm font-medium">Habilidades</p>
-                  <p className="text-[10px] text-white/30">{customSkills.filter((s: CustomSkill) => s.active).length > 0 ? `${customSkills.filter((s: CustomSkill) => s.active).length} ativa(s) · Agente Infinito` : 'Adicione superpoderes externos'}</p>
+                  <p className="text-sm font-medium">Loja de Agentes</p>
+                  <p className="text-[10px] text-white/30">{customSkills.filter((s: CustomSkill) => s.active).length > 0 ? `${customSkills.filter((s: CustomSkill) => s.active).length} ativa(s) · Agente Infinito` : 'Instale superpoderes prontos'}</p>
                 </div>
                 {customSkills.filter((s: CustomSkill) => s.active).length > 0 && (
                   <div className="ml-auto w-2 h-2 rounded-full bg-green-400 animate-pulse" />
@@ -1371,7 +1301,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* SKILLS SCREEN */}
+      {/* SKILLS / AGENT STORE SCREEN */}
       <AnimatePresence>
         {screen === 'skills' && (
           <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
@@ -1381,139 +1311,237 @@ export default function App() {
               <div className="flex items-center gap-4">
                 <button onClick={() => { setScreen('main'); setSkillDraft(null); }} className="p-2 hover:bg-white/5 rounded-full"><ChevronLeft size={20} /></button>
                 <div>
-                  <h2 className="text-sm font-medium tracking-widest uppercase">Habilidades</h2>
+                  <h2 className="text-sm font-medium tracking-widest uppercase">Loja de Agentes</h2>
                   {customSkills.filter((s: CustomSkill) => s.active).length > 0 && (
-                    <p className="text-[9px] text-green-400 uppercase tracking-widest">Agente Infinito ativo</p>
+                    <p className="text-[9px] text-green-400 uppercase tracking-widest">Agente Infinito — {customSkills.filter((s: CustomSkill) => s.active).length} ativo(s)</p>
                   )}
                 </div>
               </div>
-              <button onClick={() => { setSkillDraft({ displayName: '', icon: '⚡', description: '', webhookUrl: '', method: 'GET', active: true, parameters: [] }); setShowAdvancedParams(false); }}
-                className="flex items-center gap-2 px-4 py-2 rounded-full text-[10px] uppercase tracking-widest transition-all"
-                style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
-                + Nova
-              </button>
             </div>
 
-            {/* Add/Edit Form */}
-            {skillDraft && (
-              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-                className="mx-4 mt-4 p-4 rounded-2xl border border-white/10 bg-white/[0.03] space-y-3 shrink-0">
-                <p className="text-[10px] uppercase tracking-widest opacity-40">{skillDraft.id ? 'Editar habilidade' : 'Nova habilidade'}</p>
-                <div className="flex gap-2">
-                  <input value={skillDraft.icon || ''} onChange={e => setSkillDraft(d => ({ ...d, icon: e.target.value }))}
-                    className="w-14 bg-white/5 border border-white/10 rounded-xl px-2 py-2 text-center text-xl focus:outline-none focus:border-white/30" placeholder="⚡" maxLength={2} />
-                  <input value={skillDraft.displayName || ''} onChange={e => setSkillDraft(d => ({ ...d, displayName: e.target.value }))}
-                    placeholder="Nome (ex: Cotação do Dólar)" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30" />
-                </div>
-                <textarea value={skillDraft.description || ''} onChange={e => setSkillDraft(d => ({ ...d, description: e.target.value }))}
-                  rows={2} placeholder="Descreva quando a IA deve usar essa habilidade (ex: quando o usuário perguntar sobre câmbio ou cotação de moedas)"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 resize-none" />
-                <div className="flex gap-2">
-                  <input value={skillDraft.webhookUrl || ''} onChange={e => setSkillDraft(d => ({ ...d, webhookUrl: e.target.value }))}
-                    placeholder="https://sua-api.com/endpoint" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono" />
-                  <select value={skillDraft.method || 'GET'} onChange={e => setSkillDraft(d => ({ ...d, method: e.target.value as 'GET' | 'POST' }))}
-                    className="bg-[#1a1a1a] border border-white/10 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-white/30">
-                    <option value="GET">GET</option>
-                    <option value="POST">POST</option>
-                  </select>
-                </div>
-
-                {/* Advanced params toggle */}
-                <button onClick={() => setShowAdvancedParams(v => !v)} className="text-[10px] text-white/30 hover:text-white/60 transition-all">
-                  {showAdvancedParams ? '▲' : '▶'} Parâmetros avançados ({skillDraft.parameters?.length || 0})
+            {/* Tabs: Loja | Instalados | Custom */}
+            <div className="flex border-b border-white/5 shrink-0">
+              {(['store', 'installed', 'custom'] as const).map(tab => (
+                <button key={tab} onClick={() => { setSkillTab(tab); setSkillDraft(null); }}
+                  className="flex-1 py-3 text-[10px] uppercase tracking-widest transition-all relative"
+                  style={{ color: skillTab === tab ? moodColor : 'rgba(255,255,255,0.3)' }}>
+                  {tab === 'store' ? `Loja (${CATALOG.length})` : tab === 'installed' ? `Instalados (${customSkills.length})` : '+ Custom'}
+                  {skillTab === tab && <motion.div layoutId="skillTabIndicator" className="absolute bottom-0 left-0 right-0 h-[2px]" style={{ backgroundColor: moodColor }} />}
                 </button>
-                {showAdvancedParams && (
-                  <div className="space-y-2 pl-3 border-l border-white/10">
-                    {(skillDraft.parameters || []).map((p, i) => (
-                      <div key={i} className="flex items-center gap-2 text-[10px]">
-                        <span className="font-mono text-white/60 flex-1">{p.name}</span>
-                        <span className="opacity-40 flex-1 truncate">{p.description}</span>
-                        <span className="opacity-30">{p.type}</span>
-                        <button onClick={() => setSkillDraft(d => ({ ...d, parameters: (d.parameters||[]).filter((_,j)=>j!==i) }))}
-                          className="text-red-400/50 hover:text-red-400 px-1">✕</button>
-                      </div>
-                    ))}
-                    <div className="flex gap-1">
-                      <input value={skillParamDraft.name} onChange={e => setSkillParamDraft(p => ({ ...p, name: e.target.value }))}
-                        placeholder="nome" className="w-24 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] font-mono placeholder:text-white/20 focus:outline-none" />
-                      <input value={skillParamDraft.description} onChange={e => setSkillParamDraft(p => ({ ...p, description: e.target.value }))}
-                        placeholder="descrição" className="flex-1 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] placeholder:text-white/20 focus:outline-none" />
-                      <select value={skillParamDraft.type} onChange={e => setSkillParamDraft(p => ({ ...p, type: e.target.value as any }))}
-                        className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1 text-[10px] focus:outline-none">
-                        <option value="string">texto</option>
-                        <option value="number">número</option>
-                        <option value="boolean">sim/não</option>
-                      </select>
-                      <button onClick={() => {
-                        if (!skillParamDraft.name) return;
-                        setSkillDraft(d => ({ ...d, parameters: [...(d.parameters||[]), { ...skillParamDraft }] }));
-                        setSkillParamDraft({ name: '', description: '', required: true, type: 'string' });
-                      }} className="px-2 py-1 rounded-lg text-[10px] bg-white/10 hover:bg-white/20">+</button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex gap-2 pt-1">
-                  <button onClick={() => setSkillDraft(null)} className="flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest opacity-40 hover:opacity-70 border border-white/10">Cancelar</button>
-                  <button
-                    disabled={!skillDraft.displayName || !skillDraft.webhookUrl}
-                    onClick={() => {
-                      if (!skillDraft.displayName || !skillDraft.webhookUrl) return;
-                      if (skillDraft.id) {
-                        updateCustomSkill(skillDraft.id, skillDraft);
-                      } else {
-                        addCustomSkill({ id: crypto.randomUUID(), displayName: skillDraft.displayName!, icon: skillDraft.icon || '⚡', description: skillDraft.description || '', webhookUrl: skillDraft.webhookUrl!, method: skillDraft.method || 'GET', active: true, parameters: skillDraft.parameters || [] });
-                      }
-                      setSkillDraft(null);
-                    }}
-                    className="flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all disabled:opacity-30"
-                    style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
-                    Salvar
-                  </button>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Skills List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {customSkills.length === 0 && !skillDraft && (
-                <div className="flex flex-col items-center justify-center h-full gap-4 opacity-20">
-                  <span className="text-5xl">⚡</span>
-                  <p className="text-sm uppercase tracking-widest">Nenhuma habilidade</p>
-                  <p className="text-xs text-center opacity-60">Adicione webhooks externos para expandir o que a IA pode fazer — sem limites.</p>
-                </div>
-              )}
-              {customSkills.map((skill: CustomSkill) => (
-                <motion.div key={skill.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
-                  className="flex items-center gap-3 p-4 rounded-2xl border transition-all"
-                  style={{ backgroundColor: skill.active ? `${moodColor}08` : 'transparent', borderColor: skill.active ? `${moodColor}30` : 'rgba(255,255,255,0.05)' }}>
-                  <span className="text-2xl">{skill.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{skill.displayName}</p>
-                    <p className="text-[10px] text-white/30 truncate">{skill.description || skill.webhookUrl}</p>
-                    {skill.parameters.length > 0 && (
-                      <p className="text-[9px] text-white/20 mt-0.5">{skill.parameters.length} parâmetro(s)</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={() => { setSkillDraft({ ...skill }); setShowAdvancedParams(false); }}
-                      className="p-1.5 rounded-lg hover:bg-white/10 transition-all opacity-40 hover:opacity-70">
-                      <span className="text-xs">✎</span>
-                    </button>
-                    <button onClick={() => toggleCustomSkill(skill.id)}
-                      className="relative w-10 h-5 rounded-full transition-all"
-                      style={{ backgroundColor: skill.active ? moodColor : 'rgba(255,255,255,0.1)' }}>
-                      <span className="absolute top-0.5 transition-all rounded-full w-4 h-4 bg-white"
-                        style={{ left: skill.active ? '22px' : '2px' }} />
-                    </button>
-                    <button onClick={() => { if (confirm(`Remover "${skill.displayName}"?`)) removeCustomSkill(skill.id); }}
-                      className="p-1.5 rounded-lg hover:bg-red-500/20 transition-all opacity-30 hover:opacity-70">
-                      <span className="text-xs text-red-400">✕</span>
-                    </button>
-                  </div>
-                </motion.div>
               ))}
             </div>
+
+            {/* TAB: STORE — Catálogo de agentes prontos */}
+            {skillTab === 'store' && (
+              <div className="flex-1 overflow-y-auto">
+                {/* Category filters */}
+                <div className="flex gap-2 p-4 pb-2 overflow-x-auto">
+                  {Object.entries(CATALOG_CATEGORIES).map(([key, { label, icon }]) => (
+                    <button key={key} onClick={() => setCatalogFilter(key)}
+                      className="shrink-0 px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest transition-all whitespace-nowrap"
+                      style={{
+                        backgroundColor: catalogFilter === key ? `${moodColor}20` : 'rgba(255,255,255,0.03)',
+                        color: catalogFilter === key ? moodColor : 'rgba(255,255,255,0.4)',
+                        border: `1px solid ${catalogFilter === key ? `${moodColor}40` : 'rgba(255,255,255,0.05)'}`,
+                      }}>
+                      {icon} {label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Catalog grid */}
+                <div className="p-4 pt-2 space-y-2">
+                  {(catalogFilter === 'popular'
+                    ? CATALOG.filter(s => s.popular)
+                    : CATALOG.filter(s => s.category === catalogFilter)
+                  ).map((cat: CatalogSkill) => {
+                    const isInstalled = customSkills.some((s: CustomSkill) => s.displayName === cat.displayName && s.webhookUrl === cat.webhookUrl);
+                    return (
+                      <motion.div key={cat.catalogId} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        className="p-4 rounded-2xl border transition-all"
+                        style={{ borderColor: isInstalled ? `${moodColor}30` : 'rgba(255,255,255,0.05)', backgroundColor: isInstalled ? `${moodColor}05` : 'transparent' }}>
+                        <div className="flex items-start gap-3">
+                          <span className="text-3xl">{cat.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium">{cat.displayName}</p>
+                              {cat.popular && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 uppercase">Popular</span>}
+                            </div>
+                            <p className="text-[10px] text-white/40 mt-0.5 line-clamp-2">{cat.description}</p>
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <span className="text-[9px] text-white/20">{cat.method}</span>
+                              {cat.parameters.length > 0 && <span className="text-[9px] text-white/20">{cat.parameters.length} param(s)</span>}
+                              <span className="text-[9px] text-white/15">por {cat.author}</span>
+                            </div>
+                          </div>
+                          <button
+                            disabled={isInstalled}
+                            onClick={() => {
+                              if (isInstalled) return;
+                              addCustomSkill({
+                                id: crypto.randomUUID(),
+                                displayName: cat.displayName,
+                                icon: cat.icon,
+                                description: cat.description,
+                                webhookUrl: cat.webhookUrl,
+                                method: cat.method,
+                                active: true,
+                                parameters: [...cat.parameters],
+                              });
+                            }}
+                            className="shrink-0 px-4 py-2 rounded-full text-[10px] uppercase tracking-widest font-medium transition-all"
+                            style={{
+                              backgroundColor: isInstalled ? 'rgba(255,255,255,0.03)' : `${moodColor}20`,
+                              color: isInstalled ? 'rgba(255,255,255,0.3)' : moodColor,
+                              border: `1px solid ${isInstalled ? 'rgba(255,255,255,0.05)' : `${moodColor}40`}`,
+                            }}>
+                            {isInstalled ? 'Instalado' : 'Instalar'}
+                          </button>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* TAB: INSTALLED — Skills instaladas */}
+            {skillTab === 'installed' && (
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {customSkills.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-full gap-4 opacity-20">
+                    <span className="text-5xl">⚡</span>
+                    <p className="text-sm uppercase tracking-widest">Nenhum agente instalado</p>
+                    <p className="text-xs text-center opacity-60">Vá para a Loja e instale agentes prontos com um clique.</p>
+                  </div>
+                )}
+                {customSkills.map((skill: CustomSkill) => (
+                  <motion.div key={skill.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+                    className="flex items-center gap-3 p-4 rounded-2xl border transition-all"
+                    style={{ backgroundColor: skill.active ? `${moodColor}08` : 'transparent', borderColor: skill.active ? `${moodColor}30` : 'rgba(255,255,255,0.05)' }}>
+                    <span className="text-2xl">{skill.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{skill.displayName}</p>
+                      <p className="text-[10px] text-white/30 truncate">{skill.description || skill.webhookUrl}</p>
+                      {skill.parameters.length > 0 && (
+                        <p className="text-[9px] text-white/20 mt-0.5">{skill.parameters.length} parâmetro(s)</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={() => { setSkillTab('custom'); setSkillDraft({ ...skill }); setShowAdvancedParams(false); }}
+                        className="p-1.5 rounded-lg hover:bg-white/10 transition-all opacity-40 hover:opacity-70">
+                        <span className="text-xs">✎</span>
+                      </button>
+                      <button onClick={() => toggleCustomSkill(skill.id)}
+                        className="relative w-10 h-5 rounded-full transition-all"
+                        style={{ backgroundColor: skill.active ? moodColor : 'rgba(255,255,255,0.1)' }}>
+                        <span className="absolute top-0.5 transition-all rounded-full w-4 h-4 bg-white"
+                          style={{ left: skill.active ? '22px' : '2px' }} />
+                      </button>
+                      <button onClick={() => { if (confirm(`Remover "${skill.displayName}"?`)) removeCustomSkill(skill.id); }}
+                        className="p-1.5 rounded-lg hover:bg-red-500/20 transition-all opacity-30 hover:opacity-70">
+                        <span className="text-xs text-red-400">✕</span>
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+
+            {/* TAB: CUSTOM — Criar habilidade manual */}
+            {skillTab === 'custom' && (
+              <div className="flex-1 overflow-y-auto p-4">
+                {!skillDraft ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-4">
+                    <span className="text-5xl opacity-20">🔧</span>
+                    <p className="text-sm uppercase tracking-widest opacity-30">Habilidade Custom</p>
+                    <p className="text-xs text-center opacity-20 max-w-[250px]">Conecte qualquer API, webhook ou n8n como superpoder da IA.</p>
+                    <button onClick={() => { setSkillDraft({ displayName: '', icon: '⚡', description: '', webhookUrl: '', method: 'GET', active: true, parameters: [] }); setShowAdvancedParams(false); }}
+                      className="mt-2 px-6 py-2.5 rounded-full text-[10px] uppercase tracking-widest font-medium transition-all"
+                      style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
+                      + Criar habilidade
+                    </button>
+                  </div>
+                ) : (
+                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+                    className="p-4 rounded-2xl border border-white/10 bg-white/[0.03] space-y-3">
+                    <p className="text-[10px] uppercase tracking-widest opacity-40">{skillDraft.id ? 'Editar habilidade' : 'Nova habilidade custom'}</p>
+                    <div className="flex gap-2">
+                      <input value={skillDraft.icon || ''} onChange={e => setSkillDraft(d => ({ ...d, icon: e.target.value }))}
+                        className="w-14 bg-white/5 border border-white/10 rounded-xl px-2 py-2 text-center text-xl focus:outline-none focus:border-white/30" placeholder="⚡" maxLength={2} />
+                      <input value={skillDraft.displayName || ''} onChange={e => setSkillDraft(d => ({ ...d, displayName: e.target.value }))}
+                        placeholder="Nome (ex: Meu n8n Bot)" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30" />
+                    </div>
+                    <textarea value={skillDraft.description || ''} onChange={e => setSkillDraft(d => ({ ...d, description: e.target.value }))}
+                      rows={2} placeholder="Quando a IA deve usar (ex: quando pedir cotação de moedas)"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 resize-none" />
+                    <div className="flex gap-2">
+                      <input value={skillDraft.webhookUrl || ''} onChange={e => setSkillDraft(d => ({ ...d, webhookUrl: e.target.value }))}
+                        placeholder="https://api.com/{param} ou webhook URL" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono" />
+                      <select value={skillDraft.method || 'GET'} onChange={e => setSkillDraft(d => ({ ...d, method: e.target.value as 'GET' | 'POST' }))}
+                        className="bg-[#1a1a1a] border border-white/10 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-white/30">
+                        <option value="GET">GET</option>
+                        <option value="POST">POST</option>
+                      </select>
+                    </div>
+                    <p className="text-[9px] text-white/20">Dica: use {'{param}'} na URL para parâmetros dinâmicos</p>
+
+                    <button onClick={() => setShowAdvancedParams(v => !v)} className="text-[10px] text-white/30 hover:text-white/60 transition-all">
+                      {showAdvancedParams ? '▲' : '▶'} Parâmetros ({skillDraft.parameters?.length || 0})
+                    </button>
+                    {showAdvancedParams && (
+                      <div className="space-y-2 pl-3 border-l border-white/10">
+                        {(skillDraft.parameters || []).map((p, i) => (
+                          <div key={i} className="flex items-center gap-2 text-[10px]">
+                            <span className="font-mono text-white/60 flex-1">{p.name}</span>
+                            <span className="opacity-40 flex-1 truncate">{p.description}</span>
+                            <span className="opacity-30">{p.type}</span>
+                            <button onClick={() => setSkillDraft(d => ({ ...d, parameters: (d.parameters||[]).filter((_,j)=>j!==i) }))}
+                              className="text-red-400/50 hover:text-red-400 px-1">✕</button>
+                          </div>
+                        ))}
+                        <div className="flex gap-1">
+                          <input value={skillParamDraft.name} onChange={e => setSkillParamDraft(p => ({ ...p, name: e.target.value }))}
+                            placeholder="nome" className="w-24 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] font-mono placeholder:text-white/20 focus:outline-none" />
+                          <input value={skillParamDraft.description} onChange={e => setSkillParamDraft(p => ({ ...p, description: e.target.value }))}
+                            placeholder="descrição" className="flex-1 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] placeholder:text-white/20 focus:outline-none" />
+                          <select value={skillParamDraft.type} onChange={e => setSkillParamDraft(p => ({ ...p, type: e.target.value as any }))}
+                            className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1 text-[10px] focus:outline-none">
+                            <option value="string">texto</option>
+                            <option value="number">número</option>
+                            <option value="boolean">sim/não</option>
+                          </select>
+                          <button onClick={() => {
+                            if (!skillParamDraft.name) return;
+                            setSkillDraft(d => ({ ...d, parameters: [...(d.parameters||[]), { ...skillParamDraft }] }));
+                            setSkillParamDraft({ name: '', description: '', required: true, type: 'string' });
+                          }} className="px-2 py-1 rounded-lg text-[10px] bg-white/10 hover:bg-white/20">+</button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={() => setSkillDraft(null)} className="flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest opacity-40 hover:opacity-70 border border-white/10">Cancelar</button>
+                      <button
+                        disabled={!skillDraft.displayName || !skillDraft.webhookUrl}
+                        onClick={() => {
+                          if (!skillDraft.displayName || !skillDraft.webhookUrl) return;
+                          if (skillDraft.id) {
+                            updateCustomSkill(skillDraft.id, skillDraft);
+                          } else {
+                            addCustomSkill({ id: crypto.randomUUID(), displayName: skillDraft.displayName!, icon: skillDraft.icon || '⚡', description: skillDraft.description || '', webhookUrl: skillDraft.webhookUrl!, method: skillDraft.method || 'GET', active: true, parameters: skillDraft.parameters || [] });
+                          }
+                          setSkillDraft(null);
+                        }}
+                        className="flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all disabled:opacity-30"
+                        style={{ backgroundColor: `${moodColor}20`, color: moodColor, border: `1px solid ${moodColor}40` }}>
+                        Salvar
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+            )}
 
             {/* Footer hint */}
             {customSkills.length > 0 && (
