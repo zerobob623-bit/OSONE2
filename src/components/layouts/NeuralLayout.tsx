@@ -380,10 +380,21 @@ function NeuralCanvas({
           // Ouve: periferia para centro
           from = Math.floor(Math.random() * 36); // clusters 0-3
         } else if (thk) {
-          // Pensa: clusters alternados
-          const c = (Math.floor(time / 60) % 5);
-          const start = CLUSTER_DEFS.slice(0, c).reduce((acc, d) => acc + d[2], 0);
-          from = start + Math.floor(Math.random() * CLUSTER_DEFS[c][2]);
+          // Metacognição: 3 fases cíclicas a cada ~3.5s (210 frames)
+          // Fase 0 (Planejamento): córtex pré-frontal (cluster 0) → estruturas profundas (4)
+          // Fase 1 (Monitoramento): feedback loops entre todos clusters, velocidade alta
+          // Fase 2 (Avaliação): convergência para centro (cluster 4), desaceleração
+          const metaPhase = Math.floor(time / 70) % 3;
+          if (metaPhase === 0) {
+            // PLANEJAMENTO — top-down, prefrontal lidera
+            from = Math.floor(Math.random() * 14); // cluster 0 (pré-frontal)
+          } else if (metaPhase === 1) {
+            // MONITORAMENTO — feedback distribuído, alta atividade
+            from = Math.floor(Math.random() * neurons.length);
+          } else {
+            // AVALIAÇÃO — convergência para estruturas profundas
+            from = 46 + Math.floor(Math.random() * 14); // cluster 4 (profundo)
+          }
         } else {
           from = Math.floor(Math.random() * neurons.length);
         }
@@ -395,10 +406,18 @@ function NeuralCanvas({
             const nc = conns[ci];
             const to = nc.a === from ? nc.b : nc.a;
             if (neurons[to].refractoryTimer <= 0) {
-              // Cor varia levemente com o estado
-              const hue = spk ? (Math.random() < 0.3 ? '#9B5FFF' : baseCol)
-                         : thk ? '#7B4FFF'
-                         : baseCol;
+              // Cor varia com o estado e fase metacognitiva
+              let hue: string;
+              if (spk) {
+                hue = Math.random() < 0.3 ? '#9B5FFF' : baseCol;
+              } else if (thk) {
+                const mp = Math.floor(time / 70) % 3;
+                hue = mp === 0 ? '#6B5FFF'   // Planejamento — azul-violeta
+                    : mp === 1 ? '#FF6B9D'   // Monitoramento — rosa (feedback/alerta)
+                    :            '#00FFAA';   // Avaliação — verde-ciano (convergência)
+              } else {
+                hue = baseCol;
+              }
               emitSignal(from, to, hue, spd + Math.random() * 0.004, 0.7 + Math.random() * 0.3);
               neurons[from].charge = Math.min(1, neurons[from].charge + 0.45);
               neurons[from].refractoryTimer = 12;
@@ -454,6 +473,53 @@ function NeuralMsgActions({ text, color }: { text: string; color: string }) {
         {copied ? <Check size={10} /> : <Copy size={10} />}
       </button>
     </div>
+  );
+}
+
+// ─── Indicador de fase metacognitiva (visível durante thinking) ───────────────
+const META_PHASES = [
+  { label: 'planejando',   color: '#6B5FFF', icon: '◇' },
+  { label: 'monitorando',  color: '#FF6B9D', icon: '◈' },
+  { label: 'avaliando',    color: '#00FFAA', icon: '◉' },
+];
+
+function MetaCogIndicator({ isThinking }: { isThinking: boolean }) {
+  const [phase, setPhase] = useState(0);
+  useEffect(() => {
+    if (!isThinking) return;
+    const t = setInterval(() => setPhase(p => (p + 1) % 3), 2333);
+    return () => clearInterval(t);
+  }, [isThinking]);
+  if (!isThinking) return null;
+  const p = META_PHASES[phase];
+  return (
+    <motion.div
+      key={phase}
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      className="fixed left-0 right-0 flex justify-center z-10"
+      style={{ bottom: 160 }}
+    >
+      <div
+        className="flex items-center gap-2 px-3 py-1 rounded-full"
+        style={{ backgroundColor: `${p.color}15`, border: `1px solid ${p.color}30` }}
+      >
+        <motion.span
+          animate={{ rotate: [0, 360] }}
+          transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+          style={{ color: p.color, fontSize: 10 }}
+        >
+          {p.icon}
+        </motion.span>
+        <span
+          className="text-[8px] uppercase tracking-[0.35em]"
+          style={{ color: p.color }}
+        >
+          {p.label}
+        </span>
+      </div>
+    </motion.div>
   );
 }
 
@@ -563,6 +629,11 @@ export function NeuralLayout({
           ))}
         </AnimatePresence>
       </div>
+
+      {/* ── INDICADOR METACOGNITIVO (fases: planejando / monitorando / avaliando) */}
+      <AnimatePresence>
+        <MetaCogIndicator isThinking={isThinking} />
+      </AnimatePresence>
 
       {/* ── STATUS LABEL ───────────────────────────────────────────────────── */}
       <div className="fixed left-0 right-0 flex justify-center z-10"
