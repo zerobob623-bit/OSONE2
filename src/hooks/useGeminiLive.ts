@@ -541,6 +541,39 @@ export const useGeminiLive = ({
                   continue;
                 }
 
+                if (name === "control_pc") {
+                  asyncPending++;
+                  fetch('/api/pc/control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: args.action, ...args }),
+                  })
+                    .then(r => r.json())
+                    .then(async (data) => {
+                      if (data.image) {
+                        // Screenshot: envia imagem para visão da IA + notifica UI
+                        onToolCallRef.current?.(name, {
+                          action: args.action,
+                          imageUrl: `data:${data.mimeType};base64,${data.image}`,
+                        });
+                        const sess = await sessionPromise;
+                        if (isConnectedRef.current) {
+                          try {
+                            sess.sendRealtimeInput({ video: { data: data.image, mimeType: data.mimeType } });
+                            sess.sendRealtimeInput({ text: '[Sistema: Screenshot capturado e enviado como input visual. Descreva detalhadamente o que você está vendo na tela antes de agir.]' });
+                          } catch {}
+                        }
+                        safeSend({ name, id, response: { success: true, message: 'Screenshot capturado — imagem enviada para sua visão.' } });
+                      } else {
+                        onToolCallRef.current?.(name, { action: args.action, result: data });
+                        safeSend({ name, id, response: data });
+                      }
+                    })
+                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
+                    .finally(finishAsync);
+                  continue;
+                }
+
                 if (name === "control_device") {
                   asyncPending++;
                   const { tuyaClientId, tuyaSecret, tuyaRegion } = useAppStore.getState();
