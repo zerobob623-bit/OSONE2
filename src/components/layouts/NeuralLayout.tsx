@@ -35,6 +35,261 @@ interface Connection {
   cpy: number;
 }
 
+// ─── Thought Tree types ───────────────────────────────────────────────────────
+interface TNode {
+  id: number;
+  x: number;
+  y: number;
+  parentId: number | null;
+  label: string;
+  depth: number;
+  born: number;       // frame offset at which this node starts appearing
+  progress: number;   // 0→1 draw animation
+}
+
+interface TSignal {
+  edgeIdx: number;    // index into edges array
+  t: number;          // 0→1 progress along edge (always positive)
+  dir: number;        // +1 = parent→child, −1 = child→parent
+  color: string;
+  speed: number;
+}
+
+const TREE_DEPTH_COLORS = ['#00D4FF', '#6B5FFF', '#FF6B9D', '#00FFAA'] as const;
+const TREE_PHASE_COLORS = ['#6B5FFF', '#FF6B9D', '#00FFAA'] as const;
+
+// ─── Thought tree builder ─────────────────────────────────────────────────────
+const TREE_DEF = {
+  label: 'Raiz',
+  children: [
+    { label: 'Análise', children: [
+      { label: 'Dados',    children: [{ label: '●' }, { label: '◦' }] },
+      { label: 'Fatos',    children: [{ label: '●' }] },
+    ]},
+    { label: 'Contexto', children: [
+      { label: 'Fontes',   children: [{ label: '◦' }, { label: '●' }] },
+      { label: 'Padrões',  children: [{ label: '●' }] },
+    ]},
+    { label: 'Hipóteses', children: [
+      { label: 'Causas',   children: [{ label: '●' }, { label: '◦' }] },
+      { label: 'Opções',   children: [{ label: '●' }] },
+    ]},
+  ],
+};
+
+function countLeaves(def: any): number {
+  if (!def.children || def.children.length === 0) return 1;
+  return def.children.reduce((s: number, c: any) => s + countLeaves(c), 0);
+}
+
+function buildThoughtTree(W: number, H: number): { nodes: TNode[]; edges: [number, number][] } {
+  const nodes: TNode[] = [];
+  const edges: [number, number][] = [];
+  let id = 0;
+  let born = 0;
+
+  // usable vertical strip: between transcript area and metacog indicator
+  const yTop = H * 0.285;
+  const yBot = H - 180;
+  const levels = 4;
+  const levelH = (yBot - yTop) / (levels - 1);
+
+  function build(def: any, parentId: number | null, depth: number, xL: number, xR: number) {
+    const x = (xL + xR) / 2;
+    const y = yTop + depth * levelH;
+    const nodeId = id++;
+    born += 5;
+    nodes.push({ id: nodeId, x, y, parentId, label: def.label, depth, born, progress: 0 });
+    if (parentId !== null) edges.push([parentId, nodeId]);
+    if (def.children && def.children.length > 0) {
+      const total = def.children.reduce((s: number, c: any) => s + countLeaves(c), 0);
+      let cur = xL;
+      for (const child of def.children) {
+        const w = (xR - xL) * countLeaves(child) / total;
+        build(child, nodeId, depth + 1, cur, cur + w);
+        cur += w;
+      }
+    }
+  }
+
+  build(TREE_DEF, null, 0, W * 0.06, W * 0.94);
+  return { nodes, edges };
+}
+
+// ─── Thought Tree Canvas ──────────────────────────────────────────────────────
+function ThoughtTreeCanvas({ isThinking }: { isThinking: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isThinkingRef = useRef(isThinking);
+  useEffect(() => { isThinkingRef.current = isThinking; }, [isThinking]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.offsetWidth;
+    const H = canvas.offsetHeight;
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    const ctx = canvas.getContext('2d')!;
+    ctx.scale(dpr, dpr);
+
+    let treeData = buildThoughtTree(W, H);
+    let signals: TSignal[] = [];
+    let raf: number;
+    let treeTime = 0;
+    let globalFade = 0;
+    let wasThinking = false;
+
+    const nodeById = (i: number) => treeData.nodes.find(n => n.id === i)!;
+
+    const frame = () => {
+      const thk = isThinkingRef.current;
+
+      // Detect transition into thinking → rebuild tree from scratch
+      if (thk && !wasThinking) {
+        treeData = buildThoughtTree(W, H);
+        signals = [];
+        treeTime = 0;
+      }
+      wasThinking = thk;
+
+      if (thk) {
+        treeTime++;
+        globalFade = Math.min(1, globalFade + 0.05);
+      } else {
+        globalFade = Math.max(0, globalFade - 0.03);
+      }
+
+      ctx.clearRect(0, 0, W, H);
+
+      if (globalFade < 0.01) { raf = requestAnimationFrame(frame); return; }
+
+      ctx.save();
+      ctx.globalAlpha = globalFade;
+
+      const metaPhase = Math.floor(treeTime / 70) % 3;
+      const phaseCol  = TREE_PHASE_COLORS[metaPhase];
+      const { nodes, edges } = treeData;
+
+      // ── Advance node progress ──
+      for (const n of nodes) {
+        if (thk && treeTime >= n.born) n.progress = Math.min(1, n.progress + 0.05);
+        else if (!thk)                 n.progress = Math.max(0, n.progress - 0.04);
+      }
+
+      // ── Emit signals ──
+      if (thk && signals.length < 7 && edges.length > 0 && Math.random() < 0.14) {
+        const ei = Math.floor(Math.random() * edges.length);
+        const fn = nodeById(edges[ei][0]);
+        const tn = nodeById(edges[ei][1]);
+        if (fn.progress > 0.5 && tn.progress > 0.5) {
+          // Phase drives direction: 0=planning→outward, 2=evaluating→inward, 1=monitoring→both
+          const dir = metaPhase === 0 ? 1 : metaPhase === 2 ? -1 : (Math.random() < 0.5 ? 1 : -1);
+          const t   = dir === 1 ? 0 : 1;
+          signals.push({ edgeIdx: ei, t, dir, color: phaseCol, speed: 0.014 + Math.random() * 0.009 });
+        }
+      }
+
+      // ── Draw edges ──
+      for (let ei = 0; ei < edges.length; ei++) {
+        const fn = nodeById(edges[ei][0]);
+        const tn = nodeById(edges[ei][1]);
+        const ea = Math.min(fn.progress, tn.progress);
+        if (ea < 0.01) continue;
+        const cpx = (fn.x + tn.x) / 2 + (tn.y - fn.y) * 0.09;
+        const cpy = (fn.y + tn.y) / 2;
+        ctx.beginPath();
+        ctx.moveTo(fn.x, fn.y);
+        ctx.quadraticCurveTo(cpx, cpy, tn.x, tn.y);
+        ctx.strokeStyle = `rgba(0,170,220,${ea * 0.38})`;
+        ctx.lineWidth = 0.85;
+        ctx.stroke();
+      }
+
+      // ── Draw signals ──
+      for (let si = signals.length - 1; si >= 0; si--) {
+        const s = signals[si];
+        const [fromId, toId] = edges[s.edgeIdx];
+        const fn = nodeById(s.dir ===  1 ? fromId : toId);
+        const tn = nodeById(s.dir ===  1 ? toId   : fromId);
+        const t  = s.t;
+        const cpx = (fn.x + tn.x) / 2 + (tn.y - fn.y) * 0.09;
+        const cpy = (fn.y + tn.y) / 2;
+        const pt  = bezierPoint(t, fn.x, fn.y, cpx, cpy, tn.x, tn.y);
+
+        const gr = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, 6);
+        gr.addColorStop(0, s.color + 'CC');
+        gr.addColorStop(1, s.color + '00');
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
+        ctx.fillStyle = gr;
+        ctx.fill();
+
+        s.t += s.speed;
+        if (s.t >= 1 || s.t < 0) signals.splice(si, 1);
+      }
+
+      // ── Draw nodes ──
+      for (const n of nodes) {
+        if (n.progress < 0.01) continue;
+        const col   = TREE_DEPTH_COLORS[Math.min(n.depth, 3)];
+        const baseR = Math.max(2, 7 - n.depth * 1.6);
+        const pulse = thk ? Math.sin(treeTime * 0.07 + n.id * 0.9) * 1.2 : 0;
+        const r     = baseR * n.progress;
+
+        // Phase-color outer ring (non-leaf nodes only)
+        if (thk && n.depth <= 2 && n.progress > 0.8) {
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, r + pulse + 4, 0, Math.PI * 2);
+          ctx.strokeStyle = phaseCol + '3A';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+
+        // Glow halo
+        const grd = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, r * 4);
+        grd.addColorStop(0, col + Math.round(n.progress * 0.28 * 255).toString(16).padStart(2, '0'));
+        grd.addColorStop(1, col + '00');
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r * 4, 0, Math.PI * 2);
+        ctx.fillStyle = grd;
+        ctx.fill();
+
+        // Core dot
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = col + Math.round(n.progress * 0.88 * 255).toString(16).padStart(2, '0');
+        ctx.fill();
+
+        // Label (depth 0-2 only, once mostly visible)
+        if (n.depth <= 2 && n.progress > 0.65) {
+          const fs = Math.max(6, 9 - n.depth * 1.2);
+          ctx.font = `${fs.toFixed(1)}px monospace`;
+          ctx.fillStyle = `rgba(195,235,255,${n.progress * 0.75})`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText(n.label, n.x, n.y + r + 3);
+        }
+      }
+
+      ctx.restore();
+      raf = requestAnimationFrame(frame);
+    };
+
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="absolute inset-0 w-full h-full pointer-events-none"
+      style={{ display: 'block' }}
+    />
+  );
+}
+
 // ─── Bezier quadrática ────────────────────────────────────────────────────────
 function bezierPoint(t: number, x0: number, y0: number, cx: number, cy: number, x1: number, y1: number) {
   const mt = 1 - t;
@@ -544,6 +799,9 @@ export function NeuralLayout({
         isThinking={isThinking}
         volume={volume}
       />
+
+      {/* Rede de pensamento em ramificações — overlay sobre rede neural, visível durante thinking */}
+      <ThoughtTreeCanvas isThinking={isThinking} />
 
       {/* Overlay gradiente no rodapé (para legibilidade do input) */}
       <div
