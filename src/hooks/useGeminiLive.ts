@@ -305,24 +305,35 @@ export const useGeminiLive = ({
   const generateImage = useCallback(async (prompt: string, aspectRatio: "1:1" | "16:9" | "9:16" = "1:1") => {
     setIsThinking(true);
     try {
-      if (!openaiApiKey) throw new Error("Chave OpenAI não configurada. Adicione em APIs.");
-
       const sizeMap: Record<string, string> = { '1:1': '1024x1024', '16:9': '1792x1024', '9:16': '1024x1792' };
-      const size = sizeMap[aspectRatio] || '1024x1024';
+      const [w, h] = (sizeMap[aspectRatio] || '1024x1024').split('x');
+      let imageUrl: string | null = null;
+      let source = '';
 
-      const resp = await fetch('https://api.openai.com/v1/images/generations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
-        body: JSON.stringify({ model: 'dall-e-3', prompt, n: 1, size, response_format: 'url' }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error?.message || 'Erro ao gerar imagem');
+      // ── Primário: DALL-E 3 (OpenAI) ────────────────────────────────────────
+      if (openaiApiKey) {
+        try {
+          const resp = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+            body: JSON.stringify({ model: 'dall-e-3', prompt, n: 1, size: `${w}x${h}`, response_format: 'url' }),
+          });
+          const data = await resp.json();
+          if (resp.ok && data.data?.[0]?.url) {
+            imageUrl = data.data[0].url;
+            source = 'DALL-E 3';
+          }
+        } catch { /* cai para fallback */ }
+      }
 
-      const imageUrl = data.data?.[0]?.url;
-      if (!imageUrl) throw new Error("Nenhuma imagem retornada.");
+      // ── Fallback: Pollinations.AI (gratuito, sem chave) ─────────────────────
+      if (!imageUrl) {
+        imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&nologo=true&enhance=true&model=flux`;
+        source = 'Pollinations (grátis)';
+      }
 
-      addMessage({ role: 'model', text: `Imagem gerada para: "${prompt}"`, imageUrl });
-      onMessageRef.current?.({ role: 'model', text: `Imagem gerada para: "${prompt}"`, imageUrl });
+      addMessage({ role: 'model', text: `Imagem gerada para: "${prompt}" · via ${source}`, imageUrl });
+      onMessageRef.current?.({ role: 'model', text: `Imagem gerada para: "${prompt}" · via ${source}`, imageUrl });
     } catch (e: any) {
       const msg = `Não consegui gerar a imagem: ${e.message}`;
       addMessage({ role: 'model', text: msg });
