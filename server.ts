@@ -926,6 +926,137 @@ app.post('/api/pc/control', async (req, res) => {
       return res.json({ success: true, uptime: uptime.trim(), disk: disk.trim(), memory: mem.trim(), cpu: cpu.trim(), platform: plat, hostname: os.hostname() });
     }
 
+    // ── OPEN FILE ─────────────────────────────────────────────────────────
+    if (action === 'open_file') {
+      const filePath = req.body.path;
+      if (!filePath) return res.status(400).json({ error: 'Parâmetro path é obrigatório.' });
+      if (!fs.existsSync(filePath)) return res.status(404).json({ error: `Arquivo não encontrado: ${filePath}` });
+      if (plat === 'linux') runCmd(`xdg-open "${filePath}" &`);
+      else if (plat === 'darwin') runCmd(`open "${filePath}"`);
+      else runCmd(`start "" "${filePath}"`);
+      return res.json({ success: true, message: `Abrindo ${filePath}` });
+    }
+
+    // ── OPEN URL ──────────────────────────────────────────────────────────
+    if (action === 'open_url') {
+      const { url } = req.body;
+      if (!url) return res.status(400).json({ error: 'Parâmetro url é obrigatório.' });
+      if (plat === 'linux') runCmd(`xdg-open "${url}" &`);
+      else if (plat === 'darwin') runCmd(`open "${url}"`);
+      else runCmd(`start "" "${url}"`);
+      return res.json({ success: true, message: `Abrindo ${url}` });
+    }
+
+    // ── OPEN FOLDER ───────────────────────────────────────────────────────
+    if (action === 'open_folder') {
+      const folderPath = req.body.path || os.homedir();
+      if (plat === 'linux') {
+        // Tenta Nautilus, Nemo, Thunar, Dolphin em ordem
+        runCmd(
+          `nautilus "${folderPath}" 2>/dev/null & ` +
+          `nemo "${folderPath}" 2>/dev/null & ` +
+          `thunar "${folderPath}" 2>/dev/null & ` +
+          `dolphin "${folderPath}" 2>/dev/null & ` +
+          `xdg-open "${folderPath}" &`
+        );
+      } else if (plat === 'darwin') {
+        runCmd(`open "${folderPath}"`);
+      } else {
+        runCmd(`explorer "${folderPath}"`);
+      }
+      return res.json({ success: true, message: `Abrindo pasta: ${folderPath}` });
+    }
+
+    // ── LIST DIRECTORY ────────────────────────────────────────────────────
+    if (action === 'list_directory') {
+      const dir = req.body.path || os.homedir();
+      if (plat === 'win32') {
+        const { stdout } = await runCmd(`powershell -Command "Get-ChildItem '${dir}' | Format-Table Name,Length,LastWriteTime,Mode -Auto | Out-String -Width 120"`);
+        return res.json({ success: true, directory: dir, listing: stdout });
+      }
+      const { stdout } = await runCmd(`ls -lah --group-directories-first "${dir}" 2>/dev/null || ls -la "${dir}"`);
+      return res.json({ success: true, directory: dir, listing: stdout });
+    }
+
+    // ── FILE INFO ─────────────────────────────────────────────────────────
+    if (action === 'file_info') {
+      const filePath = req.body.path;
+      if (!filePath) return res.status(400).json({ error: 'Parâmetro path é obrigatório.' });
+      let info: any = { path: filePath, exists: fs.existsSync(filePath) };
+      if (info.exists) {
+        const stat = fs.statSync(filePath);
+        info = {
+          ...info,
+          size: stat.size,
+          sizeHuman: stat.size > 1e9 ? `${(stat.size/1e9).toFixed(2)} GB` : stat.size > 1e6 ? `${(stat.size/1e6).toFixed(2)} MB` : stat.size > 1e3 ? `${(stat.size/1e3).toFixed(1)} KB` : `${stat.size} bytes`,
+          isDirectory: stat.isDirectory(),
+          isFile: stat.isFile(),
+          modified: stat.mtime.toLocaleString('pt-BR'),
+          created: stat.birthtime.toLocaleString('pt-BR'),
+          extension: path.extname(filePath),
+        };
+        if (stat.isDirectory()) {
+          try {
+            const entries = fs.readdirSync(filePath);
+            info.itemCount = entries.length;
+          } catch {}
+        }
+      }
+      return res.json({ success: true, info });
+    }
+
+    // ── FIND FILES ────────────────────────────────────────────────────────
+    if (action === 'find_files') {
+      const { pattern = '*', search_in } = req.body;
+      const searchDir = search_in || os.homedir();
+      const { stdout } = await runCmd(
+        plat === 'win32'
+          ? `powershell -Command "Get-ChildItem -Path '${searchDir}' -Recurse -Filter '${pattern}' -ErrorAction SilentlyContinue | Select -First 50 -ExpandProperty FullName"`
+          : `find "${searchDir}" -name "${pattern}" -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -50`
+      );
+      const files = stdout.trim().split('\n').filter(Boolean);
+      return res.json({ success: true, pattern, searchIn: searchDir, count: files.length, files });
+    }
+
+    // ── READ FILE TEXT ────────────────────────────────────────────────────
+    if (action === 'read_file_text') {
+      const filePath = req.body.path;
+      if (!filePath) return res.status(400).json({ error: 'Parâmetro path é obrigatório.' });
+      if (!fs.existsSync(filePath)) return res.status(404).json({ error: `Arquivo não encontrado: ${filePath}` });
+      const stat = fs.statSync(filePath);
+      if (stat.size > 500_000) return res.status(400).json({ error: 'Arquivo muito grande (>500KB). Use run_command com head/tail para ver partes.' });
+      const content = fs.readFileSync(filePath, 'utf-8');
+      return res.json({ success: true, path: filePath, size: stat.size, content: content.substring(0, 8000) + (content.length > 8000 ? '\n... [truncado]' : '') });
+    }
+
+    // ── FOCUS WINDOW ──────────────────────────────────────────────────────
+    if (action === 'focus_window') {
+      const { window_name } = req.body;
+      if (!window_name) return res.status(400).json({ error: 'Parâmetro window_name é obrigatório.' });
+      if (plat === 'linux') {
+        await runCmd(`wmctrl -a "${window_name}" 2>/dev/null || xdotool search --name "${window_name}" windowactivate 2>/dev/null`);
+      } else if (plat === 'darwin') {
+        await runCmd(`osascript -e 'tell application "${window_name}" to activate'`);
+      } else {
+        await runCmd(`powershell -Command "(New-Object -ComObject Shell.Application).Windows() | Where-Object {$_.Name -like '*${window_name}*'} | ForEach-Object {$_.Visible = $true}"`);
+      }
+      return res.json({ success: true, message: `Janela "${window_name}" em foco` });
+    }
+
+    // ── CLOSE WINDOW ──────────────────────────────────────────────────────
+    if (action === 'close_window') {
+      const { window_name } = req.body;
+      if (!window_name) return res.status(400).json({ error: 'Parâmetro window_name é obrigatório.' });
+      if (plat === 'linux') {
+        await runCmd(`wmctrl -c "${window_name}" 2>/dev/null || pkill -f "${window_name}" 2>/dev/null`);
+      } else if (plat === 'darwin') {
+        await runCmd(`osascript -e 'tell application "${window_name}" to quit'`);
+      } else {
+        await runCmd(`powershell -Command "Get-Process '${window_name}' -ErrorAction SilentlyContinue | Stop-Process -Force"`);
+      }
+      return res.json({ success: true, message: `Fechando "${window_name}"` });
+    }
+
     return res.status(400).json({ error: `Ação desconhecida: ${action}` });
 
   } catch (err: any) {
