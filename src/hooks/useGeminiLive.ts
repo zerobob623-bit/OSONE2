@@ -158,8 +158,6 @@ export const useGeminiLive = ({
 
   // ============================================================
   // 🔕 SILÊNCIO → FALA ESPONTÂNEA
-  // Reinicia o timer toda vez que há atividade
-  // Após 30s sem atividade, a IA inicia conversa sozinha
   // ============================================================
 
   const stopSilenceTimer = useCallback(() => {
@@ -173,7 +171,6 @@ export const useGeminiLive = ({
     stopSilenceTimer();
     silenceTimerRef.current = setTimeout(() => {
       if (!isConnectedRef.current || !sessionRef.current) return;
-      // Não interrompe se a IA já está falando ou processando
       if (activeSourcesRef.current.length > 0 || useAppStore.getState().isThinking) {
         resetSilenceTimer();
         return;
@@ -189,11 +186,9 @@ export const useGeminiLive = ({
   }, [stopSilenceTimer]);
 
   // ============================================================
-  // 🌐 BUSCA WEB — Wikipedia OpenSearch PT+EN + DDG Instant Answer
-  // Sem API key. CORS nativo em todas as fontes.
+  // 🌐 BUSCA WEB
   // ============================================================
 
-  // Helper: fetch com timeout (AbortController)
   const fetchT = useCallback(async (url: string, ms = 12_000): Promise<Response> => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), ms);
@@ -204,10 +199,8 @@ export const useGeminiLive = ({
     } catch (e) { clearTimeout(t); throw e; }
   }, []);
 
-  // Wikipedia: busca + summaries das páginas top
   const wikiSearch = useCallback(async (query: string, lang: 'pt' | 'en', n: number): Promise<string> => {
     const enc = encodeURIComponent(query);
-    // OpenSearch retorna [query, [títulos], [descrições], [urls]]
     const res = await fetchT(
       `https://${lang}.wikipedia.org/w/api.php?action=opensearch&search=${enc}&limit=${n}&format=json&origin=*`
     );
@@ -215,7 +208,6 @@ export const useGeminiLive = ({
     const [, titles, descs] = await res.json() as [string, string[], string[], string[]];
     if (!titles.length) return '';
 
-    // Busca summaries das 2 primeiras páginas para mais profundidade
     const summaryLines = await Promise.all(
       titles.slice(0, 2).map(async (title: string) => {
         try {
@@ -234,7 +226,6 @@ export const useGeminiLive = ({
       if (s) lines.push(s);
       else if (descs[i]) lines.push(`**${titles[i]}**: ${descs[i]}`);
     });
-    // Títulos restantes sem summary
     titles.slice(2).forEach((t, i) => {
       if (descs[i + 2]) lines.push(`${t}: ${descs[i + 2]}`);
     });
@@ -246,7 +237,6 @@ export const useGeminiLive = ({
     const enc = encodeURIComponent(query);
     const parts: string[] = [];
 
-    // ── 1. DuckDuckGo Instant Answer (resposta direta para fatos/cálculos) ──
     try {
       const res = await fetchT(
         `https://api.duckduckgo.com/?q=${enc}&format=json&no_html=1&skip_disambig=1`
@@ -259,13 +249,11 @@ export const useGeminiLive = ({
       }
     } catch (e: any) { console.warn('[search] DDG:', e.message); }
 
-    // ── 2. Wikipedia PT (primário para conteúdo em português) ────────────────
     try {
       const ptResult = await wikiSearch(query, 'pt', numResults);
       if (ptResult) parts.push(ptResult);
     } catch (e: any) { console.warn('[search] Wiki-PT:', e.message); }
 
-    // ── 3. Wikipedia EN (fallback se PT não encontrou nada) ──────────────────
     if (parts.length === 0) {
       try {
         const enResult = await wikiSearch(query, 'en', numResults);
@@ -279,7 +267,6 @@ export const useGeminiLive = ({
 
   const readUrlContent = useCallback(async (rawUrl: string): Promise<string> => {
     const url = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
-    // allorigins.win — proxy CORS público gratuito, sem API key
     try {
       const res = await fetchT(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -310,7 +297,6 @@ export const useGeminiLive = ({
       let imageUrl: string | null = null;
       let source = '';
 
-      // ── Primário: DALL-E 3 (OpenAI) ────────────────────────────────────────
       if (openaiApiKey) {
         try {
           const resp = await fetch('https://api.openai.com/v1/images/generations', {
@@ -326,7 +312,6 @@ export const useGeminiLive = ({
         } catch { /* cai para fallback */ }
       }
 
-      // ── Fallback: Pollinations.AI (gratuito, sem chave) ─────────────────────
       if (!imageUrl) {
         imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&nologo=true&enhance=true&model=flux`;
         source = 'Pollinations (grátis)';
@@ -367,7 +352,6 @@ export const useGeminiLive = ({
       let replyText = '';
       const activeKey = chatProvider === 'groq' ? groqApiKey : openaiApiKey;
       if (activeKey) {
-        // Chama API diretamente do browser (sem servidor)
         const baseUrl = chatProvider === 'groq'
           ? 'https://api.groq.com/openai/v1/chat/completions'
           : 'https://api.openai.com/v1/chat/completions';
@@ -393,7 +377,6 @@ export const useGeminiLive = ({
         const data: any = await res.json();
         replyText = data.choices?.[0]?.message?.content || '';
       } else {
-        // Fallback: usa rota do servidor
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -426,7 +409,8 @@ export const useGeminiLive = ({
   // ============================================================
 
   const connect = useCallback(async (sysInstruction: string) => {
-    if (isConnectedRef.current || isConnectingRef.current) {
+    // ✅ CORREÇÃO: inclui sessionRef.current no guard para evitar dupla conexão
+    if (isConnectedRef.current || isConnectingRef.current || sessionRef.current) {
       console.warn("Já conectado/conectando — ignorando connect() duplicado.");
       return;
     }
@@ -454,7 +438,7 @@ export const useGeminiLive = ({
           },
           tools: [
             { functionDeclarations: [...TOOL_DECLARATIONS, ...buildCustomToolDeclarations(useAppStore.getState().customSkills)] },
-            { googleSearch: {} } as any,  // Google Search grounding nativo
+            { googleSearch: {} } as any,
           ]
         },
         callbacks: {
@@ -464,14 +448,14 @@ export const useGeminiLive = ({
             setIsConnected(true);
             isConnectedRef.current = true;
             setIsListening(true);
-            resetSilenceTimer(); // ✅ inicia timer ao conectar
+            resetSilenceTimer();
           },
 
           onmessage: async (message: any) => {
             const modelParts = message.serverContent?.modelTurn?.parts;
             if (modelParts) {
               setIsThinking(false);
-              resetSilenceTimer(); // ✅ IA falou → reinicia timer
+              resetSilenceTimer();
               const textContent = modelParts.filter((p: any) => p.text).map((p: any) => p.text).join('');
               if (textContent) {
                 addMessage({ role: 'model', text: textContent });
@@ -492,7 +476,7 @@ export const useGeminiLive = ({
             if (userParts) {
               const userText = userParts.filter((p: any) => p.text).map((p: any) => p.text).join('');
               if (userText) {
-                resetSilenceTimer(); // ✅ usuário falou → reinicia timer
+                resetSilenceTimer();
                 addMessage({ role: 'user', text: userText });
                 onMessageRef.current?.({ role: 'user', text: userText });
               }
@@ -504,14 +488,12 @@ export const useGeminiLive = ({
               const syncResponses: any[] = [];
               let asyncPending = 0;
 
-              // Fora do loop: uma única instância reutilizada por todas as ferramentas
               const safeSend = (response: any) => {
                 if (!isConnectedRef.current) return;
                 try { session.sendToolResponse({ functionResponses: [response] }); }
                 catch (e) { console.warn('[tool] sendToolResponse ignorado (conexão encerrada):', e); }
               };
 
-              // Só desativa isThinking quando todas as ferramentas assíncronas concluírem
               const finishAsync = () => {
                 asyncPending--;
                 if (asyncPending === 0) setIsThinking(false);
@@ -534,7 +516,7 @@ export const useGeminiLive = ({
 
                 if (name === "search_web") {
                   asyncPending++;
-                  onToolCallRef.current?.('search_web_start', { query: args.query }); // UI indicator
+                  onToolCallRef.current?.('search_web_start', { query: args.query });
                   performWebSearch(args.query, args.num_results ?? 5)
                     .then(content => {
                       onToolCallRef.current?.(name, { ...args, result: content });
@@ -567,7 +549,6 @@ export const useGeminiLive = ({
                     .then(r => r.json())
                     .then(async (data) => {
                       if (data.image) {
-                        // Screenshot: envia imagem para visão da IA + notifica UI
                         onToolCallRef.current?.(name, {
                           action: args.action,
                           imageUrl: `data:${data.mimeType};base64,${data.image}`,
@@ -626,7 +607,6 @@ export const useGeminiLive = ({
                 if (name === "send_whatsapp") {
                   asyncPending++;
                   const { myWhatsappNumber, whatsappContacts } = useAppStore.getState();
-                  // Resolve número: contact_name → lista, phone direto, fallback meu número
                   let resolvedPhone = (args.phone || myWhatsappNumber || '').replace(/\D/g, '');
                   if (args.contact_name) {
                     const found = whatsappContacts.find(c =>
@@ -705,7 +685,6 @@ export const useGeminiLive = ({
                   continue;
                 }
 
-                // ── AUTO-EVOLUÇÃO — Ler/Editar código + Git Push ─────────────
                 if (name === 'self_read_code' || name === 'self_write_code' || name === 'self_list_files' || name === 'self_git_push') {
                   asyncPending++;
                   const endpoint = name === 'self_read_code' ? '/api/code/read'
@@ -727,7 +706,6 @@ export const useGeminiLive = ({
                   continue;
                 }
 
-                // ── Custom Skills (Agente Infinito) ────────────────────────
                 if (name.startsWith('skill_')) {
                   asyncPending++;
                   const skillId = name.replace('skill_', '');
@@ -814,7 +792,6 @@ export const useGeminiLive = ({
               if (syncResponses.length > 0) {
                 session.sendToolResponse({ functionResponses: syncResponses });
               }
-              // Só desativa thinking se não há ferramentas assíncronas pendentes
               if (asyncPending === 0) setIsThinking(false);
             }
 
@@ -831,7 +808,7 @@ export const useGeminiLive = ({
             isConnectingRef.current = false;
             setIsConnected(false);
             isConnectedRef.current = false;
-            sessionRef.current = null;
+            sessionRef.current = null; // ✅ limpa ref para liberar guard
             stopSilenceTimer();
           },
 
@@ -841,7 +818,7 @@ export const useGeminiLive = ({
             setError(`Erro na API Live: ${err.message || 'Erro desconhecido'}`);
             setIsConnected(false);
             isConnectedRef.current = false;
-            sessionRef.current = null;
+            sessionRef.current = null; // ✅ limpa ref para liberar guard
             stopSilenceTimer();
           }
         }
@@ -877,7 +854,6 @@ export const useGeminiLive = ({
           let sum = 0;
           for (let i = 0; i < combined.length; i++) sum += Math.abs(combined[i] / 0x7FFF);
           setVolume(sum / combined.length);
-          // ✅ Detecta fala pelo volume para reiniciar timer
           if (sum / combined.length > 0.01) resetSilenceTimer();
           if (!isMutedRef.current && sessionRef.current && isConnectedRef.current) {
             sessionRef.current.then((session: any) => {
@@ -897,6 +873,7 @@ export const useGeminiLive = ({
       setError(err.message);
       setIsConnected(false);
       isConnectedRef.current = false;
+      sessionRef.current = null; // ✅ limpa ref em caso de falha
     }
   }, [
     voice, storedApiKey, stopAudio, playNextChunk, toBase64,
@@ -907,9 +884,7 @@ export const useGeminiLive = ({
   ]);
 
   // ============================================================
-  // 📺 COMPARTILHAMENTO DE TELA — com análise automática
-  // Detecta troca de tela comparando hash de pixels
-  // Avisa a IA quando o usuário muda de app
+  // 📺 COMPARTILHAMENTO DE TELA
   // ============================================================
 
   const startScreenSharing = useCallback(async () => {
@@ -929,7 +904,6 @@ export const useGeminiLive = ({
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d')!;
 
-      // Avisa a IA que o compartilhamento começou
       if (sessionRef.current && isConnectedRef.current) {
         sessionRef.current.then((session: any) => {
           if (!isConnectedRef.current) return;
@@ -940,7 +914,6 @@ export const useGeminiLive = ({
         }).catch(() => {});
       }
 
-      // Envia frames periodicamente como contexto visual silencioso — sem detecção de mudança
       const sendFrame = () => {
         if (!screenStreamRef.current?.active || !sessionRef.current || !screenAnalysisActiveRef.current) return;
         if (isConnectedRef.current && video.videoWidth > 0) {
@@ -959,10 +932,9 @@ export const useGeminiLive = ({
 
       sendFrame();
 
-      // Para ao encerrar stream
       stream.getVideoTracks()[0].addEventListener('ended', () => {
         screenAnalysisActiveRef.current = false;
-          if (sessionRef.current && isConnectedRef.current) {
+        if (sessionRef.current && isConnectedRef.current) {
           sessionRef.current.then((session: any) => {
             if (!isConnectedRef.current) return;
             try { session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela encerrado.]' }); }
@@ -999,15 +971,20 @@ export const useGeminiLive = ({
     await s.sendRealtimeInput({ text: prompt });
   }, [setIsThinking]);
 
+  // ✅ CORREÇÃO: disconnect limpa sessionRef ANTES de fechar e usa try/catch
   const disconnect = useCallback((isReconnecting = false) => {
     screenAnalysisActiveRef.current = false;
     stopSilenceTimer();
-    // Marca como desconectado imediatamente para silenciar envios residuais
     isConnectedRef.current = false;
     isConnectingRef.current = false;
+
     const sessionToClose = sessionRef.current;
-    sessionRef.current = null;
-    sessionToClose?.then((s: any) => s.close()).catch(console.error);
+    sessionRef.current = null; // ← limpa ANTES para barrar novos envios residuais
+
+    sessionToClose?.then((s: any) => {
+      try { s.close(); } catch {} // ← try/catch evita throw se já fechado
+    }).catch(() => {});
+
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
     stopAudio(isReconnecting);
   }, [stopAudio, stopSilenceTimer]);
@@ -1018,5 +995,3 @@ export const useGeminiLive = ({
     sendMessage, sendLiveMessage, sendFile, generateImage
   };
 };
-
-
