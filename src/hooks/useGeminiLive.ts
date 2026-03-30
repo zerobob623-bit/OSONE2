@@ -62,7 +62,7 @@ export const useGeminiLive = ({
 
   const sessionRef = useRef<any>(null);
   const isConnectedRef = useRef(false);
-  const isConnectingRef = useRef(false);
+  const isConnectingRef = useRef(false);  // ← previne double-connect durante handshake
   const audioContextRef = useRef<AudioContext | null>(null);
   const inputAudioContextRef = useRef<AudioContext | null>(null);
   const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
@@ -103,7 +103,7 @@ export const useGeminiLive = ({
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     if (audioWorkletNodeRef.current) {
-      audioWorkletNodeRef.current.port.onmessage = null;
+      audioWorkletNodeRef.current.port.onmessage = null; // ← para envios residuais
       audioWorkletNodeRef.current.disconnect();
       audioWorkletNodeRef.current = null;
     }
@@ -409,6 +409,7 @@ export const useGeminiLive = ({
   // ============================================================
 
   const connect = useCallback(async (sysInstruction: string) => {
+    // ✅ CORREÇÃO: inclui sessionRef.current no guard para evitar dupla conexão
     if (isConnectedRef.current || isConnectingRef.current || sessionRef.current) {
       console.warn("Já conectado/conectando — ignorando connect() duplicado.");
       return;
@@ -428,7 +429,7 @@ export const useGeminiLive = ({
       await audioContextRef.current.audioWorklet.addModule('/audio-processor.js');
 
       const sessionPromise = ai.live.connect({
-        model: "gemini-2.5-flash-live",
+        model: "gemini-3.1-flash-live-preview",
         config: {
           responseModalities: [Modality.AUDIO],
           ...(sysInstruction ? { systemInstruction: sysInstruction } : {}),
@@ -684,246 +685,313 @@ export const useGeminiLive = ({
                   continue;
                 }
 
-                // ── self_* tools ────────────────────────────────────────────
                 if (name === 'self_read_code' || name === 'self_write_code' || name === 'self_list_files' || name === 'self_git_push') {
                   asyncPending++;
-                  const endpoint = name === 'self_read_code'  ? '/api/code/read'
+                  const endpoint = name === 'self_read_code' ? '/api/code/read'
                     : name === 'self_write_code' ? '/api/code/write'
                     : name === 'self_list_files' ? '/api/code/list'
                     : '/api/code/git-push';
                   fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(args),
+                    body: JSON.stringify(args)
                   })
                     .then(r => r.json())
                     .then(data => {
                       onToolCallRef.current?.(name, args);
-                      safeSend({
-                        name, id,
-                        response: data.error
-                          ? { success: false, error: data.error }
-                          : { success: true, result: typeof data === 'string' ? data : JSON.stringify(data) },
-                      });
+                      safeSend({ name, id, response: data.error ? { success: false, error: data.error } : { success: true, result: typeof data === 'string' ? data : JSON.stringify(data) } });
                     })
                     .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
                     .finally(finishAsync);
                   continue;
                 }
 
-                // ── generate_image tool ─────────────────────────────────────
-                if (name === 'generate_image') {
+                if (name.startsWith('skill_')) {
                   asyncPending++;
-                  generateImage(args.prompt, args.aspect_ratio)
-                    .then(() => {
+                  const skillId = name.replace('skill_', '');
+                  const skill = useAppStore.getState().customSkills.find((s: any) => s.id === skillId && s.active);
+                  if (!skill) {
+                    safeSend({ name, id, response: { success: false, error: 'Habilidade não encontrada ou desativada.' } });
+                    finishAsync();
+                  } else {
+                    fetch('/api/skill/invoke', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ webhookUrl: skill.webhookUrl, method: skill.method, params: args })
+                    })
+                      .then(r => r.json())
+                      .then(data => {
+                        onToolCallRef.current?.(name, { skillName: skill.displayName, ...args });
+                        safeSend({ name, id, response: { success: true, result: typeof data === 'string' ? data : JSON.stringify(data) } });
+                      })
+                      .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
+                      .finally(finishAsync);
+                  }
+                  continue;
+                }
+
+                if (name === "alexa_control") {
+                  asyncPending++;
+                  fetch('/api/alexa/control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: args.command, device: args.device })
+                  })
+                    .then(r => r.json())
+                    .then(data => {
                       onToolCallRef.current?.(name, args);
-                      safeSend({ name, id, response: { success: true, message: 'Imagem gerada com sucesso.' } });
+                      safeSend({ name, id, response: data.success ? { success: true, result: data.message } : { success: false, error: data.error } });
                     })
                     .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
                     .finally(finishAsync);
                   continue;
                 }
 
-                // ── Ferramenta desconhecida ─────────────────────────────────
-                console.warn(`[tool] Ferramenta desconhecida: ${name}`, args);
-                syncResponses.push({ name, id, response: { success: false, error: `Ferramenta "${name}" não reconhecida.` } });
+                if (name === "generate_image") {
+                  asyncPending++;
+                  generateImage(args.prompt, args.aspect_ratio ?? "1:1")
+                    .then(() => safeSend({ name, id, response: { success: true } }))
+                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
+                    .finally(finishAsync);
+                  onToolCallRef.current?.(name, args);
+                  continue;
+                }
+
+                switch (name) {
+                  case "toggle_screen_sharing":
+                    onToggleScreenSharingRef.current?.(args.enabled);
+                    syncResponses.push({ name, id, response: { success: true } });
+                    break;
+                  case "open_url":
+                    onOpenUrlRef.current?.(args.url);
+                    syncResponses.push({ name, id, response: { success: true } });
+                    break;
+                  case "change_voice":
+                    onChangeVoiceRef.current?.(args.voice_name);
+                    syncResponses.push({ name, id, response: { success: true } });
+                    break;
+                  case "interact_with_screen":
+                    onInteractRef.current?.(args.action, args.x, args.y, args.text);
+                    syncResponses.push({ name, id, response: { success: true } });
+                    break;
+                  case "mascot_control":
+                    setMascotAction(args.action === 'click' ? 'clicking' : 'pointing');
+                    setMascotTarget(args.target);
+                    syncResponses.push({ name, id, response: { success: true } });
+                    break;
+                  case "complete_onboarding":
+                    setOnboardingStep('completed');
+                    syncResponses.push({ name, id, response: { success: true } });
+                    break;
+                  default:
+                    console.warn(`Tool não implementada: ${name}`);
+                    syncResponses.push({ name, id, response: { success: false, error: "Ferramenta não implementada." } });
+                }
               }
 
-              // Envia respostas síncronas em lote
               if (syncResponses.length > 0) {
-                try { session.sendToolResponse({ functionResponses: syncResponses }); }
-                catch (e) { console.warn('[tool] sendToolResponse (sync) ignorado:', e); }
+                session.sendToolResponse({ functionResponses: syncResponses });
               }
-
-              // Se não há pendências assíncronas, encerra isThinking
               if (asyncPending === 0) setIsThinking(false);
             }
-          }, // fim onmessage
 
-          onerror: (e: any) => {
-            console.error("Gemini Live erro:", e);
-            setError(`Erro de conexão: ${e?.message || String(e)}`);
-            isConnectingRef.current = false;
+            if (message.serverContent?.interrupted) {
+              audioQueue.current = [];
+              activeSourcesRef.current.forEach(s => { try { s.stop(); } catch {} });
+              activeSourcesRef.current = [];
+              nextStartTimeRef.current = 0;
+              setIsSpeaking(false);
+            }
           },
 
-          onclose: (e: any) => {
-            console.log("Gemini Live encerrado:", e?.code, e?.reason);
-            isConnectedRef.current = false;
+          onclose: () => {
             isConnectingRef.current = false;
-            sessionRef.current = null;
             setIsConnected(false);
-            setIsListening(false);
-            setIsSpeaking(false);
-            setIsThinking(false);
+            isConnectedRef.current = false;
+            sessionRef.current = null; // ✅ limpa ref para liberar guard
             stopSilenceTimer();
-            stopAudio();
           },
-        },
+
+          onerror: (err: any) => {
+            console.error("Gemini Live error:", err);
+            isConnectingRef.current = false;
+            setError(`Erro na API Live: ${err.message || 'Erro desconhecido'}`);
+            setIsConnected(false);
+            isConnectedRef.current = false;
+            sessionRef.current = null; // ✅ limpa ref para liberar guard
+            stopSilenceTimer();
+          }
+        }
       });
 
       sessionRef.current = sessionPromise;
+      await sessionPromise;
 
-      // Inicializa microfone
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+      });
       streamRef.current = stream;
 
-      inputAudioContextRef.current = new AudioContext({ sampleRate: 16000 });
-      await inputAudioContextRef.current.audioWorklet.addModule('/audio-processor.js');
+      const inputCtx = new AudioContext({ sampleRate: 16000 });
+      inputAudioContextRef.current = inputCtx;
+      await inputCtx.audioWorklet.addModule('/audio-processor.js');
+      const micSource = inputCtx.createMediaStreamSource(stream);
+      const inputWorklet = new AudioWorkletNode(inputCtx, 'audio-processor');
+      audioWorkletNodeRef.current = inputWorklet;
+      micSource.connect(inputWorklet);
 
-      const source = inputAudioContextRef.current.createMediaStreamSource(stream);
-      const worklet = new AudioWorkletNode(inputAudioContextRef.current, 'audio-processor');
-      audioWorkletNodeRef.current = worklet;
+      let micBuffer: Int16Array[] = [];
+      let micBufferSize = 0;
+      const TARGET_BUFFER = 2048;
 
-      worklet.port.onmessage = async (event) => {
-        if (isMutedRef.current || !isConnectedRef.current) return;
-        const pcm16 = event.data as Int16Array;
-        const base64 = toBase64(pcm16.buffer);
-        try {
-          const session = await sessionPromise;
-          session.sendRealtimeInput({ audio: { data: base64, mimeType: 'audio/pcm;rate=16000' } });
-        } catch { /* conexão encerrada */ }
+      inputWorklet.port.onmessage = (event: MessageEvent<Int16Array>) => {
+        micBuffer.push(event.data);
+        micBufferSize += event.data.length;
+        if (micBufferSize >= TARGET_BUFFER) {
+          const combined = new Int16Array(micBufferSize);
+          let offset = 0;
+          for (const chunk of micBuffer) { combined.set(chunk, offset); offset += chunk.length; }
+          let sum = 0;
+          for (let i = 0; i < combined.length; i++) sum += Math.abs(combined[i] / 0x7FFF);
+          setVolume(sum / combined.length);
+          if (sum / combined.length > 0.01) resetSilenceTimer();
+          if (!isMutedRef.current && sessionRef.current && isConnectedRef.current) {
+            sessionRef.current.then((session: any) => {
+              if (!isConnectedRef.current) return;
+              try { session.sendRealtimeInput({ audio: { data: toBase64(combined.buffer), mimeType: 'audio/pcm;rate=16000' } }); }
+              catch (e) { /* WebSocket fechado — ignora */ }
+            }).catch(() => {});
+          }
+          micBuffer = [];
+          micBufferSize = 0;
+        }
       };
 
-      source.connect(worklet);
-      worklet.connect(inputAudioContextRef.current.destination);
-
     } catch (err: any) {
-      console.error("Falha ao conectar:", err);
-      setError(err.message || 'Falha ao conectar');
+      console.error("Falha na conexão:", err);
       isConnectingRef.current = false;
-      sessionRef.current = null;
-      stopAudio();
+      setError(err.message);
+      setIsConnected(false);
+      isConnectedRef.current = false;
+      sessionRef.current = null; // ✅ limpa ref em caso de falha
     }
   }, [
-    voice, storedApiKey, setError, setIsConnected, setIsListening, setIsSpeaking, setIsThinking,
-    addMessage, playNextChunk, toBase64, stopAudio, stopSilenceTimer, resetSilenceTimer,
-    performWebSearch, readUrlContent, generateImage,
+    voice, storedApiKey, stopAudio, playNextChunk, toBase64,
+    setError, setIsConnected, setIsListening, setVolume,
+    addMessage, setMascotAction, setMascotTarget, setOnboardingStep,
+    wikiSearch, performWebSearch, readUrlContent, generateImage,
+    resetSilenceTimer, stopSilenceTimer
   ]);
 
   // ============================================================
-  // 🔌 DESCONEXÃO
+  // 📺 COMPARTILHAMENTO DE TELA
   // ============================================================
 
-  const disconnect = useCallback(async () => {
-    stopSilenceTimer();
-    isConnectedRef.current = false;
-    isConnectingRef.current = false;
-    stopAudio();
-    if (sessionRef.current) {
-      try {
-        const session = await sessionRef.current;
-        session.close();
-      } catch { /* ignora */ }
-      sessionRef.current = null;
+  const startScreenSharing = useCallback(async () => {
+    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+      setError("Compartilhamento de tela não suportado em dispositivos móveis.");
+      return;
     }
-    setIsConnected(false);
-    setIsListening(false);
-    setIsSpeaking(false);
-    setIsThinking(false);
-  }, [stopAudio, stopSilenceTimer, setIsConnected, setIsListening, setIsSpeaking, setIsThinking]);
-
-  // ============================================================
-  // 📸 SCREEN SHARE → ANÁLISE CONTÍNUA
-  // ============================================================
-
-  const startScreenShare = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true });
       screenStreamRef.current = stream;
       screenAnalysisActiveRef.current = true;
-      onToggleScreenSharingRef.current?.(true);
 
       const video = document.createElement('video');
       video.srcObject = stream;
-      video.play();
+      await video.play();
 
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d')!;
 
-      const sendFrame = async () => {
-        if (!screenAnalysisActiveRef.current || !isConnectedRef.current) return;
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
-        ctx.drawImage(video, 0, 0);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-        const base64 = dataUrl.split(',')[1];
-        try {
-          const session = await sessionRef.current;
-          session.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } });
-        } catch { /* conexão encerrada */ }
-        if (screenAnalysisActiveRef.current) {
-          setTimeout(sendFrame, SCREEN_ANALYSIS_INTERVAL_MS);
+      if (sessionRef.current && isConnectedRef.current) {
+        sessionRef.current.then((session: any) => {
+          if (!isConnectedRef.current) return;
+          try {
+            session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela iniciado. Você receberá frames periódicos como contexto visual. Use-os para enriquecer suas respostas. Só descreva a tela quando o usuário perguntar diretamente.]' });
+          }
+          catch (e) { /* WebSocket fechado — ignora */ }
+        }).catch(() => {});
+      }
+
+      const sendFrame = () => {
+        if (!screenStreamRef.current?.active || !sessionRef.current || !screenAnalysisActiveRef.current) return;
+        if (isConnectedRef.current && video.videoWidth > 0) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0);
+          const base64 = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
+          sessionRef.current.then((session: any) => {
+            if (!isConnectedRef.current) return;
+            try { session.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } }); }
+            catch (e) { /* WebSocket fechado — ignora */ }
+          }).catch(() => {});
         }
+        setTimeout(sendFrame, SCREEN_ANALYSIS_INTERVAL_MS);
       };
 
-      video.onloadedmetadata = () => sendFrame();
+      sendFrame();
 
-      stream.getVideoTracks()[0].onended = () => {
+      stream.getVideoTracks()[0].addEventListener('ended', () => {
         screenAnalysisActiveRef.current = false;
-        screenStreamRef.current = null;
-        onToggleScreenSharingRef.current?.(false);
+        if (sessionRef.current && isConnectedRef.current) {
+          sessionRef.current.then((session: any) => {
+            if (!isConnectedRef.current) return;
+            try { session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela encerrado.]' }); }
+            catch (e) { /* WebSocket fechado — ignora */ }
+          }).catch(() => {});
+        }
+      });
+
+    } catch (e: any) {
+      const msgs: Record<string, string> = {
+        NotAllowedError: "Permissão negada. Verifique as configurações do navegador.",
+        NotFoundError: "Nenhuma fonte de tela encontrada."
       };
-    } catch (err: any) {
-      console.warn('[screen] Compartilhamento cancelado ou negado:', err.message);
+      setError(msgs[e.name] ?? "Falha ao iniciar compartilhamento de tela.");
     }
-  }, []);
+  }, [setError]);
 
-  const stopScreenShare = useCallback(() => {
+  const sendLiveMessage = useCallback((text: string) => {
+    if (sessionRef.current && isConnectedRef.current) {
+      resetSilenceTimer();
+      setIsThinking(true);
+      sessionRef.current.then((s: any) => s.sendRealtimeInput({ text })).catch(console.error);
+    }
+  }, [setIsThinking, resetSilenceTimer]);
+
+  const sendFile = useCallback(async (base64Data: string, mimeType: string, prompt: string): Promise<void> => {
+    if (!sessionRef.current || !isConnectedRef.current) {
+      throw new Error('Sessão não está ativa');
+    }
+    setIsThinking(true);
+    const s = await sessionRef.current;
+    await s.sendRealtimeInput({ video: { mimeType, data: base64Data } });
+    await new Promise(r => setTimeout(r, 300));
+    await s.sendRealtimeInput({ text: prompt });
+  }, [setIsThinking]);
+
+  // ✅ CORREÇÃO: disconnect limpa sessionRef ANTES de fechar e usa try/catch
+  const disconnect = useCallback((isReconnecting = false) => {
     screenAnalysisActiveRef.current = false;
+    stopSilenceTimer();
+    isConnectedRef.current = false;
+    isConnectingRef.current = false;
+
+    const sessionToClose = sessionRef.current;
+    sessionRef.current = null; // ← limpa ANTES para barrar novos envios residuais
+
+    sessionToClose?.then((s: any) => {
+      try { s.close(); } catch {} // ← try/catch evita throw se já fechado
+    }).catch(() => {});
+
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
-    screenStreamRef.current = null;
-    onToggleScreenSharingRef.current?.(false);
-  }, []);
-
-  // ============================================================
-  // 🧹 CLEANUP
-  // ============================================================
-
-  useEffect(() => {
-    return () => {
-      stopSilenceTimer();
-      stopScreenShare();
-    };
-  }, [stopSilenceTimer, stopScreenShare]);
-
-  // ============================================================
-  // 📤 SEND REALTIME TEXT (para envio direto ao Live)
-  // ============================================================
-
-  const sendRealtimeText = useCallback(async (text: string) => {
-    if (!sessionRef.current || !isConnectedRef.current) return;
-    resetSilenceTimer();
-    try {
-      const session = await sessionRef.current;
-      session.sendRealtimeInput({ text });
-    } catch (e) { console.warn('[sendRealtimeText] ignorado:', e); }
-  }, [resetSilenceTimer]);
-
-  // ============================================================
-  // 🔊 VOLUME
-  // ============================================================
-
-  const setVolumeLevel = useCallback((v: number) => {
-    setVolume(v);
-    if (audioContextRef.current) {
-      // Volume controlado via GainNode se necessário — atualmente o playback
-      // vai direto para o destination, então este setter apenas persiste o valor.
-    }
-  }, [setVolume]);
+    stopAudio(isReconnecting);
+  }, [stopAudio, stopSilenceTimer]);
 
   return {
-    connect,
-    disconnect,
-    sendMessage,
-    sendRealtimeText,
-    startScreenShare,
-    stopScreenShare,
-    setVolume: setVolumeLevel,
-    isConnected,
-    isSpeaking,
-    isListening,
-    isThinking,
-    error,
-    volume,
+    isConnected, isSpeaking, isListening, isThinking, volume, error, history,
+    connect, disconnect, startScreenSharing,
+    sendMessage, sendLiveMessage, sendFile, generateImage
   };
 };
