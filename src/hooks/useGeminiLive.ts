@@ -429,7 +429,7 @@ export const useGeminiLive = ({
       await audioContextRef.current.audioWorklet.addModule('/audio-processor.js');
 
       const sessionPromise = ai.live.connect({
-        model: "gemini-2.5-flash-live",
+        model: "gemini-3.1-flash-live-preview",
         config: {
           responseModalities: [Modality.AUDIO],
           ...(sysInstruction ? { systemInstruction: sysInstruction } : {}),
