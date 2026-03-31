@@ -177,7 +177,14 @@ export const useGeminiLive = ({
       }
       const prompt = SPONTANEOUS_PROMPTS[Math.floor(Math.random() * SPONTANEOUS_PROMPTS.length)];
       console.log(`[silêncio] ${SILENCE_TIMEOUT_MS / 1000}s — iniciando fala espontânea`);
-      sessionRef.current.then((session: any) => {
+      safeSessionSend(sessionRef, isConnectedRef, (session) => {
+  session.sendRealtimeInput({
+    audio: {
+      data: toBase64(combined.buffer),
+      mimeType: 'audio/pcm;rate=16000'
+    }
+  });
+});
         if (!isConnectedRef.current) return;
         try { session.sendRealtimeInput({ text: `[SISTEMA: O usuário está em silêncio há ${SILENCE_TIMEOUT_MS / 1000} segundos. Inicie a conversa naturalmente. Sugestão: "${prompt}" — mas use seu próprio estilo e personalidade.]` }); }
         catch (e) { /* WebSocket fechado — ignora */ }
@@ -921,13 +928,18 @@ export const useGeminiLive = ({
           canvas.height = video.videoHeight;
           ctx.drawImage(video, 0, 0);
           const base64 = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
-          sessionRef.current.then((session: any) => {
+          safeSessionSend(sessionRef, isConnectedRef, (session) => {
+  session.sendRealtimeInput({
+    video: { data: base64, mimeType: 'image/jpeg' }
+  });
+});
             if (!isConnectedRef.current) return;
             try { session.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } }); }
             catch (e) { /* WebSocket fechado — ignora */ }
           }).catch(() => {});
         }
-        setTimeout(sendFrame, SCREEN_ANALYSIS_INTERVAL_MS);
+        if (!isConnectedRef.current) return;
+setTimeout(sendFrame, SCREEN_ANALYSIS_INTERVAL_MS);
       };
 
       sendFrame();
@@ -935,7 +947,11 @@ export const useGeminiLive = ({
       stream.getVideoTracks()[0].addEventListener('ended', () => {
         screenAnalysisActiveRef.current = false;
         if (sessionRef.current && isConnectedRef.current) {
-          sessionRef.current.then((session: any) => {
+          safeSessionSend(sessionRef, isConnectedRef, (session) => {
+  session.sendRealtimeInput({
+    text: `[SISTEMA: usuário em silêncio...]`
+  });
+});
             if (!isConnectedRef.current) return;
             try { session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela encerrado.]' }); }
             catch (e) { /* WebSocket fechado — ignora */ }
@@ -956,7 +972,9 @@ export const useGeminiLive = ({
     if (sessionRef.current && isConnectedRef.current) {
       resetSilenceTimer();
       setIsThinking(true);
-      sessionRef.current.then((s: any) => s.sendRealtimeInput({ text })).catch(console.error);
+      safeSessionSend(sessionRef, isConnectedRef, (session) => {
+  session.sendRealtimeInput({ text });
+});
     }
   }, [setIsThinking, resetSilenceTimer]);
 
