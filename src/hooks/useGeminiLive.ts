@@ -198,11 +198,31 @@ export const useGeminiLive = ({
 
   }, SILENCE_TIMEOUT_MS);
 
-}, [stopSilenceTimer]);
+const resetSilenceTimer = useCallback(() => {
+  stopSilenceTimer();
+
+  silenceTimerRef.current = setTimeout(() => {
+    if (!isConnectedRef.current || !sessionRef.current) return;
+
+    const prompt = SPONTANEOUS_PROMPTS[
+      Math.floor(Math.random() * SPONTANEOUS_PROMPTS.length)
+    ];
+
+    sessionRef.current
+      .then((session: any) => {
         if (!isConnectedRef.current) return;
-        try { session.sendRealtimeInput({ text: `[SISTEMA: O usuário está em silêncio há ${SILENCE_TIMEOUT_MS / 1000} segundos. Inicie a conversa naturalmente. Sugestão: "${prompt}" — mas use seu próprio estilo e personalidade.]` }); }
-        catch (e) { /* WebSocket fechado — ignora */ }
-      }).catch(() => {});
+
+        try {
+          session.sendRealtimeInput({
+            text: `[SISTEMA: O usuário está em silêncio há ${SILENCE_TIMEOUT_MS / 1000} segundos. Inicie a conversa naturalmente. Sugestão: "${prompt}"]`
+          });
+        } catch (e) {}
+      })
+      .catch(() => {});
+      
+  }, SILENCE_TIMEOUT_MS);
+
+}, [stopSilenceTimer]);
     }, SILENCE_TIMEOUT_MS);
   }, [stopSilenceTimer]);
 
