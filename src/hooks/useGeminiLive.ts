@@ -438,14 +438,16 @@ export const useGeminiLive = ({
 
       const ai = new GoogleGenAI({ apiKey });
 
+      // Cria/recria o AudioContext de saída (24kHz para playback da IA)
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
         audioContextRef.current = new AudioContext({ sampleRate: 24000 });
+        try { await audioContextRef.current.audioWorklet.addModule('/audio-processor.js'); } catch {}
+      } else {
+        if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
       }
-      if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
-      await audioContextRef.current.audioWorklet.addModule('/audio-processor.js');
 
       const sessionPromise = ai.live.connect({
-        model: "gemini-2.5-flash-native-audio-preview-12-2025",
+        model: "gemini-2.5-flash-preview-native-audio-dialog",
         config: {
           responseModalities: [Modality.AUDIO],
           ...(sysInstruction ? { systemInstruction: sysInstruction } : {}),
@@ -551,6 +553,102 @@ export const useGeminiLive = ({
                     .then(content => {
                       onToolCallRef.current?.(name, args);
                       safeSend({ name, id, response: { success: true, content, url: args.url } });
+                    })
+                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
+                    .finally(finishAsync);
+                  continue;
+                }
+
+                // ── MODO OPERADOR — Loop autônomo ──────────────────────────
+                if (name === 'operator_step') {
+                  asyncPending++;
+                  const store = useAppStore.getState();
+
+                  // Ativar modo operador se ainda não estiver ativo
+                  if (!store.operatorMode) {
+                    store.setOperatorMode(true);
+                    if (args.task_description) store.setOperatorTask(args.task_description);
+                  }
+
+                  // Verificar limite de passos
+                  if (store.operatorSteps >= store.operatorMaxSteps) {
+                    store.setOperatorMode(false);
+                    safeSend({ name, id, response: { success: false, error: `Limite de ${store.operatorMaxSteps} passos atingido. Tarefa interrompida por segurança.` } });
+                    finishAsync();
+                    continue;
+                  }
+
+                  store.incrementOperatorStep();
+
+                  // Ação "done" = encerrar modo operador
+                  if (args.action === 'done') {
+                    store.resetOperator();
+                    onToolCallRef.current?.(name, { action: 'done', thought: args.thought });
+                    safeSend({ name, id, response: { success: true, message: 'Tarefa concluída. Modo Operador desativado.' } });
+                    finishAsync();
+                    continue;
+                  }
+
+                  fetch('/api/operator/step', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(args),
+                  })
+                    .then(r => r.json())
+                    .then(async (data) => {
+                      if (data.image) {
+                        // Enviar screenshot para visão da IA
+                        onToolCallRef.current?.(name, {
+                          action: args.action,
+                          thought: args.thought,
+                          step: store.operatorSteps,
+                          imageUrl: `data:${data.mimeType};base64,${data.image}`,
+                        });
+                        const sess = await sessionPromise;
+                        if (isConnectedRef.current) {
+                          try {
+                            sess.sendRealtimeInput({ video: { data: data.image, mimeType: data.mimeType } });
+                            sess.sendRealtimeInput({ text: `[MODO OPERADOR — Passo ${store.operatorSteps}/${store.operatorMaxSteps}] Ação executada: ${data.actionResult || args.action}. Analise o screenshot e decida o próximo passo. Use operator_step novamente.` });
+                          } catch {}
+                        }
+                        safeSend({ name, id, response: { success: true, step: store.operatorSteps, actionResult: data.actionResult, message: 'Screenshot capturado. Analise e continue.' } });
+                      } else {
+                        onToolCallRef.current?.(name, { action: args.action, thought: args.thought, result: data });
+                        safeSend({ name, id, response: data });
+                      }
+                    })
+                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
+                    .finally(finishAsync);
+                  continue;
+                }
+
+                // ── BROWSER CONTROL — Puppeteer ─────────────────────────────
+                if (name === 'browser_control') {
+                  asyncPending++;
+                  fetch('/api/browser/control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(args),
+                  })
+                    .then(r => r.json())
+                    .then(async (data) => {
+                      if (data.image) {
+                        onToolCallRef.current?.(name, {
+                          action: args.action,
+                          imageUrl: `data:${data.mimeType};base64,${data.image}`,
+                        });
+                        const sess = await sessionPromise;
+                        if (isConnectedRef.current) {
+                          try {
+                            sess.sendRealtimeInput({ video: { data: data.image, mimeType: data.mimeType } });
+                            sess.sendRealtimeInput({ text: `[Browser Control] Ação: ${args.action}. Screenshot da página enviado. Analise e decida.` });
+                          } catch {}
+                        }
+                        safeSend({ name, id, response: { success: true, action: args.action, message: 'Screenshot da página capturado.' } });
+                      } else {
+                        onToolCallRef.current?.(name, { action: args.action, result: data });
+                        safeSend({ name, id, response: data });
+                      }
                     })
                     .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
                     .finally(finishAsync);
@@ -857,7 +955,7 @@ export const useGeminiLive = ({
 
       const inputCtx = new AudioContext({ sampleRate: 16000 });
       inputAudioContextRef.current = inputCtx;
-      await inputCtx.audioWorklet.addModule('/audio-processor.js');
+      try { await inputCtx.audioWorklet.addModule('/audio-processor.js'); } catch {}
       const micSource = inputCtx.createMediaStreamSource(stream);
       const inputWorklet = new AudioWorkletNode(inputCtx, 'audio-processor');
       audioWorkletNodeRef.current = inputWorklet;
