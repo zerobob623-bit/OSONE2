@@ -66,6 +66,17 @@ export interface CustomSkill {
   parameters: CustomSkillParam[];
 }
 
+// Workspace Files (Modo Dev)
+export interface WorkspaceFile {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  content?: string;      // só para arquivos
+  language?: string;     // js, ts, html, css, py, etc.
+  children?: WorkspaceFile[];  // só para pastas
+  expanded?: boolean;
+}
+
 export interface SystemMetrics {
   cpu: number;
   mem: number;
@@ -183,6 +194,26 @@ interface AppState {
   updateCustomSkill: (id: string, updates: Partial<CustomSkill>) => void;
   removeCustomSkill: (id: string) => void;
   toggleCustomSkill: (id: string) => void;
+
+  // Workspace Dev Mode (pasta/arquivos)
+  workspaceProjectName: string;
+  setWorkspaceProjectName: (name: string) => void;
+  workspaceFiles: WorkspaceFile[];
+  setWorkspaceFiles: (files: WorkspaceFile[]) => void;
+  addWorkspaceFile: (parentId: string | null, file: WorkspaceFile) => void;
+  updateWorkspaceFile: (id: string, updates: Partial<WorkspaceFile>) => void;
+  deleteWorkspaceFile: (id: string) => void;
+  toggleWorkspaceFolder: (id: string) => void;
+
+  // Modo Operador
+  operatorMode: boolean;
+  operatorTask: string;
+  operatorSteps: number;
+  operatorMaxSteps: number;
+  setOperatorMode: (active: boolean) => void;
+  setOperatorTask: (task: string) => void;
+  incrementOperatorStep: () => void;
+  resetOperator: () => void;
 
   // ✅ Memória por personagem
   personalityMemories: Record<PersonalityKey, PersonalityMemory>;
@@ -352,6 +383,46 @@ export const useAppStore = create<AppState>()(
         return get().personalityMemories[personality] || defaultPersonalityMemory();
       },
 
+      // Workspace Dev Mode
+      workspaceProjectName: '',
+      setWorkspaceProjectName: (name) => set({ workspaceProjectName: name }),
+      workspaceFiles: [],
+      setWorkspaceFiles: (files) => set({ workspaceFiles: files }),
+      addWorkspaceFile: (parentId, file) => set((s) => {
+        if (!parentId) return { workspaceFiles: [...s.workspaceFiles, file] };
+        const addToParent = (nodes: WorkspaceFile[]): WorkspaceFile[] =>
+          nodes.map(n => n.id === parentId
+            ? { ...n, children: [...(n.children || []), file], expanded: true }
+            : n.children ? { ...n, children: addToParent(n.children) } : n
+          );
+        return { workspaceFiles: addToParent(s.workspaceFiles) };
+      }),
+      updateWorkspaceFile: (id, updates) => set((s) => {
+        const update = (nodes: WorkspaceFile[]): WorkspaceFile[] =>
+          nodes.map(n => n.id === id ? { ...n, ...updates } : n.children ? { ...n, children: update(n.children) } : n);
+        return { workspaceFiles: update(s.workspaceFiles) };
+      }),
+      deleteWorkspaceFile: (id) => set((s) => {
+        const del = (nodes: WorkspaceFile[]): WorkspaceFile[] =>
+          nodes.filter(n => n.id !== id).map(n => n.children ? { ...n, children: del(n.children) } : n);
+        return { workspaceFiles: del(s.workspaceFiles) };
+      }),
+      toggleWorkspaceFolder: (id) => set((s) => {
+        const toggle = (nodes: WorkspaceFile[]): WorkspaceFile[] =>
+          nodes.map(n => n.id === id ? { ...n, expanded: !n.expanded } : n.children ? { ...n, children: toggle(n.children) } : n);
+        return { workspaceFiles: toggle(s.workspaceFiles) };
+      }),
+
+      // Modo Operador
+      operatorMode: false,
+      operatorTask: '',
+      operatorSteps: 0,
+      operatorMaxSteps: 50,
+      setOperatorMode: (active) => set({ operatorMode: active, ...(active ? {} : { operatorTask: '', operatorSteps: 0 }) }),
+      setOperatorTask: (task) => set({ operatorTask: task }),
+      incrementOperatorStep: () => set((s) => ({ operatorSteps: s.operatorSteps + 1 })),
+      resetOperator: () => set({ operatorMode: false, operatorTask: '', operatorSteps: 0 }),
+
       // Reset
       resetSystem: () => set({
         onboardingStep: 'initial',
@@ -401,6 +472,8 @@ export const useAppStore = create<AppState>()(
         tuyaUserId: state.tuyaUserId,
         alexaCookie: state.alexaCookie,
         customSkills: state.customSkills,
+        workspaceProjectName: state.workspaceProjectName,
+        workspaceFiles: state.workspaceFiles,
       }),
     }
   )

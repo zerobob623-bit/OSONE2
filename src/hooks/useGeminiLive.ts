@@ -424,9 +424,10 @@ export const useGeminiLive = ({
       const ai = new GoogleGenAI({ apiKey });
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
         audioContextRef.current = new AudioContext({ sampleRate: 24000 });
+        try { await audioContextRef.current.audioWorklet.addModule('/audio-processor.js'); } catch {}
+      } else {
+        if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
       }
-      if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
-      await audioContextRef.current.audioWorklet.addModule('/audio-processor.js');
 
       const sessionPromise = ai.live.connect({
         model: "gemini-live-2.5-flash-native-audio",
@@ -762,7 +763,7 @@ export const useGeminiLive = ({
 
       const inputCtx = new AudioContext({ sampleRate: 16000 });
       inputAudioContextRef.current = inputCtx;
-      await inputCtx.audioWorklet.addModule('/audio-processor.js');
+      try { await inputCtx.audioWorklet.addModule('/audio-processor.js'); } catch {}
       const micSource = inputCtx.createMediaStreamSource(stream);
       const inputWorklet = new AudioWorkletNode(inputCtx, 'audio-processor');
       audioWorkletNodeRef.current = inputWorklet;

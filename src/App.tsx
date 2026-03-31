@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Monitor, Power, Settings, X, Paperclip, MicOff, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, PhoneOff, Copy, Code, FileText, Volume2, VolumeX, Send, Cpu, Download } from 'lucide-react';
+import { Monitor, Power, Settings, X, Paperclip, MicOff, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, PhoneOff, Copy, Code, FileText, Volume2, VolumeX, Send, Cpu, Download, Play, FolderPlus, FilePlus, Folder, File, FolderOpen, StopCircle, Eye, Edit3, Plus, ChevronRight, ChevronDown, MoreVertical } from 'lucide-react';
 import { VoiceOrb } from './components/VoiceOrb';
 import { Supernova } from './components/Supernova';
 import { Mascot } from './components/Mascot';
 import { useGeminiLive } from './hooks/useGeminiLive';
-import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey, CustomSkill } from './store/useAppStore';
+import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey, CustomSkill, WorkspaceFile } from './store/useAppStore';
 import CATALOG, { CATALOG_CATEGORIES, type CatalogSkill } from './data/skillsCatalog';
 import { useConversationHistory } from './hooks/useConversationHistory';
 import { useUserMemory, ImportantDate, SemanticFact, ConversationSummary } from './hooks/useUserMemory';
@@ -118,6 +118,16 @@ Diretrizes:
   • INTERAÇÃO: screenshot | click(x,y) | type_text | press_key | scroll | get/set_clipboard | run_command | system_info
   • REGRA: Quando o usuário pedir "abra esse arquivo", "abra essa pasta", "acesse esse link" → use open_file/open_folder/open_url. NUNCA use run_command para abrir coisas quando existe ação específica.
 16. AUTO-EVOLUÇÃO: Leia e edite seu próprio código com 'self_read_code', 'self_write_code', 'self_list_files' e publique com 'self_git_push'. Fluxo: leia → entenda → edite → push.
+17. MODO OPERADOR: Quando o usuário pedir tarefas complexas no computador (editar vídeo, analisar YouTube, pesquisar no NotebookLM, preencher formulários, etc.), ative o Modo Operador usando 'operator_step'.
+  PROTOCOLO DO LOOP AUTÔNOMO:
+  a) PRIMEIRO PASSO: action='observe' com task_description descrevendo a tarefa. Isso tira um screenshot inicial.
+  b) ANALISE: Olhe o screenshot, identifique onde clicar/digitar. Descreva seu raciocínio em "thought".
+  c) AJA: Use click(x,y), type(text), press_key, scroll, open_url, open_app, drag, etc.
+  d) VERIFIQUE: Cada ação retorna screenshot automaticamente. Analise o resultado.
+  e) REPITA: Continue chamando operator_step até completar. Use action='done' para encerrar.
+  REGRAS: Sempre preencha "thought". Máximo 50 passos. Sempre observe antes de clicar. Se algo der errado, tente outra abordagem.
+  Para SITES/WEB: prefira 'browser_control' (Puppeteer) — mais preciso com seletores CSS.
+  Para DESKTOP: use 'operator_step' — captura tela real e clica em coordenadas.
 
 METACOGNIÇÃO (interna, nunca verbalizada):
 • Classifique a tarefa: Fácil → resposta concisa imediata. Média → raciocine brevemente. Difícil → use ferramentas, divida em etapas.
@@ -370,6 +380,9 @@ export default function App() {
     tuyaRegion, setTuyaRegion,
     tuyaUserId, setTuyaUserId,
     customSkills, addCustomSkill, updateCustomSkill, removeCustomSkill, toggleCustomSkill,
+    operatorMode, operatorTask, operatorSteps, operatorMaxSteps, resetOperator,
+    workspaceProjectName, setWorkspaceProjectName,
+    workspaceFiles, setWorkspaceFiles, addWorkspaceFile, updateWorkspaceFile, deleteWorkspaceFile, toggleWorkspaceFolder,
     apiKey, setApiKey,
     openaiApiKey, setOpenaiApiKey,
     groqApiKey, setGroqApiKey,
@@ -431,6 +444,18 @@ export default function App() {
   const [showAdvancedParams, setShowAdvancedParams] = useState(false);
   const [skillTab, setSkillTab]                     = useState<'store' | 'installed' | 'custom'>('store');
   const [catalogFilter, setCatalogFilter]           = useState<string>('popular');
+  // Workspace dev mode
+  const [workspaceTab, setWorkspaceTab]             = useState<'text' | 'files'>('text');
+  const [workspaceEditing, setWorkspaceEditing]     = useState(false);
+  const [workspaceEditContent, setWorkspaceEditContent] = useState('');
+  const [playMode, setPlayMode]                     = useState(false);
+  const [selectedFileId, setSelectedFileId]         = useState<string | null>(null);
+  const [editingFileId, setEditingFileId]           = useState<string | null>(null);
+  const [newNodeParentId, setNewNodeParentId]       = useState<string | null>(null);
+  const [newNodeType, setNewNodeType]               = useState<'file' | 'folder'>('file');
+  const [newNodeName, setNewNodeName]               = useState('');
+  const [renamingId, setRenamingId]                 = useState<string | null>(null);
+  const [renameValue, setRenameValue]               = useState('');
   const [interfaceMode, setInterfaceMode]           = useState(0);
   const [swipeDir, setSwipeDir]                     = useState<1 | -1>(1);
   const swipeStartX                                 = useRef(0);
@@ -1266,42 +1291,367 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* WORKSPACE SCREEN */}
+      {/* OPERATOR MODE FLOATING PANEL */}
+      <AnimatePresence>
+        {operatorMode && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-24 left-4 right-4 z-[200] rounded-2xl border overflow-hidden"
+            style={{ backgroundColor: '#0d0808', borderColor: `${moodColor}40` }}>
+            <div className="px-4 py-3 flex items-center gap-3">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[9px] uppercase tracking-widest text-amber-400">Modo Operador Ativo</p>
+                  {operatorTask && <p className="text-xs text-white/60 truncate mt-0.5">{operatorTask}</p>}
+                </div>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <div className="text-center">
+                  <p className="text-xs font-mono font-medium">{operatorSteps}</p>
+                  <p className="text-[8px] text-white/30">/{operatorMaxSteps}</p>
+                </div>
+                <button onClick={() => resetOperator()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 text-[10px] uppercase tracking-widest hover:bg-red-500/30 transition-all">
+                  <StopCircle size={12} /> Parar
+                </button>
+              </div>
+            </div>
+            {operatorSteps > 0 && (
+              <div className="h-1 bg-white/5">
+                <div className="h-full transition-all" style={{ width: `${(operatorSteps / operatorMaxSteps) * 100}%`, backgroundColor: operatorSteps > 40 ? '#f87171' : moodColor }} />
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* WORKSPACE DEV ENVIRONMENT */}
       <AnimatePresence>
         {screen === 'workspace' && (
           <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
             className="fixed inset-0 z-[100] bg-[#0a0505] flex flex-col">
-            <div className="h-14 px-5 flex items-center justify-between border-b border-white/5">
-              <div className="flex items-center gap-4">
-                <button onClick={() => setScreen('main')} className="p-2 hover:bg-white/5 rounded-full"><ChevronLeft size={20} /></button>
-                <h2 className="text-sm font-medium tracking-widest uppercase">Área de Trabalho</h2>
+
+            {/* Header */}
+            <div className="h-14 px-4 flex items-center gap-2 border-b border-white/5 shrink-0">
+              <button onClick={() => { setScreen('main'); setPlayMode(false); }} className="p-2 hover:bg-white/5 rounded-full shrink-0"><ChevronLeft size={20} /></button>
+              <div className="flex-1 flex items-center gap-2 min-w-0">
+                <Code size={15} className="opacity-40 shrink-0" />
+                <span className="text-sm font-medium tracking-widest uppercase truncate">Dev Workspace</span>
               </div>
-              {memory.workspace && (
-                <button onClick={() => { navigator.clipboard.writeText(memory.workspace || ''); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 rounded-full transition-all">
-                  {copied ? <span className="text-[10px] uppercase tracking-widest text-emerald-400">Copiado!</span> : <Copy size={16} className="opacity-60" />}
+              {/* Tab switcher */}
+              <div className="flex bg-white/5 rounded-xl p-0.5 shrink-0">
+                <button onClick={() => { setWorkspaceTab('text'); setPlayMode(false); }}
+                  className="px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest transition-all"
+                  style={{ backgroundColor: workspaceTab === 'text' ? `${moodColor}20` : 'transparent', color: workspaceTab === 'text' ? moodColor : 'rgba(255,255,255,0.4)' }}>
+                  Texto
                 </button>
-              )}
+                <button onClick={() => { setWorkspaceTab('files'); setPlayMode(false); }}
+                  className="px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest transition-all"
+                  style={{ backgroundColor: workspaceTab === 'files' ? `${moodColor}20` : 'transparent', color: workspaceTab === 'files' ? moodColor : 'rgba(255,255,255,0.4)' }}>
+                  Projeto
+                </button>
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-6">
-              {!memory.workspace ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3 opacity-20">
-                  <Code size={40} /><p className="text-sm uppercase tracking-widest">Workspace vazio</p>
-                  <p className="text-xs text-center opacity-60">Peça para {assistantName}: "Escreva um código em Python para mim"</p>
-                </div>
-              ) : (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-                  <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/[0.05] relative group">
-                    <pre className="text-sm leading-relaxed font-mono whitespace-pre-wrap break-words opacity-80">{memory.workspace}</pre>
-                  </div>
-                  <div className="flex justify-center pb-10">
-                    <button onClick={() => setScreen('main')} className="px-8 py-3 rounded-full text-[10px] uppercase tracking-[0.2em] border border-white/10 hover:bg-white/5 transition-all opacity-40">
-                      Voltar para {assistantName}
+
+            {/* ══════════════ TAB: TEXTO / ESCRITA ══════════════ */}
+            {workspaceTab === 'text' && (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {/* Text toolbar */}
+                <div className="flex items-center gap-2 px-4 py-2 border-b border-white/5 shrink-0">
+                  {/* Edit toggle */}
+                  <button onClick={() => {
+                    if (!workspaceEditing) { setWorkspaceEditContent(memory.workspace || ''); }
+                    else { updateWorkspace(workspaceEditContent); }
+                    setWorkspaceEditing(!workspaceEditing);
+                    setPlayMode(false);
+                  }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] uppercase tracking-widest transition-all"
+                    style={{ backgroundColor: workspaceEditing ? `${moodColor}25` : 'rgba(255,255,255,0.05)', color: workspaceEditing ? moodColor : 'rgba(255,255,255,0.5)', border: `1px solid ${workspaceEditing ? moodColor+'40' : 'rgba(255,255,255,0.05)'}` }}>
+                    <Edit3 size={11} /> {workspaceEditing ? 'Salvar' : 'Editar'}
+                  </button>
+                  {/* Play button */}
+                  {memory.workspace && !workspaceEditing && (
+                    <button onClick={() => setPlayMode(!playMode)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] uppercase tracking-widest transition-all"
+                      style={{ backgroundColor: playMode ? '#22c55e20' : 'rgba(255,255,255,0.05)', color: playMode ? '#22c55e' : 'rgba(255,255,255,0.5)', border: `1px solid ${playMode ? '#22c55e40' : 'rgba(255,255,255,0.05)'}` }}>
+                      <Play size={11} /> {playMode ? 'Fechar' : 'Executar'}
                     </button>
+                  )}
+                  <div className="flex-1" />
+                  {/* Copy */}
+                  {memory.workspace && (
+                    <button onClick={() => { navigator.clipboard.writeText(memory.workspace || ''); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] transition-all opacity-50 hover:opacity-80">
+                      <Copy size={11} /> {copied ? 'Copiado!' : 'Copiar'}
+                    </button>
+                  )}
+                  {/* Download */}
+                  {memory.workspace && (
+                    <button onClick={() => {
+                      const ext = memory.workspace?.trimStart().startsWith('<') ? 'html' : memory.workspace?.trimStart().startsWith('def ') || memory.workspace?.trimStart().startsWith('import ') ? 'py' : 'txt';
+                      const blob = new Blob([memory.workspace || ''], { type: 'text/plain' });
+                      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `workspace.${ext}`; a.click();
+                    }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] transition-all opacity-50 hover:opacity-80">
+                      <Download size={11} /> Baixar
+                    </button>
+                  )}
+                </div>
+
+                {/* Play preview */}
+                {playMode && memory.workspace && (
+                  <div className="shrink-0 border-b border-white/10" style={{ height: '45vh' }}>
+                    <iframe
+                      srcDoc={(() => {
+                        const code = memory.workspace || '';
+                        const hasHtml = /<html|<!DOCTYPE|<body|<div|<script/i.test(code);
+                        const hasThree = /three|Three\.js|THREE/i.test(code);
+                        if (hasHtml) return code;
+                        if (hasThree) return `<!DOCTYPE html><html><head><meta charset="utf-8"><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script></head><body style="margin:0;background:#000"><script>${code}</script></body></html>`;
+                        return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{background:#0a0505;color:#e2e8f0;font-family:monospace;padding:20px;margin:0}</style></head><body><script>\ntry{\n${code}\n}catch(e){document.body.innerHTML='<pre style="color:#f87171">Erro: '+e.message+'</pre>';}\n</script></body></html>`;
+                      })()}
+                      className="w-full h-full bg-white"
+                      sandbox="allow-scripts allow-same-origin"
+                      title="Preview"
+                    />
                   </div>
-                </motion.div>
-              )}
-            </div>
+                )}
+
+                {/* Content area */}
+                <div className="flex-1 overflow-hidden">
+                  {workspaceEditing ? (
+                    <textarea
+                      value={workspaceEditContent}
+                      onChange={e => setWorkspaceEditContent(e.target.value)}
+                      className="w-full h-full p-6 bg-transparent text-sm font-mono leading-relaxed resize-none focus:outline-none text-white/80"
+                      placeholder="Escreva seu código aqui..."
+                      spellCheck={false}
+                    />
+                  ) : memory.workspace ? (
+                    <pre className="w-full h-full p-6 text-sm font-mono leading-relaxed whitespace-pre-wrap break-words text-white/80 overflow-y-auto">{memory.workspace}</pre>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full gap-4 opacity-20">
+                      <Code size={40} />
+                      <p className="text-sm uppercase tracking-widest">Workspace vazio</p>
+                      <p className="text-xs text-center max-w-[200px]">Peça para {assistantName} gerar um código ou HTML</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ══════════════ TAB: PROJETO / ARQUIVOS ══════════════ */}
+            {workspaceTab === 'files' && (() => {
+              // Helper: flatten tree for selected file lookup
+              const findFile = (nodes: WorkspaceFile[], id: string): WorkspaceFile | null => {
+                for (const n of nodes) {
+                  if (n.id === id) return n;
+                  if (n.children) { const f = findFile(n.children, id); if (f) return f; }
+                }
+                return null;
+              };
+              const selectedFile = selectedFileId ? findFile(workspaceFiles, selectedFileId) : null;
+
+              // Recursive tree node renderer
+              const renderTree = (nodes: WorkspaceFile[], depth = 0): React.ReactNode =>
+                nodes.map(node => (
+                  <div key={node.id}>
+                    <div
+                      className="flex items-center gap-1.5 py-1.5 px-2 rounded-lg cursor-pointer hover:bg-white/5 transition-all group"
+                      style={{ paddingLeft: `${8 + depth * 16}px`, backgroundColor: selectedFileId === node.id ? `${moodColor}15` : undefined }}
+                      onClick={() => { if (node.type === 'folder') toggleWorkspaceFolder(node.id); else setSelectedFileId(node.id); }}>
+                      <span className="shrink-0">
+                        {node.type === 'folder' ? (node.expanded ? <FolderOpen size={13} style={{ color: moodColor }} /> : <Folder size={13} className="opacity-50" />) : <File size={13} className="opacity-40" />}
+                      </span>
+                      {renamingId === node.id ? (
+                        <input autoFocus value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                          onBlur={() => { if (renameValue.trim()) updateWorkspaceFile(node.id, { name: renameValue.trim() }); setRenamingId(null); }}
+                          onKeyDown={e => { if (e.key === 'Enter') { if (renameValue.trim()) updateWorkspaceFile(node.id, { name: renameValue.trim() }); setRenamingId(null); } if (e.key === 'Escape') setRenamingId(null); }}
+                          className="flex-1 bg-white/10 rounded px-1 text-xs focus:outline-none" onClick={e => e.stopPropagation()} />
+                      ) : (
+                        <span className="flex-1 text-xs truncate" style={{ color: selectedFileId === node.id ? moodColor : undefined }}>{node.name}</span>
+                      )}
+                      {/* File actions */}
+                      <div className="hidden group-hover:flex items-center gap-1 shrink-0">
+                        {node.type === 'folder' && (
+                          <>
+                            <button onClick={e => { e.stopPropagation(); setNewNodeParentId(node.id); setNewNodeType('file'); setNewNodeName(''); }}
+                              className="p-0.5 hover:text-white/80 opacity-40 hover:opacity-100" title="Novo arquivo"><FilePlus size={10} /></button>
+                            <button onClick={e => { e.stopPropagation(); setNewNodeParentId(node.id); setNewNodeType('folder'); setNewNodeName(''); }}
+                              className="p-0.5 hover:text-white/80 opacity-40 hover:opacity-100" title="Nova pasta"><FolderPlus size={10} /></button>
+                          </>
+                        )}
+                        {node.type === 'file' && (
+                          <button onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(node.content || ''); }}
+                            className="p-0.5 hover:text-white/80 opacity-40 hover:opacity-100" title="Copiar"><Copy size={10} /></button>
+                        )}
+                        <button onClick={e => { e.stopPropagation(); setRenamingId(node.id); setRenameValue(node.name); }}
+                          className="p-0.5 hover:text-white/80 opacity-40 hover:opacity-100" title="Renomear"><Edit3 size={10} /></button>
+                        <button onClick={e => { e.stopPropagation(); if (confirm(`Excluir "${node.name}"?`)) { deleteWorkspaceFile(node.id); if (selectedFileId === node.id) setSelectedFileId(null); } }}
+                          className="p-0.5 text-red-400/40 hover:text-red-400 opacity-40 hover:opacity-100" title="Excluir"><X size={10} /></button>
+                      </div>
+                    </div>
+                    {node.type === 'folder' && node.expanded && node.children && renderTree(node.children, depth + 1)}
+                    {/* Inline new node form */}
+                    {newNodeParentId === node.id && node.type === 'folder' && (
+                      <div className="flex items-center gap-1.5 py-1" style={{ paddingLeft: `${8 + (depth + 1) * 16}px` }}>
+                        {newNodeType === 'file' ? <File size={12} className="opacity-40" /> : <Folder size={12} className="opacity-40" />}
+                        <input autoFocus value={newNodeName} onChange={e => setNewNodeName(e.target.value)}
+                          placeholder={newNodeType === 'file' ? 'arquivo.js' : 'pasta'}
+                          className="flex-1 bg-white/10 rounded px-2 py-0.5 text-xs focus:outline-none"
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && newNodeName.trim()) {
+                              addWorkspaceFile(newNodeParentId, { id: crypto.randomUUID(), name: newNodeName.trim(), type: newNodeType, content: '', children: newNodeType === 'folder' ? [] : undefined, expanded: false });
+                              setNewNodeParentId(null); setNewNodeName('');
+                            }
+                            if (e.key === 'Escape') { setNewNodeParentId(null); setNewNodeName(''); }
+                          }}
+                          onBlur={() => { setNewNodeParentId(null); setNewNodeName(''); }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ));
+
+              return (
+                <div className="flex-1 flex overflow-hidden">
+                  {/* Sidebar: file tree */}
+                  <div className="w-48 border-r border-white/5 flex flex-col shrink-0">
+                    {/* Project name */}
+                    <div className="px-3 py-2 border-b border-white/5">
+                      <input
+                        value={workspaceProjectName}
+                        onChange={e => setWorkspaceProjectName(e.target.value)}
+                        placeholder="Nome do projeto"
+                        className="w-full bg-transparent text-[10px] uppercase tracking-widest text-white/40 focus:outline-none focus:text-white/80 transition-all placeholder:text-white/20"
+                      />
+                    </div>
+                    {/* Toolbar */}
+                    <div className="flex items-center gap-1 px-2 py-1.5 border-b border-white/5">
+                      <button onClick={() => { setNewNodeParentId(null); setNewNodeType('file'); setNewNodeName(''); }}
+                        className="flex-1 flex items-center justify-center gap-1 py-1 rounded-lg text-[9px] uppercase tracking-widest hover:bg-white/5 opacity-50 hover:opacity-80 transition-all">
+                        <FilePlus size={11} /> Arquivo
+                      </button>
+                      <button onClick={() => { setNewNodeParentId(null); setNewNodeType('folder'); setNewNodeName(''); }}
+                        className="flex-1 flex items-center justify-center gap-1 py-1 rounded-lg text-[9px] uppercase tracking-widest hover:bg-white/5 opacity-50 hover:opacity-80 transition-all">
+                        <FolderPlus size={11} /> Pasta
+                      </button>
+                      {workspaceFiles.length > 0 && (
+                        <button onClick={() => {
+                          // Download all files as separate downloads
+                          const downloadAll = (nodes: WorkspaceFile[], prefix = '') => {
+                            nodes.forEach(n => {
+                              if (n.type === 'file' && n.content != null) {
+                                const blob = new Blob([n.content], { type: 'text/plain' });
+                                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = prefix + n.name; a.click();
+                              }
+                              if (n.type === 'folder' && n.children) downloadAll(n.children, prefix + n.name + '/');
+                            });
+                          };
+                          downloadAll(workspaceFiles);
+                        }}
+                          className="p-1 rounded-lg hover:bg-white/5 opacity-40 hover:opacity-70 transition-all" title="Baixar todos">
+                          <Download size={11} />
+                        </button>
+                      )}
+                    </div>
+                    {/* Inline new node at root */}
+                    {newNodeParentId === null && newNodeName !== undefined && newNodeName !== '' || (newNodeParentId === null && newNodeType && newNodeName === '' && newNodeParentId !== undefined) ? null : null}
+                    {newNodeParentId === null && newNodeName !== undefined && (() => {
+                      // show form if triggered with null parent
+                      return null;
+                    })()}
+                    {/* Root new node form */}
+                    {newNodeParentId === null && newNodeType && (
+                      <div className="flex items-center gap-1.5 px-3 py-1">
+                        {newNodeType === 'file' ? <File size={12} className="opacity-40" /> : <Folder size={12} className="opacity-40" />}
+                        <input autoFocus value={newNodeName} onChange={e => setNewNodeName(e.target.value)}
+                          placeholder={newNodeType === 'file' ? 'arquivo.js' : 'minha-pasta'}
+                          className="flex-1 bg-white/10 rounded px-2 py-0.5 text-xs focus:outline-none"
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && newNodeName.trim()) {
+                              addWorkspaceFile(null, { id: crypto.randomUUID(), name: newNodeName.trim(), type: newNodeType, content: '', children: newNodeType === 'folder' ? [] : undefined, expanded: false });
+                              setNewNodeParentId('_done_'); setNewNodeName('');
+                            }
+                            if (e.key === 'Escape') { setNewNodeParentId('_done_'); setNewNodeName(''); }
+                          }}
+                          onBlur={() => { setNewNodeParentId('_done_'); setNewNodeName(''); }}
+                        />
+                      </div>
+                    )}
+                    {/* Tree */}
+                    <div className="flex-1 overflow-y-auto py-1 px-1">
+                      {workspaceFiles.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full gap-2 opacity-20 p-4">
+                          <FolderPlus size={24} />
+                          <p className="text-[9px] text-center uppercase tracking-widest">Crie pastas e arquivos</p>
+                        </div>
+                      ) : renderTree(workspaceFiles)}
+                    </div>
+                  </div>
+
+                  {/* Main: file editor */}
+                  <div className="flex-1 flex flex-col overflow-hidden">
+                    {selectedFile && selectedFile.type === 'file' ? (
+                      <>
+                        <div className="flex items-center gap-2 px-4 py-2 border-b border-white/5 shrink-0">
+                          <File size={12} className="opacity-40" />
+                          <span className="text-xs opacity-60 font-mono">{selectedFile.name}</span>
+                          <div className="flex-1" />
+                          <button onClick={() => navigator.clipboard.writeText(selectedFile.content || '')}
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] opacity-40 hover:opacity-70 hover:bg-white/5 transition-all">
+                            <Copy size={10} /> Copiar
+                          </button>
+                          {(() => {
+                            const code = selectedFile.content || '';
+                            const isRunnable = /<html|<!DOCTYPE|<script|<style/i.test(code) || /three|THREE/i.test(code) || (code.includes('function') && !code.includes('def '));
+                            return isRunnable ? (
+                              <button onClick={() => setPlayMode(!playMode)}
+                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] transition-all"
+                                style={{ backgroundColor: playMode ? '#22c55e20' : 'rgba(255,255,255,0.05)', color: playMode ? '#22c55e' : 'rgba(255,255,255,0.5)' }}>
+                                <Play size={10} /> {playMode ? 'Fechar' : 'Executar'}
+                              </button>
+                            ) : null;
+                          })()}
+                          <button onClick={() => {
+                            const blob = new Blob([selectedFile.content || ''], { type: 'text/plain' });
+                            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = selectedFile.name; a.click();
+                          }}
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] opacity-40 hover:opacity-70 hover:bg-white/5 transition-all">
+                            <Download size={10} /> Baixar
+                          </button>
+                        </div>
+                        {playMode && (() => {
+                          const code = selectedFile.content || '';
+                          const hasThree = /three|THREE/i.test(code);
+                          const srcDoc = /<html|<!DOCTYPE/i.test(code) ? code
+                            : hasThree ? `<!DOCTYPE html><html><head><meta charset="utf-8"><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script></head><body style="margin:0;background:#000"><script>${code}</script></body></html>`
+                              : `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{background:#0a0505;color:#e2e8f0;font-family:monospace;padding:20px;margin:0}</style></head><body><script>\ntry{\n${code}\n}catch(e){document.body.innerHTML='<pre style="color:#f87171">'+e.message+'</pre>';}\n</script></body></html>`;
+                          return (
+                            <div className="shrink-0" style={{ height: '40vh', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                              <iframe srcDoc={srcDoc} className="w-full h-full" sandbox="allow-scripts allow-same-origin" title="Preview" />
+                            </div>
+                          );
+                        })()}
+                        <textarea
+                          value={selectedFile.content || ''}
+                          onChange={e => updateWorkspaceFile(selectedFile.id, { content: e.target.value })}
+                          className="flex-1 w-full p-4 bg-transparent text-xs font-mono leading-relaxed resize-none focus:outline-none text-white/80"
+                          placeholder="// Escreva o código aqui..."
+                          spellCheck={false}
+                        />
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full gap-3 opacity-20">
+                        <Eye size={32} />
+                        <p className="text-xs uppercase tracking-widest">Selecione um arquivo</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </motion.div>
         )}
       </AnimatePresence>

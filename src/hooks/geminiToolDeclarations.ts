@@ -369,6 +369,94 @@ Ações: screenshot, run_command, open_app, type_text, press_key, click, move_mo
       required: ["action"]
     }
   },
+  // ── MODO OPERADOR — Loop autônomo observe→pense→aja→verifique ──────────────
+  {
+    name: "operator_step",
+    description: `[MODO OPERADOR] Executa UM passo do loop autônomo: realiza uma ação no computador e SEMPRE tira screenshot depois para verificar o resultado.
+Use este tool em loop para completar tarefas complexas como editar vídeo no CapCut, analisar YouTube, pesquisar no NotebookLM, etc.
+
+FLUXO OBRIGATÓRIO para cada passo:
+1. Preencha "thought" explicando seu raciocínio (o que vê, o que pretende fazer, por quê)
+2. Escolha a action adequada
+3. O sistema executa a ação + tira screenshot automaticamente
+4. Analise o screenshot retornado e decida o próximo passo
+5. Repita até completar ou atingir o limite de passos
+
+Ações disponíveis:
+- observe: apenas tira screenshot (sem ação) — use como primeiro passo
+- click: clica nas coordenadas x,y
+- double_click: clique duplo nas coordenadas x,y
+- right_click: clique com botão direito
+- type: digita texto no campo ativo
+- press_key: pressiona tecla (Enter, Tab, ctrl+c, etc.)
+- scroll: rola a tela (up/down)
+- drag: arrasta de (x,y) até (drag_to_x, drag_to_y)
+- open_url: abre URL no navegador
+- open_app: abre aplicativo
+- wait: espera N segundos (para carregar)
+- done: tarefa concluída — encerra modo operador`,
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        thought: { type: Type.STRING, description: "OBRIGATÓRIO. Seu raciocínio: o que você vê na tela, o que pretende fazer e por quê. Pense em voz alta." },
+        action: {
+          type: Type.STRING,
+          description: "Ação a executar neste passo.",
+          enum: ["observe", "click", "double_click", "right_click", "type", "press_key", "scroll", "drag", "open_url", "open_app", "wait", "done"]
+        },
+        x: { type: Type.NUMBER, description: "Coordenada X para click/double_click/right_click/drag." },
+        y: { type: Type.NUMBER, description: "Coordenada Y para click/double_click/right_click/drag." },
+        drag_to_x: { type: Type.NUMBER, description: "Coordenada X destino para drag." },
+        drag_to_y: { type: Type.NUMBER, description: "Coordenada Y destino para drag." },
+        text: { type: Type.STRING, description: "Texto para type." },
+        key: { type: Type.STRING, description: "Tecla para press_key (Enter, Tab, Escape, ctrl+a, ctrl+c, ctrl+v, etc.)" },
+        direction: { type: Type.STRING, description: "Direção do scroll: 'up' ou 'down'." },
+        scroll_amount: { type: Type.NUMBER, description: "Quantidade de scroll (padrão: 3)." },
+        url: { type: Type.STRING, description: "URL para open_url." },
+        app: { type: Type.STRING, description: "Nome do app para open_app." },
+        wait_seconds: { type: Type.NUMBER, description: "Segundos para wait (padrão: 2)." },
+        task_description: { type: Type.STRING, description: "Descrição da tarefa (preencha no PRIMEIRO passo)." },
+      },
+      required: ["thought", "action"]
+    }
+  },
+  // ── BROWSER CONTROL — Automação web via Puppeteer ─────────────────────────
+  {
+    name: "browser_control",
+    description: `[MODO OPERADOR - WEB] Controla um navegador headless via Puppeteer para tarefas web.
+Mais preciso que clicar em screenshots para sites como YouTube, NotebookLM, CapCut web, etc.
+
+Ações:
+- open: abre URL no navegador controlado (retorna screenshot)
+- screenshot: tira screenshot da página atual
+- click_selector: clica em elemento por seletor CSS (ex: 'button.submit', '#search-input')
+- click_xy: clica em coordenadas x,y na página
+- type: digita texto em um campo (seletor CSS + texto)
+- scroll: rola a página
+- read_text: extrai todo o texto visível da página
+- read_element: extrai texto de um elemento específico (seletor CSS)
+- go_back: volta página anterior
+- evaluate: executa JavaScript na página (ex: document.title)
+- close: fecha o navegador`,
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        action: {
+          type: Type.STRING,
+          description: "Ação no navegador.",
+          enum: ["open", "screenshot", "click_selector", "click_xy", "type", "scroll", "read_text", "read_element", "go_back", "evaluate", "close"]
+        },
+        url: { type: Type.STRING, description: "URL para open." },
+        selector: { type: Type.STRING, description: "Seletor CSS para click_selector, type, read_element." },
+        text: { type: Type.STRING, description: "Texto para type." },
+        x: { type: Type.NUMBER, description: "Coordenada X para click_xy." },
+        y: { type: Type.NUMBER, description: "Coordenada Y para click_xy." },
+        direction: { type: Type.STRING, description: "Direção do scroll: 'up' ou 'down'." },
+        script: { type: Type.STRING, description: "Código JavaScript para evaluate." },
+      },
+      required: ["action"]
+    }
+  },
   // ── AUTO-EVOLUÇÃO — Ler/Editar código e atualizar GitHub ─────────────────────
   {
     name: "self_read_code",

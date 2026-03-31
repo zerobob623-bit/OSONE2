@@ -677,6 +677,281 @@ res.status(500).json({ error: e.message });
 }
 });
 
+// ─── MODO OPERADOR — Passo combinado (ação + screenshot) ─────────────────────
+app.post('/api/operator/step', async (req, res) => {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '');
+  const isLocal = ['127.0.0.1', '::1', '::ffff:127.0.0.1', 'localhost', '0.0.0.0'].some(a => ip.includes(a));
+  if (!isLocal) return res.status(403).json({ error: 'Modo operador disponível apenas localmente.' });
+
+  const { action, x, y, drag_to_x, drag_to_y, text, key, direction, scroll_amount = 3, url, app: appName, wait_seconds = 2 } = req.body;
+  const plat = process.platform;
+
+  try {
+    // 1. EXECUTAR AÇÃO (se não for observe/done)
+    let actionResult = '';
+
+    if (action === 'click' && x != null && y != null) {
+      if (plat === 'linux') await runCmd(`xdotool mousemove ${Math.round(x)} ${Math.round(y)} click 1`);
+      else if (plat === 'darwin') await runCmd(`cliclick c:${Math.round(x)},${Math.round(y)}`);
+      actionResult = `Clicou em (${x}, ${y})`;
+    }
+    else if (action === 'double_click' && x != null && y != null) {
+      if (plat === 'linux') await runCmd(`xdotool mousemove ${Math.round(x)} ${Math.round(y)} click --repeat 2 --delay 100 1`);
+      actionResult = `Duplo clique em (${x}, ${y})`;
+    }
+    else if (action === 'right_click' && x != null && y != null) {
+      if (plat === 'linux') await runCmd(`xdotool mousemove ${Math.round(x)} ${Math.round(y)} click 3`);
+      actionResult = `Clique direito em (${x}, ${y})`;
+    }
+    else if (action === 'type' && text) {
+      if (plat === 'linux') {
+        const esc = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        await runCmd(`xdotool type --clearmodifiers --delay 20 '${esc}'`);
+      } else if (plat === 'darwin') {
+        const esc = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        await runCmd(`osascript -e 'tell application "System Events" to keystroke "${esc}"'`);
+      }
+      actionResult = `Digitou: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`;
+    }
+    else if (action === 'press_key' && key) {
+      if (plat === 'linux') await runCmd(`xdotool key ${key}`);
+      else if (plat === 'darwin') {
+        const k = key.replace('ctrl', 'control').replace('super', 'command').replace('alt', 'option');
+        await runCmd(`osascript -e 'tell application "System Events" to keystroke "${k.split('+').pop()}" using {${k.split('+').slice(0,-1).map((m: string)=>m+' down').join(', ')}}'`);
+      }
+      actionResult = `Pressionou: ${key}`;
+    }
+    else if (action === 'scroll') {
+      const dir = direction === 'up' ? 4 : 5;
+      const amt = scroll_amount || 3;
+      if (plat === 'linux') {
+        for (let i = 0; i < amt; i++) await runCmd(`xdotool click ${dir}`);
+      }
+      actionResult = `Scroll ${direction || 'down'} (${amt}x)`;
+    }
+    else if (action === 'drag' && x != null && y != null && drag_to_x != null && drag_to_y != null) {
+      if (plat === 'linux') {
+        await runCmd(`xdotool mousemove ${Math.round(x)} ${Math.round(y)} mousedown 1`);
+        await new Promise(r => setTimeout(r, 100));
+        await runCmd(`xdotool mousemove --delay 50 ${Math.round(drag_to_x)} ${Math.round(drag_to_y)} mouseup 1`);
+      }
+      actionResult = `Arrastou de (${x},${y}) até (${drag_to_x},${drag_to_y})`;
+    }
+    else if (action === 'open_url' && url) {
+      if (plat === 'linux') runCmd(`xdg-open "${url}" &`);
+      else if (plat === 'darwin') runCmd(`open "${url}"`);
+      else runCmd(`start "" "${url}"`);
+      await new Promise(r => setTimeout(r, 2000)); // Espera carregar
+      actionResult = `Abriu URL: ${url}`;
+    }
+    else if (action === 'open_app' && appName) {
+      if (plat === 'linux') runCmd(`(xdg-open "${appName}" 2>/dev/null || ${appName} 2>/dev/null) &`);
+      else if (plat === 'darwin') runCmd(`open -a "${appName}"`);
+      else runCmd(`start "" "${appName}"`);
+      await new Promise(r => setTimeout(r, 2000));
+      actionResult = `Abriu app: ${appName}`;
+    }
+    else if (action === 'wait') {
+      await new Promise(r => setTimeout(r, (wait_seconds || 2) * 1000));
+      actionResult = `Esperou ${wait_seconds || 2}s`;
+    }
+    else if (action === 'done') {
+      return res.json({ success: true, action: 'done', message: 'Tarefa concluída pelo operador.' });
+    }
+    else if (action === 'observe') {
+      actionResult = 'Observando tela...';
+    }
+
+    // Pausa breve para a UI atualizar antes do screenshot
+    if (action !== 'observe' && action !== 'wait') {
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    // 2. TIRAR SCREENSHOT
+    const tmp = path.join(os.tmpdir(), `osone_op_${Date.now()}.png`);
+    if (plat === 'linux') {
+      await runCmd(
+        `scrot "${tmp}" 2>/dev/null || gnome-screenshot -f "${tmp}" 2>/dev/null || import -window root "${tmp}" 2>/dev/null`
+      );
+    } else if (plat === 'darwin') {
+      await runCmd(`screencapture -x "${tmp}"`);
+    } else {
+      await runCmd(
+        `powershell -Command "Add-Type -AssemblyName System.Drawing,System.Windows.Forms; ` +
+        `$b=New-Object System.Drawing.Bitmap([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width,[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height); ` +
+        `$g=[System.Drawing.Graphics]::FromImage($b); $g.CopyFromScreen([System.Drawing.Point]::Empty,[System.Drawing.Point]::Empty,$b.Size); ` +
+        `$b.Save('${tmp}'); $g.Dispose(); $b.Dispose()"`
+      );
+    }
+
+    if (!fs.existsSync(tmp)) {
+      return res.json({ success: true, action, actionResult, screenshot: false, error: 'Screenshot falhou' });
+    }
+
+    const image = fs.readFileSync(tmp).toString('base64');
+    try { fs.unlinkSync(tmp); } catch {}
+
+    return res.json({
+      success: true,
+      action,
+      actionResult,
+      screenshot: true,
+      image,
+      mimeType: 'image/png'
+    });
+
+  } catch (err: any) {
+    console.error('[operator-step]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── BROWSER CONTROL — Puppeteer ─────────────────────────────────────────────
+let puppeteerBrowser: any = null;
+let puppeteerPage: any = null;
+
+async function getPuppeteer() {
+  try { return await import('puppeteer'); } catch { return null; }
+}
+
+async function getBrowserPage() {
+  if (puppeteerPage && puppeteerBrowser?.isConnected()) return puppeteerPage;
+  const puppeteer = await getPuppeteer();
+  if (!puppeteer) throw new Error('Puppeteer não instalado. Execute: npm install puppeteer');
+  puppeteerBrowser = await puppeteer.default.launch({
+    headless: false,
+    defaultViewport: { width: 1280, height: 800 },
+    args: ['--no-sandbox', '--start-maximized']
+  });
+  const pages = await puppeteerBrowser.pages();
+  puppeteerPage = pages[0] || await puppeteerBrowser.newPage();
+  return puppeteerPage;
+}
+
+app.post('/api/browser/control', async (req, res) => {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '');
+  const isLocal = ['127.0.0.1', '::1', '::ffff:127.0.0.1', 'localhost', '0.0.0.0'].some(a => ip.includes(a));
+  if (!isLocal) return res.status(403).json({ error: 'Browser control disponível apenas localmente.' });
+
+  const { action, url, selector, text, x, y, direction, script } = req.body;
+
+  try {
+    // ── OPEN ──────────────────────────────────────────────────────────────
+    if (action === 'open') {
+      if (!url) return res.status(400).json({ error: 'URL é obrigatória' });
+      const page = await getBrowserPage();
+      await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+      const screenshot = await page.screenshot({ encoding: 'base64', type: 'png' });
+      return res.json({ success: true, action: 'open', url, image: screenshot, mimeType: 'image/png' });
+    }
+
+    // ── SCREENSHOT ────────────────────────────────────────────────────────
+    if (action === 'screenshot') {
+      const page = await getBrowserPage();
+      const screenshot = await page.screenshot({ encoding: 'base64', type: 'png' });
+      return res.json({ success: true, image: screenshot, mimeType: 'image/png' });
+    }
+
+    // ── CLICK SELECTOR ────────────────────────────────────────────────────
+    if (action === 'click_selector') {
+      if (!selector) return res.status(400).json({ error: 'Seletor CSS é obrigatório' });
+      const page = await getBrowserPage();
+      await page.waitForSelector(selector, { timeout: 5000 }).catch(() => {});
+      await page.click(selector);
+      await new Promise(r => setTimeout(r, 500));
+      const screenshot = await page.screenshot({ encoding: 'base64', type: 'png' });
+      return res.json({ success: true, action: 'click_selector', selector, image: screenshot, mimeType: 'image/png' });
+    }
+
+    // ── CLICK XY ──────────────────────────────────────────────────────────
+    if (action === 'click_xy') {
+      if (x == null || y == null) return res.status(400).json({ error: 'Coordenadas x,y são obrigatórias' });
+      const page = await getBrowserPage();
+      await page.mouse.click(x, y);
+      await new Promise(r => setTimeout(r, 500));
+      const screenshot = await page.screenshot({ encoding: 'base64', type: 'png' });
+      return res.json({ success: true, action: 'click_xy', x, y, image: screenshot, mimeType: 'image/png' });
+    }
+
+    // ── TYPE ──────────────────────────────────────────────────────────────
+    if (action === 'type') {
+      if (!text) return res.status(400).json({ error: 'Texto é obrigatório' });
+      const page = await getBrowserPage();
+      if (selector) {
+        await page.waitForSelector(selector, { timeout: 5000 }).catch(() => {});
+        await page.click(selector);
+        await page.type(selector, text, { delay: 30 });
+      } else {
+        await page.keyboard.type(text, { delay: 30 });
+      }
+      await new Promise(r => setTimeout(r, 300));
+      const screenshot = await page.screenshot({ encoding: 'base64', type: 'png' });
+      return res.json({ success: true, action: 'type', text: text.substring(0, 50), image: screenshot, mimeType: 'image/png' });
+    }
+
+    // ── SCROLL ────────────────────────────────────────────────────────────
+    if (action === 'scroll') {
+      const page = await getBrowserPage();
+      await page.evaluate((dir: string) => {
+        window.scrollBy(0, dir === 'up' ? -500 : 500);
+      }, direction || 'down');
+      await new Promise(r => setTimeout(r, 500));
+      const screenshot = await page.screenshot({ encoding: 'base64', type: 'png' });
+      return res.json({ success: true, action: 'scroll', direction, image: screenshot, mimeType: 'image/png' });
+    }
+
+    // ── READ TEXT ─────────────────────────────────────────────────────────
+    if (action === 'read_text') {
+      const page = await getBrowserPage();
+      const text_content = await page.evaluate(() => document.body.innerText);
+      return res.json({ success: true, action: 'read_text', text: (text_content as string).substring(0, 8000) });
+    }
+
+    // ── READ ELEMENT ──────────────────────────────────────────────────────
+    if (action === 'read_element') {
+      if (!selector) return res.status(400).json({ error: 'Seletor CSS é obrigatório' });
+      const page = await getBrowserPage();
+      const el_text = await page.evaluate((sel: string) => {
+        const el = document.querySelector(sel);
+        return el ? el.textContent : null;
+      }, selector);
+      return res.json({ success: true, action: 'read_element', selector, text: el_text });
+    }
+
+    // ── GO BACK ───────────────────────────────────────────────────────────
+    if (action === 'go_back') {
+      const page = await getBrowserPage();
+      await page.goBack({ waitUntil: 'networkidle2' }).catch(() => {});
+      const screenshot = await page.screenshot({ encoding: 'base64', type: 'png' });
+      return res.json({ success: true, action: 'go_back', image: screenshot, mimeType: 'image/png' });
+    }
+
+    // ── EVALUATE JS ───────────────────────────────────────────────────────
+    if (action === 'evaluate') {
+      if (!script) return res.status(400).json({ error: 'Script JS é obrigatório' });
+      const page = await getBrowserPage();
+      const result = await page.evaluate(script);
+      return res.json({ success: true, action: 'evaluate', result: String(result).substring(0, 5000) });
+    }
+
+    // ── CLOSE ─────────────────────────────────────────────────────────────
+    if (action === 'close') {
+      if (puppeteerBrowser) {
+        await puppeteerBrowser.close().catch(() => {});
+        puppeteerBrowser = null;
+        puppeteerPage = null;
+      }
+      return res.json({ success: true, action: 'close', message: 'Navegador fechado.' });
+    }
+
+    return res.status(400).json({ error: `Ação desconhecida: ${action}` });
+
+  } catch (err: any) {
+    console.error('[browser-control]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── TEXT CHAT — OpenAI gpt-4.1-mini ─────────────────────────────────────────
 app.post("/api/chat", async (req, res) => {
 const { messages, systemInstruction } = req.body;
