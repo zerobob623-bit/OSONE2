@@ -222,7 +222,6 @@ const resetSilenceTimer = useCallback(() => {
       
   }, SILENCE_TIMEOUT_MS);
 
-}, [stopSilenceTimer]);
     }, SILENCE_TIMEOUT_MS);
   }, [stopSilenceTimer]);
 
