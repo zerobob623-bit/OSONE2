@@ -179,10 +179,7 @@ export const useGeminiLive = ({
       console.log(`[silêncio] ${SILENCE_TIMEOUT_MS / 1000}s — iniciando fala espontânea`);
       safeSessionSend(sessionRef, isConnectedRef, (session) => {
   session.sendRealtimeInput({
-    audio: {
-      data: toBase64(combined.buffer),
-      mimeType: 'audio/pcm;rate=16000'
-    }
+    text: `[SISTEMA: O usuário está em silêncio há ${SILENCE_TIMEOUT_MS / 1000} segundos. Inicie a conversa naturalmente.]`
   });
 });
         if (!isConnectedRef.current) return;
