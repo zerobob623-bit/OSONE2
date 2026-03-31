@@ -930,7 +930,7 @@ export const useGeminiLive = ({
           const base64 = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
           safeSessionSend(sessionRef, isConnectedRef, (session) => {
   session.sendRealtimeInput({
-    video: { data: base64, mimeType: 'image/jpeg' }
+    text: `[SISTEMA: O usuário está em silêncio há ${SILENCE_TIMEOUT_MS / 1000} segundos. Inicie a conversa naturalmente.]`
   });
 });
             if (!isConnectedRef.current) return;
