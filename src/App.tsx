@@ -818,14 +818,18 @@ export default function App() {
     setAttachPreview({ type: file.type, name: file.name, data: dataUrl });
     setTimeout(() => setAttachPreview(null), 6000);
 
-    // ── 5. Transmissão multimodal com tratamento de exceção ──────────────────
-    setIsThinking(true);
-    try {
-      // Se a conexão caiu exatamente agora, reconectar antes de tentar
-      if (!isConnected) {
-        await connect(systemInstruction);
-        await new Promise(r => setTimeout(r, 1200));
-      }
+   // ── 3. Garantir conexão ────────────────────────────────────────────
+if (!isConnected && !isConnectingRef.current) {
+  isConnectingRef.current = true;
+  if (onboardingStep === 'initial') setOnboardingStep('completed');
+  setIsMuted(false);
+  try {
+    await connect(systemInstruction);
+    await new Promise(r => setTimeout(r, 1500));
+  } finally {
+    isConnectingRef.current = false;
+  }
+}
 
       if (isImage) {
         await sendFile(
@@ -856,31 +860,44 @@ export default function App() {
   const onManualVoiceChange = (v: VoiceName) => handleVoiceChange(v, isConnected, disconnect, connect);
 
   const handlePersonalityChange = useCallback(async (newPersonality: Personality) => {
-    setPersonality(newPersonality);
-    setShowPersonalityPicker(false);
-    const config = PERSONALITY_CONFIG[newPersonality];
-    setVoice(config.voice);
-    if (isConnected) {
-      disconnect(true);
-      await new Promise(r => setTimeout(r, 600));
+  if (isConnectingRef.current) return;
+  setPersonality(newPersonality);
+  setShowPersonalityPicker(false);
+  const config = PERSONALITY_CONFIG[newPersonality];
+  setVoice(config.voice);
+  if (isConnected) {
+    isConnectingRef.current = true;
+    disconnect(true);
+    await new Promise(r => setTimeout(r, 600));
+    try {
       await connect(
         newPersonality === 'ezer' ? getEzerInstruction(memory, focusMode) :
         newPersonality === 'samuel' ? getSamuelInstruction(memory, focusMode) :
         newPersonality === 'jonas' ? getJonasInstruction(memory, focusMode) :
         getSystemInstruction(assistantName, memory, mood, focusMode, upcomingDates, voice)
       );
+    } finally {
+      isConnectingRef.current = false;
     }
-  }, [isConnected, disconnect, connect, memory, focusMode, mood, assistantName, upcomingDates, voice, setVoice]);
+  }
+}, [isConnected, disconnect, connect, memory, focusMode, mood, assistantName, upcomingDates, voice, setVoice]);
 
   const handleOrbClick = async () => {
-    if (isConnected) { disconnect(); }
-    else {
-      if (onboardingStep === 'initial') setOnboardingStep('completed');
-      setIsMuted(true);
+  if (isConnectingRef.current) return;
+  if (isConnected) { 
+    disconnect(); 
+  } else {
+    isConnectingRef.current = true;
+    if (onboardingStep === 'initial') setOnboardingStep('completed');
+    setIsMuted(true);
+    try {
       await connect(systemInstruction);
       setTimeout(() => sendLiveMessage(PERSONALITY_CONFIG[personality].greeting), 2500);
+    } finally {
+      isConnectingRef.current = false;
     }
-  };
+  }
+};
 
   const handleSendText = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -891,20 +908,33 @@ export default function App() {
   };
 
   const handleScreenShare = useCallback(async () => {
-    if (!isConnected) {
-      if (onboardingStep === 'initial') setOnboardingStep('completed');
-      setIsMuted(false);
+  if (isConnectingRef.current) return;
+  if (!isConnected) {
+    isConnectingRef.current = true;
+    if (onboardingStep === 'initial') setOnboardingStep('completed');
+    setIsMuted(false);
+    try {
       await connect(systemInstruction);
       await new Promise(r => setTimeout(r, 1500));
+    } finally {
+      isConnectingRef.current = false;
     }
-    await startScreenSharing();
-    setIsScreenSharing(true);
-  }, [isConnected, connect, systemInstruction, startScreenSharing, onboardingStep, setOnboardingStep]);
+  }
+  await startScreenSharing();
+  setIsScreenSharing(true);
+}, [isConnected, connect, systemInstruction, startScreenSharing, onboardingStep, setOnboardingStep]);
 
   const handleMicToggle = useCallback(() => {
-    if (isConnected) setIsMuted(!isMuted);
-    else connect(systemInstruction);
-  }, [isConnected, isMuted, connect, systemInstruction]);
+  if (isConnectingRef.current) return;
+  if (isConnected) {
+    setIsMuted(!isMuted);
+  } else {
+    isConnectingRef.current = true;
+    connect(systemInstruction).finally(() => {
+      setTimeout(() => { isConnectingRef.current = false; }, 500);
+    });
+  }
+}, [isConnected, isMuted, connect, systemInstruction]);
 
   const statusLabel = isThinking ? 'Pensando...' : isSpeaking ? 'Falando...' : (isConnected && isMuted) ? 'Microfone Silenciado' : isListening ? 'Ouvindo...' : isConnected ? 'Toque para desligar' : 'Toque para ativar';
 
@@ -969,8 +999,19 @@ export default function App() {
         switchInterface(dx < 0 ? 1 : -1);
       }}
     >
-      {onboardingStep === 'supernova' && <Supernova onComplete={() => { setOnboardingStep('completed'); connect(systemInstruction); setTimeout(() => sendLiveMessage("Oi, estou aqui."), 2500); }} />}
-      <Mascot onToggleVoice={handleOrbClick} />
+      {onboardingStep === 'supernova' && (
+  <Supernova onComplete={async () => {
+    if (isConnectingRef.current) return;
+    isConnectingRef.current = true;
+    setOnboardingStep('completed');
+    try {
+      await connect(systemInstruction);
+      setTimeout(() => sendLiveMessage("Oi, estou aqui."), 2500);
+    } finally {
+      isConnectingRef.current = false;
+    }
+  }} />
+)}
 
       {/* LAYOUT SWITCHER */}
       <AnimatePresence mode="wait">
