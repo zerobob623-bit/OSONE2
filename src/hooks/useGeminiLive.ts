@@ -168,20 +168,37 @@ export const useGeminiLive = ({
   }, []);
 
   const resetSilenceTimer = useCallback(() => {
-    stopSilenceTimer();
-    silenceTimerRef.current = setTimeout(() => {
-      if (!isConnectedRef.current || !sessionRef.current) return;
-      if (activeSourcesRef.current.length > 0 || useAppStore.getState().isThinking) {
-        resetSilenceTimer();
-        return;
-      }
-      const prompt = SPONTANEOUS_PROMPTS[Math.floor(Math.random() * SPONTANEOUS_PROMPTS.length)];
-      console.log(`[silêncio] ${SILENCE_TIMEOUT_MS / 1000}s — iniciando fala espontânea`);
-      safeSessionSend(sessionRef, isConnectedRef, (session) => {
-  session.sendRealtimeInput({
-    text: `[SISTEMA: O usuário está em silêncio há ${SILENCE_TIMEOUT_MS / 1000} segundos. Inicie a conversa naturalmente.]`
-  });
-});
+  stopSilenceTimer();
+
+  silenceTimerRef.current = setTimeout(() => {
+    if (!isConnectedRef.current || !sessionRef.current) return;
+
+    if (activeSourcesRef.current.length > 0 || useAppStore.getState().isThinking) {
+      resetSilenceTimer();
+      return;
+    }
+
+    const prompt = SPONTANEOUS_PROMPTS[
+      Math.floor(Math.random() * SPONTANEOUS_PROMPTS.length)
+    ];
+
+    console.log(`[silêncio] ${SILENCE_TIMEOUT_MS / 1000}s — iniciando fala espontânea`);
+
+    sessionRef.current
+      .then((session: any) => {
+        if (!isConnectedRef.current) return;
+
+        try {
+          session.sendRealtimeInput({
+            text: `[SISTEMA: O usuário está em silêncio há ${SILENCE_TIMEOUT_MS / 1000} segundos. Inicie a conversa naturalmente. Sugestão: "${prompt}"]`
+          });
+        } catch (e) {}
+      })
+      .catch(() => {});
+
+  }, SILENCE_TIMEOUT_MS);
+
+}, [stopSilenceTimer]);
         if (!isConnectedRef.current) return;
         try { session.sendRealtimeInput({ text: `[SISTEMA: O usuário está em silêncio há ${SILENCE_TIMEOUT_MS / 1000} segundos. Inicie a conversa naturalmente. Sugestão: "${prompt}" — mas use seu próprio estilo e personalidade.]` }); }
         catch (e) { /* WebSocket fechado — ignora */ }
