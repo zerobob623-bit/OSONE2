@@ -775,19 +775,59 @@ export default function App() {
   });
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
+  const file = e.target.files?.[0];
+  if (!file) return;
+  e.target.value = '';
 
-    // ── 1. Validação de tipo MIME ────────────────────────────────────────────
-    const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-    const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
-    const isPdf   = file.type === 'application/pdf';
+  const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+  const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
+  const isPdf = file.type === 'application/pdf';
 
-    if (!isImage && !isPdf) {
-      sendLiveMessage(`❌ Formato não suportado: "${file.type}". Envie imagens JPEG, PNG ou WEBP, ou documentos PDF.`);
-      return;
+  if (!isImage && !isPdf) {
+    sendLiveMessage(`❌ Formato não suportado: "${file.type}".`);
+    return;
+  }
+
+  const MAX_BYTES = 4 * 1024 * 1024;
+  if (file.size > MAX_BYTES) {
+    sendLiveMessage(`❌ Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)} MB).`);
+    return;
+  }
+
+  if (!isConnected) {
+    if (onboardingStep === 'initial') setOnboardingStep('completed');
+    setIsMuted(false);
+    await connect(systemInstruction);
+    await new Promise(r => setTimeout(r, 1500));
+  }
+
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Falha ao ler'));
+    reader.readAsDataURL(file);
+  });
+
+  const base64 = dataUrl.split(',')[1];
+  setAttachPreview({ type: file.type, name: file.name, data: dataUrl });
+  setTimeout(() => setAttachPreview(null), 6000);
+
+  setIsThinking(true);
+  try {
+    if (!isConnected) {
+      await connect(systemInstruction);
+      await new Promise(r => setTimeout(r, 1200));
     }
+    if (isImage) {
+      await sendFile(base64, file.type, '[PVCO] Analise esta imagem.');
+    } else {
+      await sendFile(base64, 'application/pdf', 'Resuma este PDF.');
+    }
+  } catch (err: any) {
+    setIsThinking(false);
+    sendLiveMessage(`❌ Erro: ${err?.message ?? 'desconhecido'}`);
+  }
+}, [sendLiveMessage, sendFile, isConnected, connect, systemInstruction, onboardingStep, setOnboardingStep, setIsThinking]);
 
     // ── 2. Verificação de integridade (limite 4 MB) ──────────────────────────
     const MAX_BYTES = 4 * 1024 * 1024;
