@@ -1,6 +1,6 @@
 // src/hooks/useGeminiLive.ts
-// ✅ + Análise automática de tela (a cada troca de app)
-// ✅ + Fala espontânea após 30s de silêncio
+// ✅ Análise automática de tela (a cada troca de app)
+// ✅ Fala espontânea após 60s de silêncio
 
 import { useCallback, useEffect, useRef } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
@@ -19,10 +19,9 @@ export interface UseGeminiLiveProps {
 }
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
-const SILENCE_TIMEOUT_MS = 60_000;       // 60s de silêncio → fala espontânea
-const SCREEN_ANALYSIS_INTERVAL_MS = 3_000; // envia frame a cada 3s durante screen share
+const SILENCE_TIMEOUT_MS = 60_000;
+const SCREEN_ANALYSIS_INTERVAL_MS = 3_000;
 
-// Frases de iniciativa espontânea
 const SPONTANEOUS_PROMPTS = [
   "Estou aqui se você precisar de algo.",
   "Posso te ajudar com alguma coisa agora?",
@@ -30,6 +29,21 @@ const SPONTANEOUS_PROMPTS = [
   "Se quiser pensar em voz alta, estou ouvindo.",
   "Tem algo em que eu possa ajudar?",
 ];
+
+// ─── Helper seguro para envio de mensagens ──────────────────────────────────
+const safeSessionSend = (
+  sessionRef: React.MutableRefObject<any>,
+  isConnectedRef: React.MutableRefObject<boolean>,
+  callback: (session: any) => void
+) => {
+  if (!sessionRef.current || !isConnectedRef.current) return;
+  sessionRef.current
+    .then((session: any) => {
+      if (!isConnectedRef.current) return;
+      try { callback(session); } catch {}
+    })
+    .catch(() => {});
+};
 
 export const useGeminiLive = ({
   onToggleScreenSharing,
@@ -62,7 +76,7 @@ export const useGeminiLive = ({
 
   const sessionRef = useRef<any>(null);
   const isConnectedRef = useRef(false);
-  const isConnectingRef = useRef(false);  // ← previne double-connect durante handshake
+  const isConnectingRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const inputAudioContextRef = useRef<AudioContext | null>(null);
   const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
@@ -73,7 +87,6 @@ export const useGeminiLive = ({
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const isMutedRef = useRef(isMuted);
 
-  // ─── Refs para silêncio e análise de tela ────────────────────────────────
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const screenAnalysisActiveRef = useRef(false);
 
@@ -103,7 +116,7 @@ export const useGeminiLive = ({
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     if (audioWorkletNodeRef.current) {
-      audioWorkletNodeRef.current.port.onmessage = null; // ← para envios residuais
+      audioWorkletNodeRef.current.port.onmessage = null;
       audioWorkletNodeRef.current.disconnect();
       audioWorkletNodeRef.current = null;
     }
@@ -158,8 +171,6 @@ export const useGeminiLive = ({
 
   // ============================================================
   // 🔕 SILÊNCIO → FALA ESPONTÂNEA
-  // Reinicia o timer toda vez que há atividade
-  // Após 30s sem atividade, a IA inicia conversa sozinha
   // ============================================================
 
   const stopSilenceTimer = useCallback(() => {
@@ -173,27 +184,24 @@ export const useGeminiLive = ({
     stopSilenceTimer();
     silenceTimerRef.current = setTimeout(() => {
       if (!isConnectedRef.current || !sessionRef.current) return;
-      // Não interrompe se a IA já está falando ou processando
       if (activeSourcesRef.current.length > 0 || useAppStore.getState().isThinking) {
         resetSilenceTimer();
         return;
       }
       const prompt = SPONTANEOUS_PROMPTS[Math.floor(Math.random() * SPONTANEOUS_PROMPTS.length)];
       console.log(`[silêncio] ${SILENCE_TIMEOUT_MS / 1000}s — iniciando fala espontânea`);
-      sessionRef.current.then((session: any) => {
-        if (!isConnectedRef.current) return;
-        try { session.sendRealtimeInput({ text: `[SISTEMA: O usuário está em silêncio há ${SILENCE_TIMEOUT_MS / 1000} segundos. Inicie a conversa naturalmente. Sugestão: "${prompt}" — mas use seu próprio estilo e personalidade.]` }); }
-        catch (e) { /* WebSocket fechado — ignora */ }
-      }).catch(() => {});
+      safeSessionSend(sessionRef, isConnectedRef, (session) => {
+        session.sendRealtimeInput({
+          text: `[SISTEMA: O usuário está em silêncio há ${SILENCE_TIMEOUT_MS / 1000} segundos. Inicie a conversa naturalmente. Sugestão: "${prompt}"]`
+        });
+      });
     }, SILENCE_TIMEOUT_MS);
   }, [stopSilenceTimer]);
 
   // ============================================================
-  // 🌐 BUSCA WEB — Wikipedia OpenSearch PT+EN + DDG Instant Answer
-  // Sem API key. CORS nativo em todas as fontes.
+  // 🌐 BUSCA WEB
   // ============================================================
 
-  // Helper: fetch com timeout (AbortController)
   const fetchT = useCallback(async (url: string, ms = 12_000): Promise<Response> => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), ms);
@@ -204,18 +212,14 @@ export const useGeminiLive = ({
     } catch (e) { clearTimeout(t); throw e; }
   }, []);
 
-  // Wikipedia: busca + summaries das páginas top
   const wikiSearch = useCallback(async (query: string, lang: 'pt' | 'en', n: number): Promise<string> => {
     const enc = encodeURIComponent(query);
-    // OpenSearch retorna [query, [títulos], [descrições], [urls]]
     const res = await fetchT(
       `https://${lang}.wikipedia.org/w/api.php?action=opensearch&search=${enc}&limit=${n}&format=json&origin=*`
     );
     if (!res.ok) throw new Error(`Wiki-${lang} ${res.status}`);
     const [, titles, descs] = await res.json() as [string, string[], string[], string[]];
     if (!titles.length) return '';
-
-    // Busca summaries das 2 primeiras páginas para mais profundidade
     const summaryLines = await Promise.all(
       titles.slice(0, 2).map(async (title: string) => {
         try {
@@ -228,25 +232,20 @@ export const useGeminiLive = ({
         } catch { return null; }
       })
     );
-
     const lines: string[] = [];
     summaryLines.forEach((s, i) => {
       if (s) lines.push(s);
       else if (descs[i]) lines.push(`**${titles[i]}**: ${descs[i]}`);
     });
-    // Títulos restantes sem summary
     titles.slice(2).forEach((t, i) => {
       if (descs[i + 2]) lines.push(`${t}: ${descs[i + 2]}`);
     });
-
     return lines.join('\n\n');
   }, [fetchT]);
 
   const performWebSearch = useCallback(async (query: string, numResults = 5): Promise<string> => {
     const enc = encodeURIComponent(query);
     const parts: string[] = [];
-
-    // ── 1. DuckDuckGo Instant Answer (resposta direta para fatos/cálculos) ──
     try {
       const res = await fetchT(
         `https://api.duckduckgo.com/?q=${enc}&format=json&no_html=1&skip_disambig=1`
@@ -258,28 +257,22 @@ export const useGeminiLive = ({
         if (d.Definition)   parts.push(`Definição: ${d.Definition}`);
       }
     } catch (e: any) { console.warn('[search] DDG:', e.message); }
-
-    // ── 2. Wikipedia PT (primário para conteúdo em português) ────────────────
     try {
       const ptResult = await wikiSearch(query, 'pt', numResults);
       if (ptResult) parts.push(ptResult);
     } catch (e: any) { console.warn('[search] Wiki-PT:', e.message); }
-
-    // ── 3. Wikipedia EN (fallback se PT não encontrou nada) ──────────────────
     if (parts.length === 0) {
       try {
         const enResult = await wikiSearch(query, 'en', numResults);
         if (enResult) parts.push(enResult);
       } catch (e: any) { console.warn('[search] Wiki-EN:', e.message); }
     }
-
     if (parts.length === 0) return `⚠️ Nenhum resultado encontrado para "${query}".`;
     return `🔍 "${query}":\n\n${parts.join('\n\n').substring(0, 6000)}`;
   }, [fetchT, wikiSearch]);
 
   const readUrlContent = useCallback(async (rawUrl: string): Promise<string> => {
     const url = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
-    // allorigins.win — proxy CORS público gratuito, sem API key
     try {
       const res = await fetchT(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -309,8 +302,6 @@ export const useGeminiLive = ({
       const [w, h] = (sizeMap[aspectRatio] || '1024x1024').split('x');
       let imageUrl: string | null = null;
       let source = '';
-
-      // ── Primário: DALL-E 3 (OpenAI) ────────────────────────────────────────
       if (openaiApiKey) {
         try {
           const resp = await fetch('https://api.openai.com/v1/images/generations', {
@@ -323,15 +314,12 @@ export const useGeminiLive = ({
             imageUrl = data.data[0].url;
             source = 'DALL-E 3';
           }
-        } catch { /* cai para fallback */ }
+        } catch { /* fallback */ }
       }
-
-      // ── Fallback: Pollinations.AI (gratuito, sem chave) ─────────────────────
       if (!imageUrl) {
         imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&nologo=true&enhance=true&model=flux`;
         source = 'Pollinations (grátis)';
       }
-
       addMessage({ role: 'model', text: `Imagem gerada para: "${prompt}" · via ${source}`, imageUrl });
       onMessageRef.current?.({ role: 'model', text: `Imagem gerada para: "${prompt}" · via ${source}`, imageUrl });
     } catch (e: any) {
@@ -367,7 +355,6 @@ export const useGeminiLive = ({
       let replyText = '';
       const activeKey = chatProvider === 'groq' ? groqApiKey : openaiApiKey;
       if (activeKey) {
-        // Chama API diretamente do browser (sem servidor)
         const baseUrl = chatProvider === 'groq'
           ? 'https://api.groq.com/openai/v1/chat/completions'
           : 'https://api.openai.com/v1/chat/completions';
@@ -393,7 +380,6 @@ export const useGeminiLive = ({
         const data: any = await res.json();
         replyText = data.choices?.[0]?.message?.content || '';
       } else {
-        // Fallback: usa rota do servidor
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -426,7 +412,7 @@ export const useGeminiLive = ({
   // ============================================================
 
   const connect = useCallback(async (sysInstruction: string) => {
-    if (isConnectedRef.current || isConnectingRef.current) {
+    if (isConnectedRef.current || isConnectingRef.current || sessionRef.current) {
       console.warn("Já conectado/conectando — ignorando connect() duplicado.");
       return;
     }
@@ -435,10 +421,7 @@ export const useGeminiLive = ({
       setError(null);
       const apiKey = storedApiKey || process.env.GEMINI_API_KEY;
       if (!apiKey) throw new Error("Chave de API não encontrada. Configure nas Configurações.");
-
       const ai = new GoogleGenAI({ apiKey });
-
-      // Cria/recria o AudioContext de saída (24kHz para playback da IA)
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
         audioContextRef.current = new AudioContext({ sampleRate: 24000 });
         try { await audioContextRef.current.audioWorklet.addModule('/audio-processor.js'); } catch {}
@@ -447,7 +430,7 @@ export const useGeminiLive = ({
       }
 
       const sessionPromise = ai.live.connect({
-        model: "gemini-2.5-flash-preview-native-audio-dialog",
+        model: "gemini-live-2.5-flash-native-audio",
         config: {
           responseModalities: [Modality.AUDIO],
           ...(sysInstruction ? { systemInstruction: sysInstruction } : {}),
@@ -456,7 +439,7 @@ export const useGeminiLive = ({
           },
           tools: [
             { functionDeclarations: [...TOOL_DECLARATIONS, ...buildCustomToolDeclarations(useAppStore.getState().customSkills)] },
-            { googleSearch: {} } as any,  // Google Search grounding nativo
+            { googleSearch: {} } as any,
           ]
         },
         callbacks: {
@@ -466,14 +449,13 @@ export const useGeminiLive = ({
             setIsConnected(true);
             isConnectedRef.current = true;
             setIsListening(true);
-            resetSilenceTimer(); // ✅ inicia timer ao conectar
+            resetSilenceTimer();
           },
-
           onmessage: async (message: any) => {
             const modelParts = message.serverContent?.modelTurn?.parts;
             if (modelParts) {
               setIsThinking(false);
-              resetSilenceTimer(); // ✅ IA falou → reinicia timer
+              resetSilenceTimer();
               const textContent = modelParts.filter((p: any) => p.text).map((p: any) => p.text).join('');
               if (textContent) {
                 addMessage({ role: 'model', text: textContent });
@@ -489,54 +471,44 @@ export const useGeminiLive = ({
                 }
               }
             }
-
             const userParts = message.serverContent?.userTurn?.parts;
             if (userParts) {
               const userText = userParts.filter((p: any) => p.text).map((p: any) => p.text).join('');
               if (userText) {
-                resetSilenceTimer(); // ✅ usuário falou → reinicia timer
+                resetSilenceTimer();
                 addMessage({ role: 'user', text: userText });
                 onMessageRef.current?.({ role: 'user', text: userText });
               }
             }
-
             if (message.toolCall) {
               setIsThinking(true);
               const session = await sessionPromise;
               const syncResponses: any[] = [];
               let asyncPending = 0;
-
-              // Fora do loop: uma única instância reutilizada por todas as ferramentas
               const safeSend = (response: any) => {
                 if (!isConnectedRef.current) return;
                 try { session.sendToolResponse({ functionResponses: [response] }); }
-                catch (e) { console.warn('[tool] sendToolResponse ignorado (conexão encerrada):', e); }
+                catch (e) { console.warn('[tool] sendToolResponse ignorado:', e); }
               };
-
-              // Só desativa isThinking quando todas as ferramentas assíncronas concluírem
               const finishAsync = () => {
                 asyncPending--;
                 if (asyncPending === 0) setIsThinking(false);
               };
-
               for (const call of message.toolCall.functionCalls) {
                 const { name, args = {}, id } = call;
-
                 if (name === "show_lyrics") {
                   onToolCallRef.current?.(name, args);
-                  syncResponses.push({ name, id, response: { success: true, message: "Letra exibida com sucesso! CANTE agora usando sua voz com melodia, ritmo e entonação musical. Toda a letra foi enviada de uma vez — cante do início ao fim sem chamar nenhuma outra ferramenta." } });
+                  syncResponses.push({ name, id, response: { success: true, message: "Letra exibida!" } });
                   continue;
                 }
-
                 if (DELEGATED_TOOLS.has(name)) {
                   onToolCallRef.current?.(name, args);
                   syncResponses.push({ name, id, response: { success: true } });
                   continue;
                 }
-
                 if (name === "search_web") {
                   asyncPending++;
-                  onToolCallRef.current?.('search_web_start', { query: args.query }); // UI indicator
+                  onToolCallRef.current?.('search_web_start', { query: args.query });
                   performWebSearch(args.query, args.num_results ?? 5)
                     .then(content => {
                       onToolCallRef.current?.(name, { ...args, result: content });
@@ -546,7 +518,6 @@ export const useGeminiLive = ({
                     .finally(finishAsync);
                   continue;
                 }
-
                 if (name === "read_url_content") {
                   asyncPending++;
                   readUrlContent(args.url)
@@ -558,103 +529,6 @@ export const useGeminiLive = ({
                     .finally(finishAsync);
                   continue;
                 }
-
-                // ── MODO OPERADOR — Loop autônomo ──────────────────────────
-                if (name === 'operator_step') {
-                  asyncPending++;
-                  const store = useAppStore.getState();
-
-                  // Ativar modo operador se ainda não estiver ativo
-                  if (!store.operatorMode) {
-                    store.setOperatorMode(true);
-                    if (args.task_description) store.setOperatorTask(args.task_description);
-                  }
-
-                  // Verificar limite de passos
-                  if (store.operatorSteps >= store.operatorMaxSteps) {
-                    store.setOperatorMode(false);
-                    safeSend({ name, id, response: { success: false, error: `Limite de ${store.operatorMaxSteps} passos atingido. Tarefa interrompida por segurança.` } });
-                    finishAsync();
-                    continue;
-                  }
-
-                  store.incrementOperatorStep();
-
-                  // Ação "done" = encerrar modo operador
-                  if (args.action === 'done') {
-                    store.resetOperator();
-                    onToolCallRef.current?.(name, { action: 'done', thought: args.thought });
-                    safeSend({ name, id, response: { success: true, message: 'Tarefa concluída. Modo Operador desativado.' } });
-                    finishAsync();
-                    continue;
-                  }
-
-                  fetch('/api/operator/step', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(args),
-                  })
-                    .then(r => r.json())
-                    .then(async (data) => {
-                      if (data.image) {
-                        // Enviar screenshot para visão da IA
-                        onToolCallRef.current?.(name, {
-                          action: args.action,
-                          thought: args.thought,
-                          step: store.operatorSteps,
-                          imageUrl: `data:${data.mimeType};base64,${data.image}`,
-                        });
-                        const sess = await sessionPromise;
-                        if (isConnectedRef.current) {
-                          try {
-                            sess.sendRealtimeInput({ video: { data: data.image, mimeType: data.mimeType } });
-                            sess.sendRealtimeInput({ text: `[MODO OPERADOR — Passo ${store.operatorSteps}/${store.operatorMaxSteps}] Ação executada: ${data.actionResult || args.action}. Analise o screenshot e decida o próximo passo. Use operator_step novamente.` });
-                          } catch {}
-                        }
-                        safeSend({ name, id, response: { success: true, step: store.operatorSteps, actionResult: data.actionResult, message: 'Screenshot capturado. Analise e continue.' } });
-                      } else {
-                        onToolCallRef.current?.(name, { action: args.action, thought: args.thought, result: data });
-                        safeSend({ name, id, response: data });
-                      }
-                    })
-                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
-                    .finally(finishAsync);
-                  continue;
-                }
-
-                // ── BROWSER CONTROL — Puppeteer ─────────────────────────────
-                if (name === 'browser_control') {
-                  asyncPending++;
-                  fetch('/api/browser/control', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(args),
-                  })
-                    .then(r => r.json())
-                    .then(async (data) => {
-                      if (data.image) {
-                        onToolCallRef.current?.(name, {
-                          action: args.action,
-                          imageUrl: `data:${data.mimeType};base64,${data.image}`,
-                        });
-                        const sess = await sessionPromise;
-                        if (isConnectedRef.current) {
-                          try {
-                            sess.sendRealtimeInput({ video: { data: data.image, mimeType: data.mimeType } });
-                            sess.sendRealtimeInput({ text: `[Browser Control] Ação: ${args.action}. Screenshot da página enviado. Analise e decida.` });
-                          } catch {}
-                        }
-                        safeSend({ name, id, response: { success: true, action: args.action, message: 'Screenshot da página capturado.' } });
-                      } else {
-                        onToolCallRef.current?.(name, { action: args.action, result: data });
-                        safeSend({ name, id, response: data });
-                      }
-                    })
-                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
-                    .finally(finishAsync);
-                  continue;
-                }
-
                 if (name === "control_pc") {
                   asyncPending++;
                   fetch('/api/pc/control', {
@@ -665,19 +539,14 @@ export const useGeminiLive = ({
                     .then(r => r.json())
                     .then(async (data) => {
                       if (data.image) {
-                        // Screenshot: envia imagem para visão da IA + notifica UI
-                        onToolCallRef.current?.(name, {
-                          action: args.action,
-                          imageUrl: `data:${data.mimeType};base64,${data.image}`,
-                        });
-                        const sess = await sessionPromise;
+                        onToolCallRef.current?.(name, { action: args.action, imageUrl: `data:${data.mimeType};base64,${data.image}` });
                         if (isConnectedRef.current) {
                           try {
-                            sess.sendRealtimeInput({ video: { data: data.image, mimeType: data.mimeType } });
-                            sess.sendRealtimeInput({ text: '[Sistema: Screenshot capturado e enviado como input visual. Descreva detalhadamente o que você está vendo na tela antes de agir.]' });
+                            session.sendRealtimeInput({ video: { data: data.image, mimeType: data.mimeType } });
+                            session.sendRealtimeInput({ text: '[Sistema: Screenshot capturado e enviado.]' });
                           } catch {}
                         }
-                        safeSend({ name, id, response: { success: true, message: 'Screenshot capturado — imagem enviada para sua visão.' } });
+                        safeSend({ name, id, response: { success: true, message: 'Screenshot enviado.' } });
                       } else {
                         onToolCallRef.current?.(name, { action: args.action, result: data });
                         safeSend({ name, id, response: data });
@@ -687,7 +556,6 @@ export const useGeminiLive = ({
                     .finally(finishAsync);
                   continue;
                 }
-
                 if (name === "control_device") {
                   asyncPending++;
                   const { tuyaClientId, tuyaSecret, tuyaRegion, tuyaUserId } = useAppStore.getState();
@@ -720,63 +588,7 @@ export const useGeminiLive = ({
                     .finally(finishAsync);
                   continue;
                 }
-
-                if (name === "send_whatsapp") {
-                  asyncPending++;
-                  const { myWhatsappNumber, whatsappContacts } = useAppStore.getState();
-                  // Resolve número: contact_name → lista, phone direto, fallback meu número
-                  let resolvedPhone = (args.phone || myWhatsappNumber || '').replace(/\D/g, '');
-                  if (args.contact_name) {
-                    const found = whatsappContacts.find(c =>
-                      c.name.toLowerCase().includes(args.contact_name.toLowerCase()) ||
-                      args.contact_name.toLowerCase().includes(c.name.toLowerCase())
-                    );
-                    if (found) resolvedPhone = found.phone.replace(/\D/g, '');
-                  }
-                  const contactLabel = args.contact_name || resolvedPhone;
-                  fetch('/api/whatsapp/send', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: args.message, phone: resolvedPhone })
-                  })
-                    .then(r => r.json())
-                    .then(data => {
-                      onToolCallRef.current?.(name, { ...args, contact: contactLabel });
-                      safeSend({ name, id, response: data.success ? { success: true, to: contactLabel } : { success: false, error: data.error } });
-                    })
-                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
-                    .finally(finishAsync);
-                  continue;
-                }
-
-                if (name === "send_whatsapp_audio") {
-                  asyncPending++;
-                  const { myWhatsappNumber, whatsappContacts } = useAppStore.getState();
-                  let resolvedPhone = (args.phone || myWhatsappNumber || '').replace(/\D/g, '');
-                  if (args.contact_name) {
-                    const found = whatsappContacts.find(c =>
-                      c.name.toLowerCase().includes(args.contact_name.toLowerCase()) ||
-                      args.contact_name.toLowerCase().includes(c.name.toLowerCase())
-                    );
-                    if (found) resolvedPhone = found.phone.replace(/\D/g, '');
-                  }
-                  const contactLabel = args.contact_name || resolvedPhone;
-                  fetch('/api/whatsapp/send-audio', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: args.text, phone: resolvedPhone })
-                  })
-                    .then(r => r.json())
-                    .then(data => {
-                      onToolCallRef.current?.(name, { ...args, contact: contactLabel });
-                      safeSend({ name, id, response: data.success ? { success: true, to: contactLabel } : { success: false, error: data.error } });
-                    })
-                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
-                    .finally(finishAsync);
-                  continue;
-                }
-
-                if (name === "send_whatsapp_image") {
+                if (name === "send_whatsapp" || name === "send_whatsapp_audio" || name === "send_whatsapp_image") {
                   asyncPending++;
                   const { myWhatsappNumber, whatsappContacts } = useAppStore.getState();
                   let resolvedPhone = (args.phone || myWhatsappNumber || '').replace(/\D/g, '');
@@ -788,10 +600,18 @@ export const useGeminiLive = ({
                     if (found) resolvedPhone = found.phone.replace(/\D/g, '');
                   }
                   const contactLabel = args.contact_name || resolvedPhone;
-                  fetch('/api/whatsapp/send-image', {
+                  const endpoint = name === "send_whatsapp_image" ? '/api/whatsapp/send-image'
+                    : name === "send_whatsapp_audio" ? '/api/whatsapp/send-audio'
+                    : '/api/whatsapp/send';
+                  const body = name === "send_whatsapp_image"
+                    ? { imageUrl: args.imageUrl, caption: args.caption, phone: resolvedPhone }
+                    : name === "send_whatsapp_audio"
+                    ? { text: args.text, phone: resolvedPhone }
+                    : { message: args.message, phone: resolvedPhone };
+                  fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ imageUrl: args.imageUrl, caption: args.caption, phone: resolvedPhone })
+                    body: JSON.stringify(body)
                   })
                     .then(r => r.json())
                     .then(data => {
@@ -802,8 +622,6 @@ export const useGeminiLive = ({
                     .finally(finishAsync);
                   continue;
                 }
-
-                // ── AUTO-EVOLUÇÃO — Ler/Editar código + Git Push ─────────────
                 if (name === 'self_read_code' || name === 'self_write_code' || name === 'self_list_files' || name === 'self_git_push') {
                   asyncPending++;
                   const endpoint = name === 'self_read_code' ? '/api/code/read'
@@ -824,14 +642,12 @@ export const useGeminiLive = ({
                     .finally(finishAsync);
                   continue;
                 }
-
-                // ── Custom Skills (Agente Infinito) ────────────────────────
                 if (name.startsWith('skill_')) {
                   asyncPending++;
                   const skillId = name.replace('skill_', '');
                   const skill = useAppStore.getState().customSkills.find((s: any) => s.id === skillId && s.active);
                   if (!skill) {
-                    safeSend({ name, id, response: { success: false, error: 'Habilidade não encontrada ou desativada.' } });
+                    safeSend({ name, id, response: { success: false, error: 'Habilidade não encontrada.' } });
                     finishAsync();
                   } else {
                     fetch('/api/skill/invoke', {
@@ -849,7 +665,6 @@ export const useGeminiLive = ({
                   }
                   continue;
                 }
-
                 if (name === "alexa_control") {
                   asyncPending++;
                   fetch('/api/alexa/control', {
@@ -866,7 +681,6 @@ export const useGeminiLive = ({
                     .finally(finishAsync);
                   continue;
                 }
-
                 if (name === "generate_image") {
                   asyncPending++;
                   generateImage(args.prompt, args.aspect_ratio ?? "1:1")
@@ -876,7 +690,6 @@ export const useGeminiLive = ({
                   onToolCallRef.current?.(name, args);
                   continue;
                 }
-
                 switch (name) {
                   case "toggle_screen_sharing":
                     onToggleScreenSharingRef.current?.(args.enabled);
@@ -908,14 +721,11 @@ export const useGeminiLive = ({
                     syncResponses.push({ name, id, response: { success: false, error: "Ferramenta não implementada." } });
                 }
               }
-
               if (syncResponses.length > 0) {
                 session.sendToolResponse({ functionResponses: syncResponses });
               }
-              // Só desativa thinking se não há ferramentas assíncronas pendentes
               if (asyncPending === 0) setIsThinking(false);
             }
-
             if (message.serverContent?.interrupted) {
               audioQueue.current = [];
               activeSourcesRef.current.forEach(s => { try { s.stop(); } catch {} });
@@ -924,7 +734,6 @@ export const useGeminiLive = ({
               setIsSpeaking(false);
             }
           },
-
           onclose: () => {
             isConnectingRef.current = false;
             setIsConnected(false);
@@ -932,7 +741,6 @@ export const useGeminiLive = ({
             sessionRef.current = null;
             stopSilenceTimer();
           },
-
           onerror: (err: any) => {
             console.error("Gemini Live error:", err);
             isConnectingRef.current = false;
@@ -975,13 +783,12 @@ export const useGeminiLive = ({
           let sum = 0;
           for (let i = 0; i < combined.length; i++) sum += Math.abs(combined[i] / 0x7FFF);
           setVolume(sum / combined.length);
-          // ✅ Detecta fala pelo volume para reiniciar timer
           if (sum / combined.length > 0.01) resetSilenceTimer();
           if (!isMutedRef.current && sessionRef.current && isConnectedRef.current) {
             sessionRef.current.then((session: any) => {
               if (!isConnectedRef.current) return;
               try { session.sendRealtimeInput({ audio: { data: toBase64(combined.buffer), mimeType: 'audio/pcm;rate=16000' } }); }
-              catch (e) { /* WebSocket fechado — ignora */ }
+              catch (e) { /* WebSocket fechado */ }
             }).catch(() => {});
           }
           micBuffer = [];
@@ -995,6 +802,7 @@ export const useGeminiLive = ({
       setError(err.message);
       setIsConnected(false);
       isConnectedRef.current = false;
+      sessionRef.current = null;
     }
   }, [
     voice, storedApiKey, stopAudio, playNextChunk, toBase64,
@@ -1005,9 +813,7 @@ export const useGeminiLive = ({
   ]);
 
   // ============================================================
-  // 📺 COMPARTILHAMENTO DE TELA — com análise automática
-  // Detecta troca de tela comparando hash de pixels
-  // Avisa a IA quando o usuário muda de app
+  // 📺 COMPARTILHAMENTO DE TELA
   // ============================================================
 
   const startScreenSharing = useCallback(async () => {
@@ -1019,26 +825,16 @@ export const useGeminiLive = ({
       const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true });
       screenStreamRef.current = stream;
       screenAnalysisActiveRef.current = true;
-
       const video = document.createElement('video');
       video.srcObject = stream;
       await video.play();
-
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d')!;
 
-      // Avisa a IA que o compartilhamento começou
-      if (sessionRef.current && isConnectedRef.current) {
-        sessionRef.current.then((session: any) => {
-          if (!isConnectedRef.current) return;
-          try {
-            session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela iniciado. Você receberá frames periódicos como contexto visual. Use-os para enriquecer suas respostas. Só descreva a tela quando o usuário perguntar diretamente.]' });
-          }
-          catch (e) { /* WebSocket fechado — ignora */ }
-        }).catch(() => {});
-      }
+      safeSessionSend(sessionRef, isConnectedRef, (session) => {
+        session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela iniciado.]' });
+      });
 
-      // Envia frames periodicamente como contexto visual silencioso — sem detecção de mudança
       const sendFrame = () => {
         if (!screenStreamRef.current?.active || !sessionRef.current || !screenAnalysisActiveRef.current) return;
         if (isConnectedRef.current && video.videoWidth > 0) {
@@ -1046,27 +842,20 @@ export const useGeminiLive = ({
           canvas.height = video.videoHeight;
           ctx.drawImage(video, 0, 0);
           const base64 = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
-          sessionRef.current.then((session: any) => {
-            if (!isConnectedRef.current) return;
-            try { session.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } }); }
-            catch (e) { /* WebSocket fechado — ignora */ }
-          }).catch(() => {});
+          safeSessionSend(sessionRef, isConnectedRef, (session) => {
+            session.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } });
+          });
         }
         setTimeout(sendFrame, SCREEN_ANALYSIS_INTERVAL_MS);
       };
 
       sendFrame();
 
-      // Para ao encerrar stream
       stream.getVideoTracks()[0].addEventListener('ended', () => {
         screenAnalysisActiveRef.current = false;
-          if (sessionRef.current && isConnectedRef.current) {
-          sessionRef.current.then((session: any) => {
-            if (!isConnectedRef.current) return;
-            try { session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela encerrado.]' }); }
-            catch (e) { /* WebSocket fechado — ignora */ }
-          }).catch(() => {});
-        }
+        safeSessionSend(sessionRef, isConnectedRef, (session) => {
+          session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela encerrado.]' });
+        });
       });
 
     } catch (e: any) {
@@ -1082,7 +871,9 @@ export const useGeminiLive = ({
     if (sessionRef.current && isConnectedRef.current) {
       resetSilenceTimer();
       setIsThinking(true);
-      sessionRef.current.then((s: any) => s.sendRealtimeInput({ text })).catch(console.error);
+      safeSessionSend(sessionRef, isConnectedRef, (session) => {
+        session.sendRealtimeInput({ text });
+      });
     }
   }, [setIsThinking, resetSilenceTimer]);
 
@@ -1100,12 +891,13 @@ export const useGeminiLive = ({
   const disconnect = useCallback((isReconnecting = false) => {
     screenAnalysisActiveRef.current = false;
     stopSilenceTimer();
-    // Marca como desconectado imediatamente para silenciar envios residuais
     isConnectedRef.current = false;
     isConnectingRef.current = false;
     const sessionToClose = sessionRef.current;
     sessionRef.current = null;
-    sessionToClose?.then((s: any) => s.close()).catch(console.error);
+    sessionToClose?.then((s: any) => {
+      try { s.close(); } catch {}
+    }).catch(() => {});
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
     stopAudio(isReconnecting);
   }, [stopAudio, stopSilenceTimer]);
@@ -1116,5 +908,3 @@ export const useGeminiLive = ({
     sendMessage, sendLiveMessage, sendFile, generateImage
   };
 };
-
-
