@@ -422,7 +422,7 @@ export const useGeminiLive = ({
       const apiKey = storedApiKey || process.env.GEMINI_API_KEY;
       if (!apiKey) throw new Error("Chave de API não encontrada. Configure nas Configurações.");
 
-      const LIVE_MODEL = "gemini-live-2.5-flash-preview";
+      const LIVE_MODEL = "gemini-3.1-flash-live-preview";
       console.group("[GeminiLive] 🔌 Iniciando conexão...");
       console.log("[GeminiLive] API key prefix:", apiKey.substring(0, 8) + "...");
       console.log("[GeminiLive] Modelo:", LIVE_MODEL);
