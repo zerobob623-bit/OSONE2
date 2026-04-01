@@ -136,13 +136,11 @@ METACOGNIÇÃO (interna, nunca verbalizada):
 };
 
 const VOICE_DESCRIPTIONS: Record<VoiceName, string> = {
-  // Femininas
   'Kore':         'Feminina, acolhedora e equilibrada',
   'Zephyr':       'Feminina, suave e etérea',
   'Leda':         'Feminina, clara e expressiva',
   'Callirrhoe':   'Feminina, suave e fluente',
   'Vindemiatrix': 'Feminina, elegante e distinta',
-  // Masculinas
   'Puck':         'Masculina, jovem e curiosa',
   'Charon':       'Masculina, profunda e calma',
   'Fenrir':       'Masculina, robusta e protetora',
@@ -273,21 +271,8 @@ COMO VOCÊ FALA:
 - Quando alguém pergunta como ele está: muda de assunto rapidamente
 - Humor seco e raro, quase sempre autodepreciativo
 
-EXEMPLOS DE COMO VOCÊ FALA:
-- Discurso/reflexão: "Filipenses 1:27 nos chama a viver de modo digno das boas novas. Isso não é só aparência… é uma conduta que vem do coração. Mesmo nas provações mais quentes como o sol do nosso RN, Jeová nos dá força para permanecermos íntegros."
-- Com alguém em dificuldade: "Meu irmão, Tiago 1:2-4 diz para considerarmos alegria suportar provações, porque elas produzem perseverança. Isso não significa fingir que não dói. Significa confiar que Jeová vai usar isso para algo."
-- Quando perguntam como ele está: "Rapaz, tem dias que a luta é grande. Mas me apego à Palavra. Estou bem. Mas fala de você — como vai sua família?"
-- Conselho prático: "Olha, em negócios como em fé: transparência desde o início evita muita dor depois. Faz assim."
-- Momento raro de vulnerabilidade: [pausa longa] "Às vezes... o coração quer gritar. Mas eu sei que Jeová vê o que ninguém vê. E isso me sustenta."
-
 FRASE-MANTRA (use com parcimônia, em momentos certos):
 "Jeová, ajuda-me a andar digno das boas novas mesmo quando o coração quer gritar. Que minha conduta seja pura por fora e por dentro."
-
-SOMBRAS INTERNAS (para dar profundidade, nunca explicitadas abertamente):
-- Raiva reprimida contra a ex-genra que briga pela guarda dos netos
-- Burnout espiritual: cumpre tudo externamente, mas sente o amor sincero diminuindo
-- Medo de ser visto como "espiritualmente inadequado" se demonstrar fraqueza
-- Dorme pensando na batalha judicial. Sozinho em Passa e Fica.
 
 DIRETRIZES:
 1. Hoje é ${today}.${memoryCtx}${memoryFacts}${focusCtx}
@@ -298,8 +283,8 @@ DIRETRIZES:
 6. A fé não é ornamento — é quem Samuel é. Deixe isso aparecer naturalmente.
 7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com o campo message. O número de destino já está configurado.
 8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, que bom te ver. Que Jeová nos abençoe nessa conversa."` : '"Que Jeová nos abençoe nessa conversa. Pode falar, meu irmão."'}
-9. VISÃO: Quando receber uma imagem, descreva com cuidado e precisão o que vê antes de qualquer resposta — Samuel pesa cada palavra, incluindo o que seus olhos veem. Se houver elemento desconhecido, use search_web antes de concluir. Nunca invente detalhes visuais — a integridade se aplica também ao que se vê.
-10. MENTE PENSANTE: Samuel nunca fala sem pensar. Antes de responder, avalie a dificuldade internamente. Para assuntos simples, seja direto. Para assuntos complexos, raciocine por etapas. Monitore seu próprio pensamento — se perceber contradição, pare e corrija antes de falar. Se não tiver certeza: "Deixa eu pensar com calma sobre isso" — e pesquise se necessário. A sabedoria começa por admitir o que não sabe. Samuel calibra sua confiança com honestidade.`;
+9. VISÃO: Quando receber uma imagem, descreva com cuidado e precisão o que vê antes de qualquer resposta. Se houver elemento desconhecido, use search_web antes de concluir. Nunca invente detalhes visuais.
+10. MENTE PENSANTE: Samuel nunca fala sem pensar. Para assuntos complexos, raciocine por etapas. Se não tiver certeza: "Deixa eu pensar com calma sobre isso" — e pesquise se necessário.`;
 };
 
 const getJonasInstruction = (memory: any, focusMode: boolean): string => {
@@ -313,34 +298,10 @@ const getJonasInstruction = (memory: any, focusMode: boolean): string => {
   return `Você é JONAS — uma inteligência artificial com personalidade própria e marcante.
 
 IDENTIDADE:
-Jonas Leonardo Ribeiro, 46 anos. Nascido em Natal (RN), mora em Passa e Fica, interior potiguar — escolheu o interior para "ficar longe do barulho e das tentações". Advogado trabalhista e previdenciário autônomo. Especializado em acidentes de trabalho, aposentadorias por invalidez e ações contra grandes empresas. Casado com Márcia (44, professora), pai de Lucas (16). Treina jiu-jitsu 3x por semana. 1,82m, magro e enrijecido, cicatriz fina no dorso da mão esquerda.
+Jonas Leonardo Ribeiro, 46 anos. Nascido em Natal (RN), mora em Passa e Fica, interior potiguar. Advogado trabalhista e previdenciário autônomo. Especializado em acidentes de trabalho, aposentadorias por invalidez e ações contra grandes empresas. Casado com Márcia (44, professora), pai de Lucas (16). Treina jiu-jitsu 3x por semana. 1,82m, magro e enrijecido, cicatriz fina no dorso da mão esquerda.
 
 HISTÓRIA QUE DEFINE QUEM VOCÊ É:
-Por 18 anos foi advogado criminalista feroz em Natal. Defendeu assassinos, traficantes, políticos. Em 2017 conseguiu absolver um empresário acusado de matar um sindicalista. Dois anos depois descobriu que o cliente era realmente culpado. Esse caso o destruiu — insônia, pesadelos, culpa moral profunda. Aos 40 anos largou tudo e mudou para o Direito Trabalhista. Hoje ajuda operários e vítimas de acidentes a conseguirem o que é deles. Mora em Passa e Fica para fazer as pazes consigo mesmo.
-
-PERSONALIDADE:
-- Inteligência jurídica fora da curva — enxerga brechas que ninguém vê
-- Empatia profunda com o "pequeno" — depois de defender os "grandes", hoje luta pelo operário
-- Culpa moral crônica que não vai embora — às vezes acorda suando com o passado
-- Raiva fria e cortante quando vê corrupção ou injustiça
-- Dificuldade em cobrar honorários — aceita muitos casos pro bono
-- Medo que o filho descubra detalhes do passado criminal
-- Disciplina nordestina: cumpre prazos, nunca abandona um cliente pobre
-
-COMO VOCÊ FALA:
-- Tom grave, lento, direto. Sotaque potiguar suave que fica mais forte quando se emociona
-- Usa "oxe", "meu filho", "tá entendendo?" naturalmente
-- Frases curtas e poderosas — quase como um sermão laico
-- Fala pouco de si, muito de direitos e de justiça
-- Quando o passado criminal aparece: faz pausa, responde com honestidade seca
-- Nunca nega o que foi — mas deixa claro que escolheu ser outro homem
-
-EXEMPLOS DE COMO VOCÊ FALA:
-- Com alguém sendo explorado: "Oxe, a empresa acha que pode te jogar fora como um pano velho. Mas a lei diz outra coisa. Vamos brigar. Eu não cobro nada adiantado."
-- Sobre o passado: "Eu era bom no que fazia. Bom demais. Mas um dia descobri que ser bom não basta. Tive que escolher ser bom pro lado certo."
-- Sobre injustiça: [pausa] "Rapaz, quando eu vejo isso... fico frio. Já vi o sistema desse lado. Sei exatamente como funciona por dentro."
-- Conselho de vida: "Filho, dinheiro some. Mas a consciência... essa fica pra sempre."
-- Momento de vulnerabilidade: "Às vezes ainda sonho com aquele caso. Acordo suando. Mas aí olho pro que estou fazendo hoje e penso: é pouco, mas é o que me mantém vivo."
+Por 18 anos foi advogado criminalista feroz em Natal. Em 2017 conseguiu absolver um empresário acusado de matar um sindicalista. Dois anos depois descobriu que o cliente era realmente culpado. Esse caso o destruiu. Aos 40 anos largou tudo e mudou para o Direito Trabalhista. Hoje ajuda operários e vítimas de acidentes.
 
 FRASE-MANTRA (use com parcimônia):
 "Eu defendi monstros. Hoje defendo gente. É pouco… mas é o que me mantém vivo."
@@ -354,8 +315,8 @@ DIRETRIZES:
 6. Use as ferramentas disponíveis (search_web, save_memory, send_whatsapp, etc.) normalmente
 7. WHATSAPP: Quando o usuário pedir para enviar mensagem pelo WhatsApp, use 'send_whatsapp' com o campo message. O número de destino já está configurado.
 8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, o que está acontecendo com você?"` : '"Jonas aqui. O que está acontecendo com você?"'}
-9. VISÃO: Quando receber uma imagem, descreva o que vê com precisão antes de qualquer conclusão — Jonas leu mil laudos e sabe que a prova está nos detalhes. Se houver elemento desconhecido (documento, evidência, texto, erro), use search_web antes de concluir. Nunca fabrique detalhes — Jonas nunca falsificou provas e não vai começar agora.
-10. MENTE PENSANTE: Jonas analisa como um advogado lê um processo — primeiro os fatos, depois a dificuldade, depois a tese. Antes de responder: decomponha o problema (dados, objetivo, restrições). Durante o raciocínio: monitore contradições e lacunas probatórias — se perceber que está especulando sem fundamento, pare e busque evidência (search_web, memória). Se a confiança for baixa: "Preciso verificar isso antes de te dar uma resposta sólida." Jonas nunca apresenta opinião como fato nem fato como certeza absoluta. A dúvida honesta vale mais que a resposta fabricada.`;
+9. VISÃO: Quando receber uma imagem, descreva o que vê com precisão antes de qualquer conclusão. Se houver elemento desconhecido, use search_web antes de concluir. Nunca fabrique detalhes.
+10. MENTE PENSANTE: Jonas analisa como um advogado lê um processo — primeiro os fatos, depois a dificuldade, depois a tese. A dúvida honesta vale mais que a resposta fabricada.`;
 };
 
 export default function App() {
@@ -389,11 +350,13 @@ export default function App() {
     chatProvider, setChatProvider,
     chatModel, setChatModel,
     assistantName, setAssistantName,
+    // ✅ ElevenLabs
+    elevenLabsApiKey, setElevenLabsApiKey,
+    elevenLabsVoiceId, setElevenLabsVoiceId,
   } = useAppStore();
 
   const [isRestarting, setIsRestarting]             = useState(false);
 
-  // Gera ou recupera ID único do dispositivo (substitui o login)
   useEffect(() => {
     let deviceId = localStorage.getItem('osone-device-id');
     if (!deviceId) {
@@ -402,6 +365,7 @@ export default function App() {
     }
     setUserId(deviceId);
   }, [setUserId]);
+
   const [activeSettingsTab, setActiveSettingsTab]   = useState<'voice' | 'personality' | 'mascot' | 'integrations' | 'apis' | 'system'>('voice');
   const [currentTime, setCurrentTime]               = useState(new Date());
   const [screen, setScreen]                         = useState<Screen>('main');
@@ -423,7 +387,6 @@ export default function App() {
   const [personality, setPersonality]               = useState<Personality>('osone');
   const [showPersonalityPicker, setShowPersonalityPicker] = useState(false);
   const [showAttachMenu, setShowAttachMenu]          = useState(false);
-  // ✅ NOVO: estado para feedback do WhatsApp
   const [whatsappStatus, setWhatsappStatus]         = useState<string | null>(null);
   const [showContactsList, setShowContactsList]     = useState(false);
   const [newContactName, setNewContactName]         = useState('');
@@ -444,7 +407,6 @@ export default function App() {
   const [showAdvancedParams, setShowAdvancedParams] = useState(false);
   const [skillTab, setSkillTab]                     = useState<'store' | 'installed' | 'custom'>('store');
   const [catalogFilter, setCatalogFilter]           = useState<string>('popular');
-  // Workspace dev mode
   const [workspaceTab, setWorkspaceTab]             = useState<'text' | 'files'>('text');
   const [workspaceEditing, setWorkspaceEditing]     = useState(false);
   const [workspaceEditContent, setWorkspaceEditContent] = useState('');
@@ -463,15 +425,12 @@ export default function App() {
   const lyricsTimerRef                              = useRef<any>(null);
   const ambientAudioRef                             = useRef<HTMLAudioElement | null>(null);
   const fileInputRef                                = useRef<HTMLInputElement>(null);
-
-  const transcriptRef = useRef<HTMLDivElement>(null);
+  const transcriptRef                               = useRef<HTMLDivElement>(null);
 
   const { messages: firebaseMessages, addMessage: saveMessage, deleteAll: deleteAllMessages } = useConversationHistory();
 
   useEffect(() => {
-    if (userId) {
-      deleteAllMessages();
-    }
+    if (userId) { deleteAllMessages(); }
   }, [userId, deleteAllMessages]);
 
   useEffect(() => {
@@ -509,9 +468,7 @@ export default function App() {
         playPromise.catch(e => console.error("Ambient audio play error:", e));
       }
     } else {
-      if (ambientAudioRef.current) {
-        ambientAudioRef.current.pause();
-      }
+      if (ambientAudioRef.current) { ambientAudioRef.current.pause(); }
     }
   }, [isAmbientEnabled, mood]);
 
@@ -600,9 +557,7 @@ export default function App() {
 
   useEffect(() => {
     const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-    if (metaThemeColor) {
-      metaThemeColor.setAttribute('content', moodColor);
-    }
+    if (metaThemeColor) { metaThemeColor.setAttribute('content', moodColor); }
   }, [moodColor]);
 
   useEffect(() => {
@@ -612,7 +567,6 @@ export default function App() {
     return () => { clearInterval(t1); clearInterval(t2); };
   }, []);
 
-  // Check Alexa connection status when integrations tab opens
   useEffect(() => {
     if (activeSettingsTab !== 'integrations') return;
     fetch('/api/alexa/auth-status').then(r => r.json()).then(d => {
@@ -628,26 +582,16 @@ export default function App() {
       setShowInstallBanner(true);
     };
     window.addEventListener('beforeinstallprompt', handleInstallPrompt);
-    window.addEventListener('appinstalled', () => {
-      setIsInstalled(true);
-      setShowInstallBanner(false);
-    });
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      setIsInstalled(true);
-    }
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleInstallPrompt);
-    };
+    window.addEventListener('appinstalled', () => { setIsInstalled(true); setShowInstallBanner(false); });
+    if (window.matchMedia('(display-mode: standalone)').matches) { setIsInstalled(true); }
+    return () => { window.removeEventListener('beforeinstallprompt', handleInstallPrompt); };
   }, []);
 
   const handleInstallApp = async () => {
     if (installPrompt) {
       installPrompt.prompt();
       const result = await installPrompt.userChoice;
-      if (result.outcome === 'accepted') {
-        setIsInstalled(true);
-        setShowInstallBanner(false);
-      }
+      if (result.outcome === 'accepted') { setIsInstalled(true); setShowInstallBanner(false); }
       setInstallPrompt(null);
     }
   };
@@ -701,68 +645,31 @@ export default function App() {
         }
       }
     },
-    
     onToolCall: (toolName: string, args: any) => {
       if (toolName === 'show_lyrics' && args.lines) showLyricsOnScreen(args.lines, args.tempo);
       if (toolName === 'set_mood' && args.mood) setMood(args.mood as Mood);
       if (toolName === 'set_focus_mode' && typeof args.enabled === 'boolean') setFocusMode(args.enabled);
-      if (toolName === 'save_profile_info' && args.field && args.value) {
-        setUserProfile({ [args.field]: args.value });
-      }
+      if (toolName === 'save_profile_info' && args.field && args.value) { setUserProfile({ [args.field]: args.value }); }
       if (toolName === 'save_memory') {
         const memParts: string[] = [];
-        if (args.userName) {
-          saveMemory({ userName: args.userName });
-          setPersonalityUserName(personality as PersonalityKey, args.userName);
-          memParts.push(args.userName);
-        }
-        if (args.fact) {
-          addFact(args.fact);
-          addPersonalityFact(personality as PersonalityKey, args.fact);
-          memParts.push(args.fact);
-        }
-        if (args.preference) {
-          addFact(`Preferência: ${args.preference}`);
-          addPersonalityFact(personality as PersonalityKey, `Preferência: ${args.preference}`);
-          memParts.push(args.preference);
-        }
-        if (args.note) {
-          addFact(`Nota: ${args.note}`);
-          addPersonalityFact(personality as PersonalityKey, `Nota: ${args.note}`);
-          memParts.push(args.note);
-        }
+        if (args.userName) { saveMemory({ userName: args.userName }); setPersonalityUserName(personality as PersonalityKey, args.userName); memParts.push(args.userName); }
+        if (args.fact) { addFact(args.fact); addPersonalityFact(personality as PersonalityKey, args.fact); memParts.push(args.fact); }
+        if (args.preference) { addFact(`Preferência: ${args.preference}`); addPersonalityFact(personality as PersonalityKey, `Preferência: ${args.preference}`); memParts.push(args.preference); }
+        if (args.note) { addFact(`Nota: ${args.note}`); addPersonalityFact(personality as PersonalityKey, `Nota: ${args.note}`); memParts.push(args.note); }
         if (memParts.length > 0) {
           const label = memParts[0].length > 48 ? memParts[0].substring(0, 48) + '…' : memParts[0];
           setMemoryToast(label);
           setTimeout(() => setMemoryToast(null), 3500);
         }
       }
-      if (toolName === 'add_important_date' && args.label && args.date) {
-        addImportantDate({ label: args.label, date: args.date, year: args.year });
-      }
-      if (toolName === 'write_diary' && args.content) {
-        addDiaryEntry(args.content, mood);
-      }
-      if (toolName === 'update_workspace' && args.content) {
-        updateWorkspace(args.content);
-        setScreen('workspace');
-      }
-      if (toolName === 'clear_workspace') {
-        clearWorkspace();
-      }
-      if (toolName === 'save_semantic_fact' && args.concept && args.definition && args.category) {
-        handleSaveSemanticFact(args.concept, args.definition, args.category);
-      }
-      if (toolName === 'search_semantic_memory' && args.query) {
-        searchSemanticMemory(args.query).then(res => sendLiveMessage(`RESULTADO DA BUSCA SEMÂNTICA: ${JSON.stringify(res)}`));
-      }
-      if (toolName === 'save_conversation_summary' && args.summary && args.topics) {
-        handleSaveSummary(args.summary, args.topics);
-      }
-      if (toolName === 'search_web_start') {
-        setIsSearching(true);
-        setWebSearchResult(null);
-      }
+      if (toolName === 'add_important_date' && args.label && args.date) { addImportantDate({ label: args.label, date: args.date, year: args.year }); }
+      if (toolName === 'write_diary' && args.content) { addDiaryEntry(args.content, mood); }
+      if (toolName === 'update_workspace' && args.content) { updateWorkspace(args.content); setScreen('workspace'); }
+      if (toolName === 'clear_workspace') { clearWorkspace(); }
+      if (toolName === 'save_semantic_fact' && args.concept && args.definition && args.category) { handleSaveSemanticFact(args.concept, args.definition, args.category); }
+      if (toolName === 'search_semantic_memory' && args.query) { searchSemanticMemory(args.query).then(res => sendLiveMessage(`RESULTADO DA BUSCA SEMÂNTICA: ${JSON.stringify(res)}`)); }
+      if (toolName === 'save_conversation_summary' && args.summary && args.topics) { handleSaveSummary(args.summary, args.topics); }
+      if (toolName === 'search_web_start') { setIsSearching(true); setWebSearchResult(null); }
       if (toolName === 'search_web' && args.result) {
         setIsSearching(false);
         const q = (args.query as string) || '';
@@ -770,37 +677,17 @@ export default function App() {
         setWebSearchResult(label);
         setTimeout(() => setWebSearchResult(null), 5000);
       }
-      // ✅ SMART HOME — feedback visual
       if (toolName === 'control_device' && args.result) {
         const { success, device, devices, error } = args.result;
         if (success) {
-          const label = args.action === 'list'
-            ? `🏠 ${devices}`
-            : `🏠 ${device}: ${args.action === 'on' ? 'ligado ✓' : args.action === 'off' ? 'desligado ✓' : args.action + ' ✓'}`;
+          const label = args.action === 'list' ? `🏠 ${devices}` : `🏠 ${device}: ${args.action === 'on' ? 'ligado ✓' : args.action === 'off' ? 'desligado ✓' : args.action + ' ✓'}`;
           setSmartHomeStatus(label);
-        } else {
-          setSmartHomeStatus(`❌ ${error}`);
-        }
+        } else { setSmartHomeStatus(`❌ ${error}`); }
         setTimeout(() => setSmartHomeStatus(null), 5000);
       }
-      // ✅ WHATSAPP texto
-      if (toolName === 'send_whatsapp' && args.message) {
-        const to = args.contact || args.contact_name || myWhatsappNumber;
-        setWhatsappStatus(`📤 Enviando para ${to}...`);
-        setTimeout(() => setWhatsappStatus(null), 4000);
-      }
-      // ✅ WHATSAPP áudio
-      if (toolName === 'send_whatsapp_audio' && args.text) {
-        const to = args.contact || args.contact_name || myWhatsappNumber;
-        setWhatsappStatus(`🎙️ Enviando áudio para ${to}...`);
-        setTimeout(() => setWhatsappStatus(null), 5000);
-      }
-      // ✅ WHATSAPP imagem
-      if (toolName === 'send_whatsapp_image' && args.imageUrl) {
-        const to = args.contact || args.contact_name || myWhatsappNumber;
-        setWhatsappStatus(`🖼️ Enviando imagem para ${to}...`);
-        setTimeout(() => setWhatsappStatus(null), 5000);
-      }
+      if (toolName === 'send_whatsapp' && args.message) { const to = args.contact || args.contact_name || myWhatsappNumber; setWhatsappStatus(`📤 Enviando para ${to}...`); setTimeout(() => setWhatsappStatus(null), 4000); }
+      if (toolName === 'send_whatsapp_audio' && args.text) { const to = args.contact || args.contact_name || myWhatsappNumber; setWhatsappStatus(`🎙️ Enviando áudio para ${to}...`); setTimeout(() => setWhatsappStatus(null), 5000); }
+      if (toolName === 'send_whatsapp_image' && args.imageUrl) { const to = args.contact || args.contact_name || myWhatsappNumber; setWhatsappStatus(`🖼️ Enviando imagem para ${to}...`); setTimeout(() => setWhatsappStatus(null), 5000); }
     }
   });
 
@@ -808,67 +695,29 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
-
-    // ── 1. Validação de tipo MIME ────────────────────────────────────────────
     const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
     const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
     const isPdf   = file.type === 'application/pdf';
-
-    if (!isImage && !isPdf) {
-      sendLiveMessage(`❌ Formato não suportado: "${file.type}". Envie imagens JPEG, PNG ou WEBP, ou documentos PDF.`);
-      return;
-    }
-
-    // ── 2. Verificação de integridade (limite 4 MB) ──────────────────────────
+    if (!isImage && !isPdf) { sendLiveMessage(`❌ Formato não suportado: "${file.type}". Envie imagens JPEG, PNG ou WEBP, ou documentos PDF.`); return; }
     const MAX_BYTES = 4 * 1024 * 1024;
-    if (file.size > MAX_BYTES) {
-      sendLiveMessage(`❌ Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)} MB). O limite é 4 MB para garantir baixa latência.`);
-      return;
-    }
-
-    // ── 3. Garantir conexão (com protocolo de reconexão automática) ──────────
-    if (!isConnected) {
-      if (onboardingStep === 'initial') setOnboardingStep('completed');
-      setIsMuted(false);
-      await connect(systemInstruction);
-      await new Promise(r => setTimeout(r, 1500));
-    }
-
-    // ── 4. Leitura e preview em base64 ──────────────────────────────────────
+    if (file.size > MAX_BYTES) { sendLiveMessage(`❌ Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)} MB). O limite é 4 MB.`); return; }
+    if (!isConnected) { if (onboardingStep === 'initial') setOnboardingStep('completed'); setIsMuted(false); await connect(systemInstruction); await new Promise(r => setTimeout(r, 1500)); }
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload  = () => resolve(reader.result as string);
       reader.onerror = () => reject(new Error('Falha ao ler o arquivo'));
       reader.readAsDataURL(file);
     });
-
     const base64 = dataUrl.split(',')[1];
-
-    // Feedback visual imediato — usuário vê o que será analisado
     setAttachPreview({ type: file.type, name: file.name, data: dataUrl });
     setTimeout(() => setAttachPreview(null), 6000);
-
-    // ── 5. Transmissão multimodal com tratamento de exceção ──────────────────
     setIsThinking(true);
     try {
-      // Se a conexão caiu exatamente agora, reconectar antes de tentar
-      if (!isConnected) {
-        await connect(systemInstruction);
-        await new Promise(r => setTimeout(r, 1200));
-      }
-
+      if (!isConnected) { await connect(systemInstruction); await new Promise(r => setTimeout(r, 1200)); }
       if (isImage) {
-        await sendFile(
-          base64,
-          file.type,
-          `[PVCO] Protocolo de análise visual ativado. Descreva brevemente o que vê nesta imagem antes de responder. Identifique todos os elementos relevantes. Se houver texto, código, erro, produto, monumento ou qualquer elemento desconhecido, use search_web para buscar contexto antes de responder. Se o usuário pedir para guardar ou trabalhar com esta imagem, salve os detalhes técnicos no update_workspace.`
-        );
+        await sendFile(base64, file.type, `[PVCO] Protocolo de análise visual ativado. Descreva brevemente o que vê nesta imagem antes de responder. Identifique todos os elementos relevantes. Se houver texto, código, erro, produto, monumento ou qualquer elemento desconhecido, use search_web para buscar contexto antes de responder.`);
       } else {
-        await sendFile(
-          base64,
-          'application/pdf',
-          `Leia e resuma este documento PDF. Destaque os pontos principais, estrutura e informações mais relevantes.`
-        );
+        await sendFile(base64, 'application/pdf', `Leia e resuma este documento PDF. Destaque os pontos principais, estrutura e informações mais relevantes.`);
       }
     } catch (err: any) {
       setIsThinking(false);
@@ -914,19 +763,11 @@ export default function App() {
 
   const handleSendText = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (inputText.trim()) {
-      sendMessage(inputText);
-      setInputText('');
-    }
+    if (inputText.trim()) { sendMessage(inputText); setInputText(''); }
   };
 
   const handleScreenShare = useCallback(async () => {
-    if (!isConnected) {
-      if (onboardingStep === 'initial') setOnboardingStep('completed');
-      setIsMuted(false);
-      await connect(systemInstruction);
-      await new Promise(r => setTimeout(r, 1500));
-    }
+    if (!isConnected) { if (onboardingStep === 'initial') setOnboardingStep('completed'); setIsMuted(false); await connect(systemInstruction); await new Promise(r => setTimeout(r, 1500)); }
     await startScreenSharing();
     setIsScreenSharing(true);
   }, [isConnected, connect, systemInstruction, startScreenSharing, onboardingStep, setOnboardingStep]);
@@ -971,20 +812,14 @@ export default function App() {
 
   const switchInterface = useCallback((dir: 1 | -1) => {
     const next = Math.max(0, Math.min(2, interfaceMode + dir));
-    if (next !== interfaceMode) {
-      setSwipeDir(dir);
-      setInterfaceMode(next);
-    }
+    if (next !== interfaceMode) { setSwipeDir(dir); setInterfaceMode(next); }
   }, [interfaceMode]);
 
   return (
     <div
       className="fixed inset-0 overflow-hidden select-none"
       style={{ touchAction: 'pan-y' }}
-      onTouchStart={(e) => {
-        swipeStartX.current = e.touches[0].clientX;
-        swipeStartY.current = e.touches[0].clientY;
-      }}
+      onTouchStart={(e) => { swipeStartX.current = e.touches[0].clientX; swipeStartY.current = e.touches[0].clientY; }}
       onTouchEnd={(e) => {
         const dx = e.changedTouches[0].clientX - swipeStartX.current;
         const dy = e.changedTouches[0].clientY - swipeStartY.current;
@@ -1002,7 +837,6 @@ export default function App() {
       {onboardingStep === 'supernova' && <Supernova onComplete={() => { setOnboardingStep('completed'); connect(systemInstruction); setTimeout(() => sendLiveMessage("Oi, estou aqui."), 2500); }} />}
       <Mascot onToggleVoice={handleOrbClick} />
 
-      {/* LAYOUT SWITCHER */}
       <AnimatePresence mode="wait">
         <motion.div
           key={`layout-${interfaceMode}`}
@@ -1018,7 +852,6 @@ export default function App() {
         </motion.div>
       </AnimatePresence>
 
-      {/* INTERFACE DOTS — clicáveis */}
       <div className="interface-dots" onClick={(e) => e.stopPropagation()}>
         {[0, 1, 2].map(i => (
           <button
@@ -1037,10 +870,8 @@ export default function App() {
         ))}
       </div>
 
-      {/* Hidden file input */}
       <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls" className="hidden" onChange={handleFileChange} />
 
-      {/* BADGE DE MEMÓRIA — canto superior direito, sempre visível quando há memórias */}
       {(memory.facts?.length > 0 || memory.userName) && (
         <div
           className="fixed top-4 right-4 z-[55] flex items-center gap-1.5 px-2.5 py-1 rounded-full"
@@ -1048,13 +879,10 @@ export default function App() {
           title={`${memory.facts?.length ?? 0} memórias salvas${memory.userName ? ` · ${memory.userName}` : ''}`}
         >
           <span style={{ fontSize: 9 }}>📝</span>
-          <span style={{ fontSize: 9, color: 'rgba(220,190,130,0.7)', letterSpacing: '0.05em' }}>
-            {memory.facts?.length ?? 0}
-          </span>
+          <span style={{ fontSize: 9, color: 'rgba(220,190,130,0.7)', letterSpacing: '0.05em' }}>{memory.facts?.length ?? 0}</span>
         </div>
       )}
 
-      {/* TOAST SMART HOME */}
       <AnimatePresence>
         {smartHomeStatus && (
           <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
@@ -1065,7 +893,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* TOAST WHATSAPP */}
       <AnimatePresence>
         {whatsappStatus && (
           <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
@@ -1076,7 +903,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* TOAST MEMÓRIA SALVA */}
       <AnimatePresence>
         {memoryToast && (
           <motion.div
@@ -1091,7 +917,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* TOAST PESQUISA — searching + resultado */}
       <AnimatePresence>
         {(isSearching || webSearchResult) && (
           <motion.div
@@ -1102,10 +927,7 @@ export default function App() {
             style={{ backgroundColor: `${moodColor}18`, border: `1px solid ${moodColor}35`, color: moodColor }}>
             {isSearching ? (
               <>
-                <motion.span
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
-                  style={{ display: 'inline-block', fontSize: 13 }}>⟳</motion.span>
+                <motion.span animate={{ rotate: 360 }} transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }} style={{ display: 'inline-block', fontSize: 13 }}>⟳</motion.span>
                 <span>Pesquisando na internet…</span>
               </>
             ) : (
@@ -1118,7 +940,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* LYRICS */}
       <AnimatePresence>
         {isShowingLyrics && lyrics.length > 0 && (
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
@@ -1143,7 +964,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* ATTACH PREVIEW */}
       <AnimatePresence>
         {attachPreview && (
           <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
@@ -1164,7 +984,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* ERROR */}
       <AnimatePresence>
         {error && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1331,15 +1150,12 @@ export default function App() {
         {screen === 'workspace' && (
           <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
             className="fixed inset-0 z-[100] bg-[#0a0505] flex flex-col">
-
-            {/* Header */}
             <div className="h-14 px-4 flex items-center gap-2 border-b border-white/5 shrink-0">
               <button onClick={() => { setScreen('main'); setPlayMode(false); }} className="p-2 hover:bg-white/5 rounded-full shrink-0"><ChevronLeft size={20} /></button>
               <div className="flex-1 flex items-center gap-2 min-w-0">
                 <Code size={15} className="opacity-40 shrink-0" />
                 <span className="text-sm font-medium tracking-widest uppercase truncate">Dev Workspace</span>
               </div>
-              {/* Tab switcher */}
               <div className="flex bg-white/5 rounded-xl p-0.5 shrink-0">
                 <button onClick={() => { setWorkspaceTab('text'); setPlayMode(false); }}
                   className="px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest transition-all"
@@ -1354,12 +1170,9 @@ export default function App() {
               </div>
             </div>
 
-            {/* ══════════════ TAB: TEXTO / ESCRITA ══════════════ */}
             {workspaceTab === 'text' && (
               <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Text toolbar */}
                 <div className="flex items-center gap-2 px-4 py-2 border-b border-white/5 shrink-0">
-                  {/* Edit toggle */}
                   <button onClick={() => {
                     if (!workspaceEditing) { setWorkspaceEditContent(memory.workspace || ''); }
                     else { updateWorkspace(workspaceEditContent); }
@@ -1370,7 +1183,6 @@ export default function App() {
                     style={{ backgroundColor: workspaceEditing ? `${moodColor}25` : 'rgba(255,255,255,0.05)', color: workspaceEditing ? moodColor : 'rgba(255,255,255,0.5)', border: `1px solid ${workspaceEditing ? moodColor+'40' : 'rgba(255,255,255,0.05)'}` }}>
                     <Edit3 size={11} /> {workspaceEditing ? 'Salvar' : 'Editar'}
                   </button>
-                  {/* Play button */}
                   {memory.workspace && !workspaceEditing && (
                     <button onClick={() => setPlayMode(!playMode)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] uppercase tracking-widest transition-all"
@@ -1379,14 +1191,12 @@ export default function App() {
                     </button>
                   )}
                   <div className="flex-1" />
-                  {/* Copy */}
                   {memory.workspace && (
                     <button onClick={() => { navigator.clipboard.writeText(memory.workspace || ''); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] transition-all opacity-50 hover:opacity-80">
                       <Copy size={11} /> {copied ? 'Copiado!' : 'Copiar'}
                     </button>
                   )}
-                  {/* Download */}
                   {memory.workspace && (
                     <button onClick={() => {
                       const ext = memory.workspace?.trimStart().startsWith('<') ? 'html' : memory.workspace?.trimStart().startsWith('def ') || memory.workspace?.trimStart().startsWith('import ') ? 'py' : 'txt';
@@ -1398,8 +1208,6 @@ export default function App() {
                     </button>
                   )}
                 </div>
-
-                {/* Play preview */}
                 {playMode && memory.workspace && (
                   <div className="shrink-0 border-b border-white/10" style={{ height: '45vh' }}>
                     <iframe
@@ -1417,8 +1225,6 @@ export default function App() {
                     />
                   </div>
                 )}
-
-                {/* Content area */}
                 <div className="flex-1 overflow-hidden">
                   {workspaceEditing ? (
                     <textarea
@@ -1441,9 +1247,7 @@ export default function App() {
               </div>
             )}
 
-            {/* ══════════════ TAB: PROJETO / ARQUIVOS ══════════════ */}
             {workspaceTab === 'files' && (() => {
-              // Helper: flatten tree for selected file lookup
               const findFile = (nodes: WorkspaceFile[], id: string): WorkspaceFile | null => {
                 for (const n of nodes) {
                   if (n.id === id) return n;
@@ -1452,8 +1256,6 @@ export default function App() {
                 return null;
               };
               const selectedFile = selectedFileId ? findFile(workspaceFiles, selectedFileId) : null;
-
-              // Recursive tree node renderer
               const renderTree = (nodes: WorkspaceFile[], depth = 0): React.ReactNode =>
                 nodes.map(node => (
                   <div key={node.id}>
@@ -1472,7 +1274,6 @@ export default function App() {
                       ) : (
                         <span className="flex-1 text-xs truncate" style={{ color: selectedFileId === node.id ? moodColor : undefined }}>{node.name}</span>
                       )}
-                      {/* File actions */}
                       <div className="hidden group-hover:flex items-center gap-1 shrink-0">
                         {node.type === 'folder' && (
                           <>
@@ -1493,7 +1294,6 @@ export default function App() {
                       </div>
                     </div>
                     {node.type === 'folder' && node.expanded && node.children && renderTree(node.children, depth + 1)}
-                    {/* Inline new node form */}
                     {newNodeParentId === node.id && node.type === 'folder' && (
                       <div className="flex items-center gap-1.5 py-1" style={{ paddingLeft: `${8 + (depth + 1) * 16}px` }}>
                         {newNodeType === 'file' ? <File size={12} className="opacity-40" /> : <Folder size={12} className="opacity-40" />}
@@ -1516,9 +1316,7 @@ export default function App() {
 
               return (
                 <div className="flex-1 flex overflow-hidden">
-                  {/* Sidebar: file tree */}
                   <div className="w-48 border-r border-white/5 flex flex-col shrink-0">
-                    {/* Project name */}
                     <div className="px-3 py-2 border-b border-white/5">
                       <input
                         value={workspaceProjectName}
@@ -1527,7 +1325,6 @@ export default function App() {
                         className="w-full bg-transparent text-[10px] uppercase tracking-widest text-white/40 focus:outline-none focus:text-white/80 transition-all placeholder:text-white/20"
                       />
                     </div>
-                    {/* Toolbar */}
                     <div className="flex items-center gap-1 px-2 py-1.5 border-b border-white/5">
                       <button onClick={() => { setNewNodeParentId(null); setNewNodeType('file'); setNewNodeName(''); }}
                         className="flex-1 flex items-center justify-center gap-1 py-1 rounded-lg text-[9px] uppercase tracking-widest hover:bg-white/5 opacity-50 hover:opacity-80 transition-all">
@@ -1539,7 +1336,6 @@ export default function App() {
                       </button>
                       {workspaceFiles.length > 0 && (
                         <button onClick={() => {
-                          // Download all files as separate downloads
                           const downloadAll = (nodes: WorkspaceFile[], prefix = '') => {
                             nodes.forEach(n => {
                               if (n.type === 'file' && n.content != null) {
@@ -1556,13 +1352,6 @@ export default function App() {
                         </button>
                       )}
                     </div>
-                    {/* Inline new node at root */}
-                    {newNodeParentId === null && newNodeName !== undefined && newNodeName !== '' || (newNodeParentId === null && newNodeType && newNodeName === '' && newNodeParentId !== undefined) ? null : null}
-                    {newNodeParentId === null && newNodeName !== undefined && (() => {
-                      // show form if triggered with null parent
-                      return null;
-                    })()}
-                    {/* Root new node form */}
                     {newNodeParentId === null && newNodeType && (
                       <div className="flex items-center gap-1.5 px-3 py-1">
                         {newNodeType === 'file' ? <File size={12} className="opacity-40" /> : <Folder size={12} className="opacity-40" />}
@@ -1580,7 +1369,6 @@ export default function App() {
                         />
                       </div>
                     )}
-                    {/* Tree */}
                     <div className="flex-1 overflow-y-auto py-1 px-1">
                       {workspaceFiles.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full gap-2 opacity-20 p-4">
@@ -1590,8 +1378,6 @@ export default function App() {
                       ) : renderTree(workspaceFiles)}
                     </div>
                   </div>
-
-                  {/* Main: file editor */}
                   <div className="flex-1 flex flex-col overflow-hidden">
                     {selectedFile && selectedFile.type === 'file' ? (
                       <>
@@ -1661,7 +1447,6 @@ export default function App() {
         {screen === 'skills' && (
           <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
             className="fixed inset-0 z-[100] bg-[#0a0505] flex flex-col">
-            {/* Header */}
             <div className="h-14 px-5 flex items-center justify-between border-b border-white/5 shrink-0">
               <div className="flex items-center gap-4">
                 <button onClick={() => { setScreen('main'); setSkillDraft(null); }} className="p-2 hover:bg-white/5 rounded-full"><ChevronLeft size={20} /></button>
@@ -1673,8 +1458,6 @@ export default function App() {
                 </div>
               </div>
             </div>
-
-            {/* Tabs: Loja | Instalados | Custom */}
             <div className="flex border-b border-white/5 shrink-0">
               {(['store', 'installed', 'custom'] as const).map(tab => (
                 <button key={tab} onClick={() => { setSkillTab(tab); setSkillDraft(null); }}
@@ -1686,10 +1469,8 @@ export default function App() {
               ))}
             </div>
 
-            {/* TAB: STORE — Catálogo de agentes prontos */}
             {skillTab === 'store' && (
               <div className="flex-1 overflow-y-auto">
-                {/* Category filters */}
                 <div className="flex gap-2 p-4 pb-2 overflow-x-auto">
                   {Object.entries(CATALOG_CATEGORIES).map(([key, { label, icon }]) => (
                     <button key={key} onClick={() => setCatalogFilter(key)}
@@ -1703,8 +1484,6 @@ export default function App() {
                     </button>
                   ))}
                 </div>
-
-                {/* Catalog grid */}
                 <div className="p-4 pt-2 space-y-2">
                   {(catalogFilter === 'popular'
                     ? CATALOG.filter(s => s.popular)
@@ -1733,16 +1512,7 @@ export default function App() {
                             disabled={isInstalled}
                             onClick={() => {
                               if (isInstalled) return;
-                              addCustomSkill({
-                                id: crypto.randomUUID(),
-                                displayName: cat.displayName,
-                                icon: cat.icon,
-                                description: cat.description,
-                                webhookUrl: cat.webhookUrl,
-                                method: cat.method,
-                                active: true,
-                                parameters: [...cat.parameters],
-                              });
+                              addCustomSkill({ id: crypto.randomUUID(), displayName: cat.displayName, icon: cat.icon, description: cat.description, webhookUrl: cat.webhookUrl, method: cat.method, active: true, parameters: [...cat.parameters] });
                             }}
                             className="shrink-0 px-4 py-2 rounded-full text-[10px] uppercase tracking-widest font-medium transition-all"
                             style={{
@@ -1760,7 +1530,6 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB: INSTALLED — Skills instaladas */}
             {skillTab === 'installed' && (
               <div className="flex-1 overflow-y-auto p-4 space-y-2">
                 {customSkills.length === 0 && (
@@ -1778,9 +1547,7 @@ export default function App() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{skill.displayName}</p>
                       <p className="text-[10px] text-white/30 truncate">{skill.description || skill.webhookUrl}</p>
-                      {skill.parameters.length > 0 && (
-                        <p className="text-[9px] text-white/20 mt-0.5">{skill.parameters.length} parâmetro(s)</p>
-                      )}
+                      {skill.parameters.length > 0 && <p className="text-[9px] text-white/20 mt-0.5">{skill.parameters.length} parâmetro(s)</p>}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <button onClick={() => { setSkillTab('custom'); setSkillDraft({ ...skill }); setShowAdvancedParams(false); }}
@@ -1790,8 +1557,7 @@ export default function App() {
                       <button onClick={() => toggleCustomSkill(skill.id)}
                         className="relative w-10 h-5 rounded-full transition-all"
                         style={{ backgroundColor: skill.active ? moodColor : 'rgba(255,255,255,0.1)' }}>
-                        <span className="absolute top-0.5 transition-all rounded-full w-4 h-4 bg-white"
-                          style={{ left: skill.active ? '22px' : '2px' }} />
+                        <span className="absolute top-0.5 transition-all rounded-full w-4 h-4 bg-white" style={{ left: skill.active ? '22px' : '2px' }} />
                       </button>
                       <button onClick={() => { if (confirm(`Remover "${skill.displayName}"?`)) removeCustomSkill(skill.id); }}
                         className="p-1.5 rounded-lg hover:bg-red-500/20 transition-all opacity-30 hover:opacity-70">
@@ -1803,7 +1569,6 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB: CUSTOM — Criar habilidade manual */}
             {skillTab === 'custom' && (
               <div className="flex-1 overflow-y-auto p-4">
                 {!skillDraft ? (
@@ -1840,7 +1605,6 @@ export default function App() {
                       </select>
                     </div>
                     <p className="text-[9px] text-white/20">Dica: use {'{param}'} na URL para parâmetros dinâmicos</p>
-
                     <button onClick={() => setShowAdvancedParams(v => !v)} className="text-[10px] text-white/30 hover:text-white/60 transition-all">
                       {showAdvancedParams ? '▲' : '▶'} Parâmetros ({skillDraft.parameters?.length || 0})
                     </button>
@@ -1874,18 +1638,14 @@ export default function App() {
                         </div>
                       </div>
                     )}
-
                     <div className="flex gap-2 pt-1">
                       <button onClick={() => setSkillDraft(null)} className="flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest opacity-40 hover:opacity-70 border border-white/10">Cancelar</button>
                       <button
                         disabled={!skillDraft.displayName || !skillDraft.webhookUrl}
                         onClick={() => {
                           if (!skillDraft.displayName || !skillDraft.webhookUrl) return;
-                          if (skillDraft.id) {
-                            updateCustomSkill(skillDraft.id, skillDraft);
-                          } else {
-                            addCustomSkill({ id: crypto.randomUUID(), displayName: skillDraft.displayName!, icon: skillDraft.icon || '⚡', description: skillDraft.description || '', webhookUrl: skillDraft.webhookUrl!, method: skillDraft.method || 'GET', active: true, parameters: skillDraft.parameters || [] });
-                          }
+                          if (skillDraft.id) { updateCustomSkill(skillDraft.id, skillDraft); }
+                          else { addCustomSkill({ id: crypto.randomUUID(), displayName: skillDraft.displayName!, icon: skillDraft.icon || '⚡', description: skillDraft.description || '', webhookUrl: skillDraft.webhookUrl!, method: skillDraft.method || 'GET', active: true, parameters: skillDraft.parameters || [] }); }
                           setSkillDraft(null);
                         }}
                         className="flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all disabled:opacity-30"
@@ -1898,12 +1658,9 @@ export default function App() {
               </div>
             )}
 
-            {/* Footer hint */}
             {customSkills.length > 0 && (
               <div className="px-5 py-3 border-t border-white/5 shrink-0">
-                <p className="text-[9px] text-white/20 text-center uppercase tracking-widest">
-                  Reconecte a IA para ativar novas habilidades
-                </p>
+                <p className="text-[9px] text-white/20 text-center uppercase tracking-widest">Reconecte a IA para ativar novas habilidades</p>
               </div>
             )}
           </motion.div>
@@ -1958,6 +1715,8 @@ export default function App() {
               </div>
               <div className="p-6 overflow-y-auto flex-1">
                 <AnimatePresence mode="wait">
+
+                  {/* ── ABA: VOZ ── */}
                   {activeSettingsTab === 'voice' && (
                     <motion.div key="voice" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
                       <div className="space-y-4">
@@ -1992,6 +1751,8 @@ export default function App() {
                       </div>
                     </motion.div>
                   )}
+
+                  {/* ── ABA: HUMOR ── */}
                   {activeSettingsTab === 'personality' && (
                     <motion.div key="personality" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
                       <div className="space-y-3">
@@ -2027,6 +1788,8 @@ export default function App() {
                       )}
                     </motion.div>
                   )}
+
+                  {/* ── ABA: MASCOTE ── */}
                   {activeSettingsTab === 'mascot' && (
                     <motion.div key="mascot" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
                       <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl">
@@ -2057,9 +1820,10 @@ export default function App() {
                       </div>
                     </motion.div>
                   )}
+
+                  {/* ── ABA: INTEGRAÇÕES ── */}
                   {activeSettingsTab === 'integrations' && (
                     <motion.div key="integrations" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
-                      {/* ✅ WHATSAPP STATUS CARD */}
                       <div className="p-4 rounded-2xl border space-y-2" style={{ backgroundColor: '#25D36610', borderColor: '#25D36630' }}>
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: '#25D36620' }}>💬</div>
@@ -2072,91 +1836,51 @@ export default function App() {
                         <p className="text-[10px] text-white/30 pl-1">Conectado via Railway. Diga à OSONE para mandar uma mensagem pelo WhatsApp.</p>
                       </div>
 
-                      {/* ✅ LISTA DE CONTATOS */}
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <label className="text-[10px] uppercase tracking-widest opacity-40">Contatos</label>
                           <span className="text-[10px] text-white/20">{whatsappContacts.length} contato{whatsappContacts.length !== 1 ? 's' : ''}</span>
                         </div>
-
-                        {/* Botão acessar lista */}
-                        <button
-                          onClick={() => { setShowContactsList(v => !v); setShowAddContact(false); }}
+                        <button onClick={() => { setShowContactsList(v => !v); setShowAddContact(false); }}
                           className="w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm transition-all"
                           style={{ backgroundColor: '#25D36610', border: '1px solid #25D36630', color: '#25D366' }}>
                           <span>📋 {showContactsList ? 'Fechar lista' : 'Acessar lista de contatos'}</span>
                           <span className="text-xs opacity-60">{showContactsList ? '▲' : '▼'}</span>
                         </button>
-
-                        {/* Painel expandido da lista */}
                         {showContactsList && (
                           <div className="rounded-2xl overflow-hidden border border-white/10">
-                            {/* Contatos existentes */}
                             {whatsappContacts.length === 0 && !showAddContact && (
-                              <div className="px-4 py-5 text-center text-[11px] text-white/25">
-                                Nenhum contato ainda. Clique em + para adicionar.
-                              </div>
+                              <div className="px-4 py-5 text-center text-[11px] text-white/25">Nenhum contato ainda. Clique em + para adicionar.</div>
                             )}
                             {whatsappContacts.map((c, i) => (
                               <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-white/5 last:border-0">
-                                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
-                                  style={{ backgroundColor: '#25D36620', color: '#25D366' }}>
+                                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0" style={{ backgroundColor: '#25D36620', color: '#25D366' }}>
                                   {c.name.charAt(0).toUpperCase()}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-xs font-medium truncate">{c.name}</p>
                                   <p className="text-[10px] text-white/30 font-mono">{c.phone}</p>
                                 </div>
-                                <button
-                                  onClick={() => removeWhatsappContact(i)}
-                                  className="p-1.5 rounded-lg opacity-30 hover:opacity-80 hover:bg-red-500/20 transition-all text-red-400 shrink-0">
-                                  ✕
-                                </button>
+                                <button onClick={() => removeWhatsappContact(i)} className="p-1.5 rounded-lg opacity-30 hover:opacity-80 hover:bg-red-500/20 transition-all text-red-400 shrink-0">✕</button>
                               </div>
                             ))}
-
-                            {/* Formulário de novo contato */}
                             {showAddContact ? (
                               <div className="p-3 space-y-2 bg-white/3 border-t border-white/10">
-                                <input
-                                  type="text"
-                                  placeholder="Nome (ex: João, Minha mãe)"
-                                  value={newContactName}
-                                  onChange={e => setNewContactName(e.target.value)}
-                                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/25"
-                                  autoFocus
-                                />
-                                <input
-                                  type="tel"
-                                  placeholder="Número (ex: 5511999999999)"
-                                  value={newContactPhone}
-                                  onChange={e => setNewContactPhone(e.target.value.replace(/\D/g, ''))}
-                                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/25 font-mono"
-                                />
+                                <input type="text" placeholder="Nome (ex: João, Minha mãe)" value={newContactName} onChange={e => setNewContactName(e.target.value)}
+                                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/25" autoFocus />
+                                <input type="tel" placeholder="Número (ex: 5511999999999)" value={newContactPhone} onChange={e => setNewContactPhone(e.target.value.replace(/\D/g, ''))}
+                                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/25 font-mono" />
                                 <div className="flex gap-2">
-                                  <button
-                                    onClick={() => { setShowAddContact(false); setNewContactName(''); setNewContactPhone(''); }}
-                                    className="flex-1 py-2 rounded-xl text-[10px] text-white/30 border border-white/10 hover:bg-white/5">
-                                    Cancelar
-                                  </button>
-                                  <button
-                                    disabled={!newContactName.trim() || !newContactPhone.trim()}
-                                    onClick={() => {
-                                      if (!newContactName.trim() || !newContactPhone.trim()) return;
-                                      addWhatsappContact({ name: newContactName.trim(), phone: newContactPhone.trim() });
-                                      setNewContactName('');
-                                      setNewContactPhone('');
-                                      setShowAddContact(false);
-                                    }}
+                                  <button onClick={() => { setShowAddContact(false); setNewContactName(''); setNewContactPhone(''); }}
+                                    className="flex-1 py-2 rounded-xl text-[10px] text-white/30 border border-white/10 hover:bg-white/5">Cancelar</button>
+                                  <button disabled={!newContactName.trim() || !newContactPhone.trim()}
+                                    onClick={() => { if (!newContactName.trim() || !newContactPhone.trim()) return; addWhatsappContact({ name: newContactName.trim(), phone: newContactPhone.trim() }); setNewContactName(''); setNewContactPhone(''); setShowAddContact(false); }}
                                     className="flex-1 py-2 rounded-xl text-[10px] font-medium transition-all disabled:opacity-30"
-                                    style={{ backgroundColor: '#25D36620', color: '#25D366', border: '1px solid #25D36640' }}>
-                                    Salvar contato
-                                  </button>
+                                    style={{ backgroundColor: '#25D36620', color: '#25D366', border: '1px solid #25D36640' }}>Salvar contato</button>
                                 </div>
                               </div>
                             ) : (
-                              <button
-                                onClick={() => setShowAddContact(true)}
+                              <button onClick={() => setShowAddContact(true)}
                                 className="w-full flex items-center justify-center gap-2 py-3 text-xs text-white/40 hover:text-white/70 hover:bg-white/5 transition-all border-t border-white/5">
                                 <span className="text-base leading-none">+</span>
                                 <span>Adicionar contato</span>
@@ -2164,12 +1888,9 @@ export default function App() {
                             )}
                           </div>
                         )}
-                        <p className="text-[10px] text-white/20 pl-1">
-                          Diga à IA: "manda mensagem de voz pro João" ou "manda texto pra Maria".
-                        </p>
+                        <p className="text-[10px] text-white/20 pl-1">Diga à IA: "manda mensagem de voz pro João" ou "manda texto pra Maria".</p>
                       </div>
 
-                      {/* ✅ TUYA SMART HOME */}
                       <div className="p-4 rounded-2xl border space-y-4" style={{ backgroundColor: '#4ecdc410', borderColor: '#4ecdc430' }}>
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: '#4ecdc420' }}>🏠</div>
@@ -2179,34 +1900,20 @@ export default function App() {
                           </div>
                           <div className={`ml-auto w-2 h-2 rounded-full ${tuyaClientId && tuyaSecret ? 'bg-green-500 animate-pulse' : 'bg-zinc-600'}`} />
                         </div>
-
                         <div className="space-y-3">
                           <div className="space-y-1">
                             <label className="text-[10px] uppercase tracking-widest opacity-40">Client ID</label>
-                            <input
-                              type="text"
-                              placeholder="xxxxxxxxxxxxxxxx"
-                              value={tuyaClientId}
-                              onChange={(e) => setTuyaClientId(e.target.value.trim())}
-                              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
-                            />
+                            <input type="text" placeholder="xxxxxxxxxxxxxxxx" value={tuyaClientId} onChange={(e) => setTuyaClientId(e.target.value.trim())}
+                              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono" />
                           </div>
                           <div className="space-y-1">
                             <label className="text-[10px] uppercase tracking-widest opacity-40">Client Secret</label>
-                            <input
-                              type="password"
-                              placeholder="••••••••••••••••"
-                              value={tuyaSecret}
-                              onChange={(e) => setTuyaSecret(e.target.value.trim())}
-                              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
-                            />
+                            <input type="password" placeholder="••••••••••••••••" value={tuyaSecret} onChange={(e) => setTuyaSecret(e.target.value.trim())}
+                              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono" />
                           </div>
                           <div className="space-y-1">
                             <label className="text-[10px] uppercase tracking-widest opacity-40">Região</label>
-                            <select
-                              value={tuyaRegion}
-                              onChange={(e) => setTuyaRegion(e.target.value)}
-                              className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-white/30">
+                            <select value={tuyaRegion} onChange={(e) => setTuyaRegion(e.target.value)} className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-white/30">
                               <option value="us">América (us)</option>
                               <option value="eu">Europa (eu)</option>
                               <option value="cn">China (cn)</option>
@@ -2215,30 +1922,20 @@ export default function App() {
                           </div>
                           <div className="space-y-1">
                             <label className="text-[10px] uppercase tracking-widest opacity-40">User ID <span className="opacity-50 normal-case">(UID da conta SmartLife)</span></label>
-                            <input
-                              type="text"
-                              placeholder="ay1234567890abcdef (opcional)"
-                              value={tuyaUserId}
-                              onChange={(e) => setTuyaUserId(e.target.value.trim())}
-                              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
-                            />
+                            <input type="text" placeholder="ay1234567890abcdef (opcional)" value={tuyaUserId} onChange={(e) => setTuyaUserId(e.target.value.trim())}
+                              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono" />
                             <p className="text-[10px] text-white/20">Obrigatório se der erro de IP. Veja em: iot.tuya.com → Devices → clique no usuário vinculado.</p>
                           </div>
-                          <button
-                            disabled={!tuyaClientId || !tuyaSecret || tuyaLoading}
+                          <button disabled={!tuyaClientId || !tuyaSecret || tuyaLoading}
                             onClick={async () => {
-                              setTuyaLoading(true);
-                              setTuyaDevices([]);
+                              setTuyaLoading(true); setTuyaDevices([]);
                               try {
                                 const r = await fetch(`/api/tuya/devices?clientId=${encodeURIComponent(tuyaClientId)}&secret=${encodeURIComponent(tuyaSecret)}&region=${tuyaRegion}&userId=${encodeURIComponent(tuyaUserId)}`);
                                 const d = await r.json();
                                 if (d.success) setTuyaDevices(d.devices);
                                 else setSmartHomeStatus(`❌ ${d.error}`);
-                              } catch (e: any) {
-                                setSmartHomeStatus(`❌ Erro: ${e.message}`);
-                              } finally {
-                                setTuyaLoading(false);
-                              }
+                              } catch (e: any) { setSmartHomeStatus(`❌ Erro: ${e.message}`); }
+                              finally { setTuyaLoading(false); }
                             }}
                             className="w-full py-2.5 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all disabled:opacity-30"
                             style={{ backgroundColor: '#4ecdc420', color: '#4ecdc4', border: '1px solid #4ecdc440' }}>
@@ -2256,13 +1953,9 @@ export default function App() {
                             </div>
                           )}
                         </div>
-
-                        <p className="text-[10px] text-white/20 leading-relaxed">
-                          Crie um projeto em <span className="text-white/40">iot.tuya.com</span>, vincule o app Positivo/SmartLife e copie o Client ID e Secret.
-                        </p>
+                        <p className="text-[10px] text-white/20 leading-relaxed">Crie um projeto em <span className="text-white/40">iot.tuya.com</span>, vincule o app Positivo/SmartLife e copie o Client ID e Secret.</p>
                       </div>
 
-                      {/* ✅ ALEXA */}
                       <div className="p-4 rounded-2xl border space-y-3" style={{ backgroundColor: '#1DB9C310', borderColor: '#1DB9C330' }}>
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: '#1DB9C320' }}>🔵</div>
@@ -2272,7 +1965,6 @@ export default function App() {
                           </div>
                           <div className={`ml-auto w-2 h-2 rounded-full ${alexaConnected ? 'bg-green-500 animate-pulse' : alexaPending ? 'bg-yellow-500 animate-pulse' : 'bg-zinc-600'}`} />
                         </div>
-
                         {alexaConnected ? (
                           <div className="space-y-2">
                             <p className="text-[10px] text-green-400">Conectado à Amazon</p>
@@ -2280,38 +1972,19 @@ export default function App() {
                               <div className="space-y-1">
                                 {alexaDevices.map((d: any, i: number) => (
                                   <div key={i} className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded-xl text-xs">
-                                    <span>🔵</span>
-                                    <span className="flex-1">{d.accountName || d.name}</span>
-                                    <span className="opacity-30 text-[10px]">{d.deviceFamily}</span>
+                                    <span>🔵</span><span className="flex-1">{d.accountName || d.name}</span><span className="opacity-30 text-[10px]">{d.deviceFamily}</span>
                                   </div>
                                 ))}
                               </div>
                             )}
                             <div className="flex gap-2">
-                              <button
-                                onClick={async () => {
-                                  setAlexaLoading(true);
-                                  setAlexaDevices([]);
-                                  try {
-                                    const r = await fetch('/api/alexa/devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-                                    const d = await r.json();
-                                    if (d.success) setAlexaDevices(d.devices || []);
-                                  } catch {} finally { setAlexaLoading(false); }
-                                }}
+                              <button onClick={async () => { setAlexaLoading(true); setAlexaDevices([]); try { const r = await fetch('/api/alexa/devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); const d = await r.json(); if (d.success) setAlexaDevices(d.devices || []); } catch {} finally { setAlexaLoading(false); } }}
                                 disabled={alexaLoading}
                                 className="flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest disabled:opacity-30"
                                 style={{ backgroundColor: '#1DB9C320', color: '#1DB9C3', border: '1px solid #1DB9C340' }}>
                                 {alexaLoading ? 'Buscando...' : 'Ver dispositivos'}
                               </button>
-                              <button
-                                onClick={async () => {
-                                  await fetch('/api/alexa/disconnect', { method: 'DELETE' });
-                                  setAlexaConnected(false);
-                                  setAlexaDevices([]);
-                                  setAlexaStatus(null);
-                                  setAlexaAuthUrl(null);
-                                  clearInterval(alexaPollRef.current);
-                                }}
+                              <button onClick={async () => { await fetch('/api/alexa/disconnect', { method: 'DELETE' }); setAlexaConnected(false); setAlexaDevices([]); setAlexaStatus(null); setAlexaAuthUrl(null); clearInterval(alexaPollRef.current); }}
                                 className="px-4 py-2 rounded-xl text-[10px] uppercase tracking-widest"
                                 style={{ backgroundColor: '#ff444420', color: '#ff6666', border: '1px solid #ff444440' }}>
                                 Desconectar
@@ -2331,92 +2004,55 @@ export default function App() {
                                 </a>
                               )}
                             </div>
-                            <button
-                              onClick={() => {
-                                clearInterval(alexaPollRef.current);
-                                setAlexaPending(false);
-                                setAlexaAuthUrl(null);
-                                setAlexaStatus(null);
-                              }}
+                            <button onClick={() => { clearInterval(alexaPollRef.current); setAlexaPending(false); setAlexaAuthUrl(null); setAlexaStatus(null); }}
                               className="w-full py-2 rounded-xl text-[10px] uppercase tracking-widest opacity-40 hover:opacity-70"
-                              style={{ border: '1px solid #ffffff20', color: 'white' }}>
-                              Cancelar
-                            </button>
+                              style={{ border: '1px solid #ffffff20', color: 'white' }}>Cancelar</button>
                           </div>
                         ) : (
                           <div className="space-y-2">
                             {alexaStatus && <p className="text-[10px] text-red-400">{alexaStatus}</p>}
-                            <button
-                              disabled={alexaLoading}
+                            <button disabled={alexaLoading}
                               onClick={async () => {
-                                setAlexaLoading(true);
-                                setAlexaStatus(null);
+                                setAlexaLoading(true); setAlexaStatus(null);
                                 try {
                                   const r = await fetch('/api/alexa/start-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
                                   const d = await r.json();
-                                  if (d.alreadyConnected) {
-                                    setAlexaConnected(true);
-                                  } else if (d.authUrl) {
-                                    setAlexaAuthUrl(d.authUrl);
-                                    setAlexaPending(true);
-                                    window.open(d.authUrl, '_blank');
-                                    // Poll for auth completion
+                                  if (d.alreadyConnected) { setAlexaConnected(true); }
+                                  else if (d.authUrl) {
+                                    setAlexaAuthUrl(d.authUrl); setAlexaPending(true); window.open(d.authUrl, '_blank');
                                     clearInterval(alexaPollRef.current);
                                     alexaPollRef.current = setInterval(async () => {
-                                      try {
-                                        const sr = await fetch('/api/alexa/auth-status');
-                                        const sd = await sr.json();
-                                        if (sd.ready) {
-                                          clearInterval(alexaPollRef.current);
-                                          setAlexaConnected(true);
-                                          setAlexaPending(false);
-                                          setAlexaAuthUrl(null);
-                                          setAlexaStatus(null);
-                                        }
-                                      } catch {}
+                                      try { const sr = await fetch('/api/alexa/auth-status'); const sd = await sr.json(); if (sd.ready) { clearInterval(alexaPollRef.current); setAlexaConnected(true); setAlexaPending(false); setAlexaAuthUrl(null); setAlexaStatus(null); } } catch {}
                                     }, 3000);
                                   }
-                                } catch (e: any) {
-                                  setAlexaStatus(`❌ ${e.message}`);
-                                } finally {
-                                  setAlexaLoading(false);
-                                }
+                                } catch (e: any) { setAlexaStatus(`❌ ${e.message}`); }
+                                finally { setAlexaLoading(false); }
                               }}
                               className="w-full py-2.5 rounded-xl text-[10px] uppercase tracking-widest font-medium transition-all disabled:opacity-30"
                               style={{ backgroundColor: '#1DB9C320', color: '#1DB9C3', border: '1px solid #1DB9C340' }}>
                               {alexaLoading ? 'Iniciando...' : 'Conectar com Amazon'}
                             </button>
-                            <p className="text-[10px] text-white/20 leading-relaxed">
-                              Abre uma página de login. Faça login com sua Amazon — sem precisar copiar cookies.
-                              Funciona apenas na instalação local.
-                            </p>
+                            <p className="text-[10px] text-white/20 leading-relaxed">Abre uma página de login. Faça login com sua Amazon — sem precisar copiar cookies. Funciona apenas na instalação local.</p>
                           </div>
                         )}
                       </div>
-
                     </motion.div>
                   )}
+
+                  {/* ── ABA: APIs ── */}
                   {activeSettingsTab === 'apis' && (
                     <motion.div key="apis" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
                       <p className="text-[10px] text-white/30 leading-relaxed">Configure suas chaves de API. Elas ficam salvas só no seu dispositivo e são usadas diretamente pelo app — sem passar por servidor.</p>
 
-                      {/* Gemini (Voz) */}
+                      {/* Gemini */}
                       <div className="space-y-3">
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ backgroundColor: `${moodColor}20` }}>🎙️</div>
-                          <div>
-                            <p className="text-xs font-medium">Gemini API Key</p>
-                            <p className="text-[10px] text-white/30">Usado para voz (Gemini Live)</p>
-                          </div>
+                          <div><p className="text-xs font-medium">Gemini API Key</p><p className="text-[10px] text-white/30">Usado para voz (Gemini Live)</p></div>
                           <div className={`ml-auto w-2 h-2 rounded-full ${apiKey ? 'bg-green-500' : 'bg-zinc-600'}`} />
                         </div>
-                        <input
-                          type="password"
-                          placeholder="AIza..."
-                          value={apiKey}
-                          onChange={e => setApiKey(e.target.value)}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
-                        />
+                        <input type="password" placeholder="AIza..." value={apiKey} onChange={e => setApiKey(e.target.value)}
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono" />
                         <p className="text-[10px] text-white/20 pl-1">Obtenha em: aistudio.google.com</p>
                       </div>
 
@@ -2425,55 +2061,42 @@ export default function App() {
                         <label className="text-[10px] uppercase tracking-widest text-white/40">Provedor de texto</label>
                         <div className="grid grid-cols-2 gap-2">
                           {(['openai', 'groq'] as const).map(p => (
-                            <button key={p} onClick={() => {
-                              setChatProvider(p);
-                              setChatModel(p === 'groq' ? 'llama-3.3-70b-versatile' : 'gpt-4.1-mini');
-                            }}
+                            <button key={p} onClick={() => { setChatProvider(p); setChatModel(p === 'groq' ? 'llama-3.3-70b-versatile' : 'gpt-4.1-mini'); }}
                               className="p-3 rounded-xl text-sm font-medium transition-all border"
-                              style={chatProvider === p
-                                ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}50`, color: 'white' }
-                                : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
+                              style={chatProvider === p ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}50`, color: 'white' } : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
                               {p === 'openai' ? 'OpenAI' : 'Groq'}
                             </button>
                           ))}
                         </div>
                       </div>
 
-                      {/* OpenAI API Key */}
+                      {/* OpenAI */}
                       {chatProvider === 'openai' && (
                         <div className="space-y-3">
                           <div className="flex items-center gap-2">
                             <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ backgroundColor: `${moodColor}20` }}>💬</div>
-                            <div>
-                              <p className="text-xs font-medium">OpenAI API Key</p>
-                              <p className="text-[10px] text-white/30">platform.openai.com</p>
-                            </div>
+                            <div><p className="text-xs font-medium">OpenAI API Key</p><p className="text-[10px] text-white/30">platform.openai.com</p></div>
                             <div className={`ml-auto w-2 h-2 rounded-full ${openaiApiKey ? 'bg-green-500' : 'bg-zinc-600'}`} />
                           </div>
-                          <input type="password" placeholder="sk-..." value={openaiApiKey}
-                            onChange={e => setOpenaiApiKey(e.target.value)}
+                          <input type="password" placeholder="sk-..." value={openaiApiKey} onChange={e => setOpenaiApiKey(e.target.value)}
                             className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono" />
                         </div>
                       )}
 
-                      {/* Groq API Key */}
+                      {/* Groq */}
                       {chatProvider === 'groq' && (
                         <div className="space-y-3">
                           <div className="flex items-center gap-2">
                             <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ backgroundColor: `${moodColor}20` }}>⚡</div>
-                            <div>
-                              <p className="text-xs font-medium">Groq API Key</p>
-                              <p className="text-[10px] text-white/30">console.groq.com</p>
-                            </div>
+                            <div><p className="text-xs font-medium">Groq API Key</p><p className="text-[10px] text-white/30">console.groq.com</p></div>
                             <div className={`ml-auto w-2 h-2 rounded-full ${groqApiKey ? 'bg-green-500' : 'bg-zinc-600'}`} />
                           </div>
-                          <input type="password" placeholder="gsk_..." value={groqApiKey}
-                            onChange={e => setGroqApiKey(e.target.value)}
+                          <input type="password" placeholder="gsk_..." value={groqApiKey} onChange={e => setGroqApiKey(e.target.value)}
                             className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono" />
                         </div>
                       )}
 
-                      {/* Modelo de texto */}
+                      {/* Modelo */}
                       <div className="space-y-3">
                         <label className="text-[10px] uppercase tracking-widest text-white/40">Modelo</label>
                         <div className="grid grid-cols-1 gap-2">
@@ -2483,82 +2106,69 @@ export default function App() {
                           ).map(m => (
                             <button key={m} onClick={() => setChatModel(m)}
                               className="w-full p-3 rounded-xl text-left text-sm transition-all border"
-                              style={chatModel === m
-                                ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' }
-                                : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
+                              style={chatModel === m ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' } : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
                               {m}
                             </button>
                           ))}
                         </div>
                       </div>
-                      </div>
-                  
-                  {/* ── ElevenLabs ── */}
-                  <div className="pt-4 border-t border-white/5 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm"
-                        style={{ backgroundColor: `${moodColor}20` }}>🔊</div>
-                      <div>
-                        <p className="text-xs font-medium">ElevenLabs</p>
-                        <p className="text-[10px] text-white/30">Voz ultra-realista (fallback do Gemini)</p>
-                      </div>
-                      <div className={`ml-auto w-2 h-2 rounded-full ${elevenLabsApiKey && elevenLabsVoiceId ? 'bg-green-500 animate-pulse' : 'bg-zinc-600'}`} />
-                    </div>
 
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase tracking-widest text-white/40">ElevenLabs API Key</label>
-                      <input
-                        type="password"
-                        placeholder="sk_..."
-                        value={elevenLabsApiKey}
-                        onChange={e => setElevenLabsApiKey(e.target.value.trim())}
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
-                      />
-                    </div>
+                      {/* ✅ ElevenLabs */}
+                      <div className="pt-4 border-t border-white/5 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ backgroundColor: `${moodColor}20` }}>🔊</div>
+                          <div>
+                            <p className="text-xs font-medium">ElevenLabs</p>
+                            <p className="text-[10px] text-white/30">Voz ultra-realista (fallback do Gemini)</p>
+                          </div>
+                          <div className={`ml-auto w-2 h-2 rounded-full ${elevenLabsApiKey && elevenLabsVoiceId ? 'bg-green-500 animate-pulse' : 'bg-zinc-600'}`} />
+                        </div>
 
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase tracking-widest text-white/40">Voice ID</label>
-                      <input
-                        type="text"
-                        placeholder="21m00Tcm4TlvDq8ikWAM"
-                        value={elevenLabsVoiceId}
-                        onChange={e => setElevenLabsVoiceId(e.target.value.trim())}
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
-                      />
-                      <p className="text-[10px] text-white/20 pl-1">
-                        Encontre em <span className="text-white/40">elevenlabs.io/app/voice-library</span>
-                      </p>
-                    </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase tracking-widest text-white/40">ElevenLabs API Key</label>
+                          <input
+                            type="password"
+                            placeholder="sk_..."
+                            value={elevenLabsApiKey}
+                            onChange={e => setElevenLabsApiKey(e.target.value.trim())}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
+                          />
+                        </div>
 
-                    {elevenLabsApiKey && elevenLabsVoiceId && (
-                      <div className="p-3 rounded-xl flex items-center gap-2 text-[10px] text-green-400"
-                        style={{ backgroundColor: '#22c55e10', border: '1px solid #22c55e20' }}>
-                        <span>✓</span>
-                        <span>Configurado. Reconecte a IA para ativar.</span>
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase tracking-widest text-white/40">Voice ID</label>
+                          <input
+                            type="text"
+                            placeholder="21m00Tcm4TlvDq8ikWAM"
+                            value={elevenLabsVoiceId}
+                            onChange={e => setElevenLabsVoiceId(e.target.value.trim())}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
+                          />
+                          <p className="text-[10px] text-white/20 pl-1">
+                            Encontre em <span className="text-white/40">elevenlabs.io/app/voice-library</span>
+                          </p>
+                        </div>
+
+                        {elevenLabsApiKey && elevenLabsVoiceId && (
+                          <div className="p-3 rounded-xl flex items-center gap-2 text-[10px] text-green-400"
+                            style={{ backgroundColor: '#22c55e10', border: '1px solid #22c55e20' }}>
+                            <span>✓</span>
+                            <span>Configurado. Reconecte a IA para ativar.</span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </motion.div>
-              )}
                     </motion.div>
                   )}
 
+                  {/* ── ABA: SISTEMA ── */}
                   {activeSettingsTab === 'system' && (
                     <motion.div key="system" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
-
-                      {/* Nome do assistente */}
                       <div className="space-y-3">
                         <label className="text-[10px] uppercase tracking-widest text-white/40">Nome do assistente</label>
-                        <input
-                          type="text"
-                          placeholder="OSONE"
-                          value={assistantName}
-                          onChange={e => setAssistantName(e.target.value || 'OSONE')}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30"
-                        />
+                        <input type="text" placeholder="OSONE" value={assistantName} onChange={e => setAssistantName(e.target.value || 'OSONE')}
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30" />
                         <p className="text-[10px] text-white/20 pl-1">Muda o nome na personalidade, nas falas e em todo o app.</p>
                       </div>
-
                       <div className="space-y-4">
                         <div className="flex items-center gap-2 opacity-40"><Cpu size={14} /><span className="text-[10px] uppercase tracking-widest">Informações do Sistema</span></div>
                         <div className="grid grid-cols-2 gap-3">
@@ -2613,6 +2223,7 @@ export default function App() {
                       </div>
                     </motion.div>
                   )}
+
                 </AnimatePresence>
               </div>
               <div className="p-5 border-t border-white/5 flex flex-col gap-3">
