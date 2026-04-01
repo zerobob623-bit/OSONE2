@@ -1,7 +1,7 @@
 // src/hooks/useGeminiLive.ts
-// Chat via Gemini API (text/multimodal) — sem Gemini Live / WebSocket / áudio bidirecional
+// Chat via Gemini API (texto/multimodal) — sem Gemini Live / WebSocket / áudio bidirecional
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { useAppStore } from '../store/useAppStore';
 
@@ -30,12 +30,10 @@ export const useGeminiLive = ({
   const onMessageRef = useRef(onMessage);
   const onToolCallRef = useRef(onToolCall);
 
-  // Keep refs up to date
-  const updateRefs = useCallback(() => {
+  useEffect(() => {
     onMessageRef.current = onMessage;
     onToolCallRef.current = onToolCall;
   }, [onMessage, onToolCall]);
-  updateRefs();
 
   // ============================================================
   // 🌐 BUSCA WEB
@@ -171,7 +169,7 @@ export const useGeminiLive = ({
   }, [openaiApiKey, addMessage, setIsThinking]);
 
   // ============================================================
-  // 💬 ENVIO DE MENSAGEM — Gemini como primário, OpenAI/Groq como fallback
+  // 💬 ENVIO DE MENSAGEM — Gemini primário, OpenAI/Groq como fallback
   // ============================================================
 
   const sendMessage = useCallback(async (text: string) => {
@@ -195,7 +193,7 @@ export const useGeminiLive = ({
         const ai = new GoogleGenAI({ apiKey: geminiKey });
         const contents = [
           ...history.slice(-20).map(msg => ({
-            role: msg.role === 'user' ? 'user' : 'model' as 'user' | 'model',
+            role: (msg.role === 'user' ? 'user' : 'model') as 'user' | 'model',
             parts: [{ text: msg.text }]
           })),
           { role: 'user' as const, parts: [{ text }] }
@@ -239,7 +237,13 @@ export const useGeminiLive = ({
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: [...history.slice(-20).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })), { role: 'user', content: text }], systemInstruction }),
+          body: JSON.stringify({
+            messages: [
+              ...history.slice(-20).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
+              { role: 'user', content: text }
+            ],
+            systemInstruction
+          }),
         });
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
@@ -269,368 +273,15 @@ export const useGeminiLive = ({
   const sendFile = useCallback(async (base64Data: string, mimeType: string, prompt: string): Promise<void> => {
     setIsThinking(true);
     try {
-      setError(null);
-      const apiKey = storedApiKey || process.env.GEMINI_API_KEY;
-      if (!apiKey) throw new Error("Chave de API não encontrada. Configure nas Configurações.");
-
-      const LIVE_MODEL = "gemini-3.1-flash-live";
-      console.group("[GeminiLive] 🔌 Iniciando conexão...");
-      console.log("[GeminiLive] API key prefix:", apiKey.substring(0, 8) + "...");
-      console.log("[GeminiLive] Modelo:", LIVE_MODEL);
-      console.log("[GeminiLive] Hora:", new Date().toISOString());
-      console.groupEnd();
-
-      const ai = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: 'v1alpha' } });
-
-      // Contexto de saída (playback 24kHz)
-      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        audioContextRef.current = new AudioContext({ sampleRate: 24000 });
-        console.log("[GeminiLive] AudioContext de saída criado, state:", audioContextRef.current.state);
-      }
-      if (audioContextRef.current.state === 'suspended') {
-        await audioContextRef.current.resume();
-        console.log("[GeminiLive] AudioContext resumido ok");
-      }
-
-      console.log("[GeminiLive] Chamando ai.live.connect()...");
-      const sessionPromise = ai.live.connect({
-        model: LIVE_MODEL,
-        config: {
-          responseModalities: [Modality.AUDIO],
-          ...(sysInstruction ? { systemInstruction: sysInstruction } : {}),
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAPPING[voice] || 'Kore' } },
-          },
-          tools: [
-            { functionDeclarations: [...TOOL_DECLARATIONS, ...buildCustomToolDeclarations(useAppStore.getState().customSkills)] },
-            { googleSearch: {} } as any,
-          ]
-        },
-        callbacks: {
-          onopen: () => {
-            console.log("[GeminiLive] ✅ onopen — WebSocket aberto com sucesso!", new Date().toISOString());
-            isConnectingRef.current = false;
-            setIsConnected(true);
-            isConnectedRef.current = true;
-            setIsListening(true);
-            resetSilenceTimer();
-          },
-          onmessage: async (message: any) => {
-            const modelParts = message.serverContent?.modelTurn?.parts;
-            if (modelParts) {
-              setIsThinking(false);
-              resetSilenceTimer();
-              const textContent = modelParts.filter((p: any) => p.text).map((p: any) => p.text).join('');
-              if (textContent) {
-                addMessage({ role: 'model', text: textContent });
-                onMessageRef.current?.({ role: 'model', text: textContent });
-              }
-              for (const part of modelParts) {
-                if (part.inlineData?.data) {
-                  const bin = atob(part.inlineData.data);
-                  const bytes = new Uint8Array(bin.length);
-                  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                  audioQueue.current.push(new Int16Array(bytes.buffer, 0, Math.floor(bin.length / 2)));
-                  playNextChunk();
-                }
-              }
-            }
-            const userParts = message.serverContent?.userTurn?.parts;
-            if (userParts) {
-              const userText = userParts.filter((p: any) => p.text).map((p: any) => p.text).join('');
-              if (userText) {
-                resetSilenceTimer();
-                addMessage({ role: 'user', text: userText });
-                onMessageRef.current?.({ role: 'user', text: userText });
-              }
-            }
-            if (message.toolCall) {
-              setIsThinking(true);
-              const session = await sessionPromise;
-              const syncResponses: any[] = [];
-              let asyncPending = 0;
-              const safeSend = (response: any) => {
-                if (!isConnectedRef.current) return;
-                try { session.sendToolResponse({ functionResponses: [response] }); }
-                catch (e) { console.warn('[tool] sendToolResponse ignorado:', e); }
-              };
-              const finishAsync = () => {
-                asyncPending--;
-                if (asyncPending === 0) setIsThinking(false);
-              };
-              for (const call of message.toolCall.functionCalls) {
-                const { name, args = {}, id } = call;
-                if (name === "show_lyrics") {
-                  onToolCallRef.current?.(name, args);
-                  syncResponses.push({ name, id, response: { success: true, message: "Letra exibida!" } });
-                  continue;
-                }
-                if (DELEGATED_TOOLS.has(name)) {
-                  onToolCallRef.current?.(name, args);
-                  syncResponses.push({ name, id, response: { success: true } });
-                  continue;
-                }
-                if (name === "search_web") {
-                  asyncPending++;
-                  onToolCallRef.current?.('search_web_start', { query: args.query });
-                  performWebSearch(args.query, args.num_results ?? 5)
-                    .then(content => {
-                      onToolCallRef.current?.(name, { ...args, result: content });
-                      safeSend({ name, id, response: { success: true, content, query: args.query } });
-                    })
-                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
-                    .finally(finishAsync);
-                  continue;
-                }
-                if (name === "read_url_content") {
-                  asyncPending++;
-                  readUrlContent(args.url)
-                    .then(content => {
-                      onToolCallRef.current?.(name, args);
-                      safeSend({ name, id, response: { success: true, content, url: args.url } });
-                    })
-                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
-                    .finally(finishAsync);
-                  continue;
-                }
-                if (name === "control_pc") {
-                  asyncPending++;
-                  fetch('/api/pc/control', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: args.action, ...args }),
-                  })
-                    .then(r => r.json())
-                    .then(async (data) => {
-                      if (data.image) {
-                        onToolCallRef.current?.(name, { action: args.action, imageUrl: `data:${data.mimeType};base64,${data.image}` });
-                        if (isConnectedRef.current) {
-                          try {
-                            session.sendRealtimeInput({ video: { data: data.image, mimeType: data.mimeType } });
-                            session.sendRealtimeInput({ text: '[Sistema: Screenshot capturado e enviado.]' });
-                          } catch {}
-                        }
-                        safeSend({ name, id, response: { success: true, message: 'Screenshot enviado.' } });
-                      } else {
-                        onToolCallRef.current?.(name, { action: args.action, result: data });
-                        safeSend({ name, id, response: data });
-                      }
-                    })
-                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
-                    .finally(finishAsync);
-                  continue;
-                }
-                if (name === "control_device") {
-                  asyncPending++;
-                  const { tuyaClientId, tuyaSecret, tuyaRegion, tuyaUserId } = useAppStore.getState();
-                  fetch('/api/tuya/control', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      device_name: args.device_name,
-                      action: args.action,
-                      value: args.value,
-                      clientId: tuyaClientId,
-                      secret: tuyaSecret,
-                      region: tuyaRegion || 'us',
-                      userId: tuyaUserId || '',
-                    })
-                  })
-                    .then(r => r.json())
-                    .then(data => {
-                      onToolCallRef.current?.(name, { ...args, result: data });
-                      if (data.success) {
-                        const msg = args.action === 'list'
-                          ? `Dispositivos: ${data.devices}`
-                          : `${data.device}: ${args.action === 'on' ? 'ligado' : args.action === 'off' ? 'desligado' : args.action}`;
-                        safeSend({ name, id, response: { success: true, result: msg } });
-                      } else {
-                        safeSend({ name, id, response: { success: false, error: data.error } });
-                      }
-                    })
-                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
-                    .finally(finishAsync);
-                  continue;
-                }
-                if (name === "send_whatsapp" || name === "send_whatsapp_audio" || name === "send_whatsapp_image") {
-                  asyncPending++;
-                  const { myWhatsappNumber, whatsappContacts } = useAppStore.getState();
-                  let resolvedPhone = (args.phone || myWhatsappNumber || '').replace(/\D/g, '');
-                  if (args.contact_name) {
-                    const found = whatsappContacts.find((c: any) =>
-                      c.name.toLowerCase().includes(args.contact_name.toLowerCase()) ||
-                      args.contact_name.toLowerCase().includes(c.name.toLowerCase())
-                    );
-                    if (found) resolvedPhone = found.phone.replace(/\D/g, '');
-                  }
-                  const contactLabel = args.contact_name || resolvedPhone;
-                  const endpoint = name === "send_whatsapp_image" ? '/api/whatsapp/send-image'
-                    : name === "send_whatsapp_audio" ? '/api/whatsapp/send-audio'
-                    : '/api/whatsapp/send';
-                  const body = name === "send_whatsapp_image"
-                    ? { imageUrl: args.imageUrl, caption: args.caption, phone: resolvedPhone }
-                    : name === "send_whatsapp_audio"
-                    ? { text: args.text, phone: resolvedPhone }
-                    : { message: args.message, phone: resolvedPhone };
-                  fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                  })
-                    .then(r => r.json())
-                    .then(data => {
-                      onToolCallRef.current?.(name, { ...args, contact: contactLabel });
-                      safeSend({ name, id, response: data.success ? { success: true, to: contactLabel } : { success: false, error: data.error } });
-                    })
-                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
-                    .finally(finishAsync);
-                  continue;
-                }
-                if (name === 'self_read_code' || name === 'self_write_code' || name === 'self_list_files' || name === 'self_git_push') {
-                  asyncPending++;
-                  const endpoint = name === 'self_read_code' ? '/api/code/read'
-                    : name === 'self_write_code' ? '/api/code/write'
-                    : name === 'self_list_files' ? '/api/code/list'
-                    : '/api/code/git-push';
-                  fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(args)
-                  })
-                    .then(r => r.json())
-                    .then(data => {
-                      onToolCallRef.current?.(name, args);
-                      safeSend({ name, id, response: data.error ? { success: false, error: data.error } : { success: true, result: typeof data === 'string' ? data : JSON.stringify(data) } });
-                    })
-                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
-                    .finally(finishAsync);
-                  continue;
-                }
-                if (name.startsWith('skill_')) {
-                  asyncPending++;
-                  const skillId = name.replace('skill_', '');
-                  const skill = useAppStore.getState().customSkills.find((s: any) => s.id === skillId && s.active);
-                  if (!skill) {
-                    safeSend({ name, id, response: { success: false, error: 'Habilidade não encontrada.' } });
-                    finishAsync();
-                  } else {
-                    fetch('/api/skill/invoke', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ webhookUrl: skill.webhookUrl, method: skill.method, params: args })
-                    })
-                      .then(r => r.json())
-                      .then(data => {
-                        onToolCallRef.current?.(name, { skillName: skill.displayName, ...args });
-                        safeSend({ name, id, response: { success: true, result: typeof data === 'string' ? data : JSON.stringify(data) } });
-                      })
-                      .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
-                      .finally(finishAsync);
-                  }
-                  continue;
-                }
-                if (name === "alexa_control") {
-                  asyncPending++;
-                  fetch('/api/alexa/control', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: args.command, device: args.device })
-                  })
-                    .then(r => r.json())
-                    .then(data => {
-                      onToolCallRef.current?.(name, args);
-                      safeSend({ name, id, response: data.success ? { success: true, result: data.message } : { success: false, error: data.error } });
-                    })
-                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
-                    .finally(finishAsync);
-                  continue;
-                }
-                if (name === "generate_image") {
-                  asyncPending++;
-                  generateImage(args.prompt, args.aspect_ratio ?? "1:1")
-                    .then(() => safeSend({ name, id, response: { success: true } }))
-                    .catch(err => safeSend({ name, id, response: { success: false, error: String(err) } }))
-                    .finally(finishAsync);
-                  onToolCallRef.current?.(name, args);
-                  continue;
-                }
-                switch (name) {
-                  case "toggle_screen_sharing":
-                    onToggleScreenSharingRef.current?.(args.enabled);
-                    syncResponses.push({ name, id, response: { success: true } });
-                    break;
-                  case "open_url":
-                    onOpenUrlRef.current?.(args.url);
-                    syncResponses.push({ name, id, response: { success: true } });
-                    break;
-                  case "change_voice":
-                    onChangeVoiceRef.current?.(args.voice_name);
-                    syncResponses.push({ name, id, response: { success: true } });
-                    break;
-                  case "interact_with_screen":
-                    onInteractRef.current?.(args.action, args.x, args.y, args.text);
-                    syncResponses.push({ name, id, response: { success: true } });
-                    break;
-                  case "mascot_control":
-                    setMascotAction(args.action === 'click' ? 'clicking' : 'pointing');
-                    setMascotTarget(args.target);
-                    syncResponses.push({ name, id, response: { success: true } });
-                    break;
-                  case "complete_onboarding":
-                    setOnboardingStep('completed');
-                    syncResponses.push({ name, id, response: { success: true } });
-                    break;
-                  default:
-                    console.warn(`Tool não implementada: ${name}`);
-                    syncResponses.push({ name, id, response: { success: false, error: "Ferramenta não implementada." } });
-                }
-              }
-              if (syncResponses.length > 0) {
-                session.sendToolResponse({ functionResponses: syncResponses });
-              }
-              if (asyncPending === 0) setIsThinking(false);
-            }
-            if (message.serverContent?.interrupted) {
-              audioQueue.current = [];
-              activeSourcesRef.current.forEach(s => { try { s.stop(); } catch {} });
-              activeSourcesRef.current = [];
-              nextStartTimeRef.current = 0;
-              setIsSpeaking(false);
-            }
-          },
-          onclose: (event: any) => {
-            const code = event?.code ?? '?';
-            const reason = event?.reason ?? '(sem razão)';
-            const wasClean = event?.wasClean ?? '?';
-            console.error(`[GeminiLive] ❌ onclose — code=${code}, reason="${reason}", wasClean=${wasClean}`, new Date().toISOString());
-            const closeMsg = `WS fechou: code=${code}${reason ? ` reason="${reason}"` : ''}`;
-            isConnectingRef.current = false;
-            setIsConnected(false);
-            isConnectedRef.current = false;
-            sessionRef.current = null;
-            stopSilenceTimer();
-            streamRef.current?.getTracks().forEach(t => t.stop());
-            streamRef.current = null;
-            if (inputAudioContextRef.current?.state !== 'closed') {
-              inputAudioContextRef.current?.close().catch(() => {});
-              inputAudioContextRef.current = null;
-            }
-            setIsListening(false);
-            if (!wasClean || code !== 1000) {
-              setError(closeMsg);
-            }
-          },
-          onerror: (err: any) => {
-            console.error("[GeminiLive] 🔴 onerror:", err, new Date().toISOString());
-            const msg = err?.message || err?.type || JSON.stringify(err) || 'Erro desconhecido';
-            isConnectingRef.current = false;
-            setError(`Erro na API Live: ${msg}`);
-            setIsConnected(false);
-            isConnectedRef.current = false;
-            sessionRef.current = null;
-            stopSilenceTimer();
-          }
-        }
+      const geminiKey = storedApiKey || process.env.GEMINI_API_KEY;
+      if (!geminiKey) throw new Error('Configure a API Gemini nas Configurações.');
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [
+          { inlineData: { mimeType, data: base64Data } },
+          { text: prompt }
+        ]}],
       });
       const replyText = response.text ?? 'Não consegui analisar o arquivo.';
       addMessage({ role: 'model', text: replyText });
@@ -646,6 +297,8 @@ export const useGeminiLive = ({
 
   return {
     isThinking, error, history,
-    sendMessage, sendFile, generateImage
+    sendMessage, sendFile, generateImage,
+    // compatibilidade — não fazem nada, existem para evitar erros em chamadas legadas
+    performWebSearch, readUrlContent,
   };
 };
