@@ -1,72 +1,25 @@
 // src/hooks/useGeminiLive.ts
-// ✅ Análise automática de tela (a cada troca de app)
-// ✅ Fala espontânea após 60s de silêncio
+// Chat via Gemini API (text/multimodal) — sem Gemini Live / WebSocket / áudio bidirecional
 
-import React, { useCallback, useEffect, useRef } from 'react';
-import { GoogleGenAI, Modality } from "@google/genai";
-import { useAppStore, VoiceName, VOICE_MAPPING } from '../store/useAppStore';
-import { TOOL_DECLARATIONS, DELEGATED_TOOLS, buildCustomToolDeclarations } from './geminiToolDeclarations';
+import { useCallback, useRef } from 'react';
+import { GoogleGenAI } from "@google/genai";
+import { useAppStore } from '../store/useAppStore';
 
 export interface UseGeminiLiveProps {
-  onToggleScreenSharing?: (enabled: boolean) => void;
-  onChangeVoice?: (voice: VoiceName) => void;
-  onOpenUrl?: (url: string) => void;
-  onInteract?: (action: string, x?: number, y?: number, text?: string) => void;
   onMessage?: (msg: { role: 'user' | 'model'; text: string; imageUrl?: string }) => void;
   onToolCall?: (toolName: string, args: any) => void;
-  isMuted?: boolean;
   systemInstruction?: string;
 }
 
-// ─── Constantes ──────────────────────────────────────────────────────────────
-const SILENCE_TIMEOUT_MS = 60_000;
-const SCREEN_ANALYSIS_INTERVAL_MS = 3_000;
-
-const SPONTANEOUS_PROMPTS = [
-  "Estou aqui se você precisar de algo.",
-  "Posso te ajudar com alguma coisa agora?",
-  "Você está bem? Já faz um tempo que não conversa.",
-  "Se quiser pensar em voz alta, estou ouvindo.",
-  "Tem algo em que eu possa ajudar?",
-];
-
-// ─── Helper seguro para envio de mensagens ──────────────────────────────────
-const safeSessionSend = (
-  sessionRef: React.MutableRefObject<any>,
-  isConnectedRef: React.MutableRefObject<boolean>,
-  callback: (session: any) => void
-) => {
-  if (!sessionRef.current || !isConnectedRef.current) return;
-  sessionRef.current
-    .then((session: any) => {
-      if (!isConnectedRef.current) return;
-      try { callback(session); } catch {}
-    })
-    .catch(() => {});
-};
-
 export const useGeminiLive = ({
-  onToggleScreenSharing,
-  onChangeVoice,
-  onOpenUrl,
-  onInteract,
   onMessage,
   onToolCall,
-  isMuted = false,
   systemInstruction = ""
 }: UseGeminiLiveProps) => {
   const {
-    voice,
-    isConnected, setIsConnected,
-    isSpeaking, setIsSpeaking,
-    isListening, setIsListening,
     isThinking, setIsThinking,
-    volume, setVolume,
     error, setError,
     history, addMessage,
-    setMascotTarget,
-    setMascotAction,
-    setOnboardingStep,
     apiKey: storedApiKey,
     openaiApiKey,
     groqApiKey,
@@ -74,129 +27,15 @@ export const useGeminiLive = ({
     chatModel,
   } = useAppStore();
 
-  const sessionRef = useRef<any>(null);
-  const isConnectedRef = useRef(false);
-  const isConnectingRef = useRef(false);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const inputAudioContextRef = useRef<AudioContext | null>(null);
-  const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const screenStreamRef = useRef<MediaStream | null>(null);
-  const audioQueue = useRef<Int16Array[]>([]);
-  const nextStartTimeRef = useRef<number>(0);
-  const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
-  const isMutedRef = useRef(isMuted);
-
-  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const screenAnalysisActiveRef = useRef(false);
-
-  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
-
-  const onToggleScreenSharingRef = useRef(onToggleScreenSharing);
-  const onChangeVoiceRef = useRef(onChangeVoice);
-  const onOpenUrlRef = useRef(onOpenUrl);
-  const onInteractRef = useRef(onInteract);
   const onMessageRef = useRef(onMessage);
   const onToolCallRef = useRef(onToolCall);
 
-  useEffect(() => {
-    onToggleScreenSharingRef.current = onToggleScreenSharing;
-    onChangeVoiceRef.current = onChangeVoice;
-    onOpenUrlRef.current = onOpenUrl;
-    onInteractRef.current = onInteract;
+  // Keep refs up to date
+  const updateRefs = useCallback(() => {
     onMessageRef.current = onMessage;
     onToolCallRef.current = onToolCall;
-  }, [onToggleScreenSharing, onChangeVoice, onOpenUrl, onInteract, onMessage, onToolCall]);
-
-  // ============================================================
-  // 🎵 ÁUDIO
-  // ============================================================
-
-  const stopAudio = useCallback((isReconnecting = false) => {
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
-    if (audioWorkletNodeRef.current) {
-      audioWorkletNodeRef.current.port.onmessage = null;
-      audioWorkletNodeRef.current.disconnect();
-      audioWorkletNodeRef.current = null;
-    }
-    if (inputAudioContextRef.current?.state !== 'closed') {
-      inputAudioContextRef.current?.close().catch(console.error);
-      inputAudioContextRef.current = null;
-    }
-    activeSourcesRef.current.forEach(s => { try { s.stop(); } catch {} });
-    activeSourcesRef.current = [];
-    if (!isReconnecting && audioContextRef.current?.state !== 'closed') {
-      audioContextRef.current?.close().catch(console.error);
-      audioContextRef.current = null;
-    }
-    setIsListening(false);
-    setIsSpeaking(false);
-    audioQueue.current = [];
-    nextStartTimeRef.current = 0;
-  }, [setIsListening, setIsSpeaking]);
-
-  const playNextChunk = useCallback(() => {
-    if (audioQueue.current.length === 0 || !audioContextRef.current) return;
-    const ctx = audioContextRef.current;
-    const chunk = audioQueue.current.shift()!;
-    const audioBuffer = ctx.createBuffer(1, chunk.length, 24000);
-    const channelData = audioBuffer.getChannelData(0);
-    for (let i = 0; i < chunk.length; i++) channelData[i] = chunk[i] / 0x7FFF;
-    const source = ctx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(ctx.destination);
-    const now = ctx.currentTime;
-    if (nextStartTimeRef.current < now + 0.02) nextStartTimeRef.current = now + 0.05;
-    source.start(nextStartTimeRef.current);
-    activeSourcesRef.current.push(source);
-    nextStartTimeRef.current += audioBuffer.duration;
-    setIsSpeaking(true);
-    source.onended = () => {
-      activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== source);
-      if (activeSourcesRef.current.length === 0 && audioQueue.current.length === 0) {
-        setIsSpeaking(false);
-      }
-    };
-  }, [setIsSpeaking]);
-
-  const toBase64 = useCallback((buffer: ArrayBuffer): string => {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    const CHUNK = 8192;
-    for (let i = 0; i < bytes.length; i += CHUNK)
-      binary += String.fromCharCode(...(bytes.subarray(i, i + CHUNK) as any));
-    return window.btoa(binary);
-  }, []);
-
-  // ============================================================
-  // 🔕 SILÊNCIO → FALA ESPONTÂNEA
-  // ============================================================
-
-  const stopSilenceTimer = useCallback(() => {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-  }, []);
-
-  const resetSilenceTimer = useCallback(() => {
-    stopSilenceTimer();
-    silenceTimerRef.current = setTimeout(() => {
-      if (!isConnectedRef.current || !sessionRef.current) return;
-      if (activeSourcesRef.current.length > 0 || useAppStore.getState().isThinking) {
-        resetSilenceTimer();
-        return;
-      }
-      const prompt = SPONTANEOUS_PROMPTS[Math.floor(Math.random() * SPONTANEOUS_PROMPTS.length)];
-      console.log(`[silêncio] ${SILENCE_TIMEOUT_MS / 1000}s — iniciando fala espontânea`);
-      safeSessionSend(sessionRef, isConnectedRef, (session) => {
-        session.sendRealtimeInput({
-          text: `[SISTEMA: O usuário está em silêncio há ${SILENCE_TIMEOUT_MS / 1000} segundos. Inicie a conversa naturalmente. Sugestão: "${prompt}"]`
-        });
-      });
-    }, SILENCE_TIMEOUT_MS);
-  }, [stopSilenceTimer]);
+  }, [onMessage, onToolCall]);
+  updateRefs();
 
   // ============================================================
   // 🌐 BUSCA WEB
@@ -332,19 +171,14 @@ export const useGeminiLive = ({
   }, [openaiApiKey, addMessage, setIsThinking]);
 
   // ============================================================
-  // 💬 ENVIO DE MENSAGEM (modo texto)
+  // 💬 ENVIO DE MENSAGEM — Gemini como primário, OpenAI/Groq como fallback
   // ============================================================
 
   const sendMessage = useCallback(async (text: string) => {
-    resetSilenceTimer();
     addMessage({ role: 'user', text });
     onMessageRef.current?.({ role: 'user', text });
     setIsThinking(true);
     try {
-      const contextHistory = history.map(msg => ({
-        role: msg.role === 'user' ? 'user' : 'assistant',
-        content: msg.text
-      }));
       const IMAGE_KEYWORDS = ['gere uma imagem', 'crie uma imagem', 'gerar imagem', 'criar imagem', 'desenhe', 'faça uma imagem'];
       const lower = text.toLowerCase();
       const matchedKw = IMAGE_KEYWORDS.find(kw => lower.includes(kw));
@@ -352,16 +186,38 @@ export const useGeminiLive = ({
         const prompt = text.substring(lower.indexOf(matchedKw) + matchedKw.length).trim();
         if (prompt) { await generateImage(prompt); return; }
       }
+
       let replyText = '';
-      const activeKey = chatProvider === 'groq' ? groqApiKey : openaiApiKey;
-      if (activeKey) {
+      const geminiKey = storedApiKey || process.env.GEMINI_API_KEY;
+      const activeAltKey = chatProvider === 'groq' ? groqApiKey : openaiApiKey;
+
+      if (geminiKey) {
+        const ai = new GoogleGenAI({ apiKey: geminiKey });
+        const contents = [
+          ...history.slice(-20).map(msg => ({
+            role: msg.role === 'user' ? 'user' : 'model' as 'user' | 'model',
+            parts: [{ text: msg.text }]
+          })),
+          { role: 'user' as const, parts: [{ text }] }
+        ];
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents,
+          config: systemInstruction ? { systemInstruction } : undefined,
+        });
+        replyText = response.text ?? '';
+      } else if (activeAltKey) {
         const baseUrl = chatProvider === 'groq'
           ? 'https://api.groq.com/openai/v1/chat/completions'
           : 'https://api.openai.com/v1/chat/completions';
         const defaultModel = chatProvider === 'groq' ? 'llama-3.3-70b-versatile' : 'gpt-4.1-mini';
+        const contextHistory = history.slice(-20).map(msg => ({
+          role: msg.role === 'user' ? 'user' : 'assistant',
+          content: msg.text
+        }));
         const res = await fetch(baseUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${activeKey}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${activeAltKey}` },
           body: JSON.stringify({
             model: chatModel || defaultModel,
             messages: [
@@ -383,7 +239,7 @@ export const useGeminiLive = ({
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: [...contextHistory, { role: 'user', content: text }], systemInstruction }),
+          body: JSON.stringify({ messages: [...history.slice(-20).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })), { role: 'user', content: text }], systemInstruction }),
         });
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
@@ -392,31 +248,26 @@ export const useGeminiLive = ({
         const data = await res.json();
         replyText = data.text || '';
       }
+
       if (replyText) {
         addMessage({ role: 'model', text: replyText });
         onMessageRef.current?.({ role: 'model', text: replyText });
       }
     } catch (err: any) {
-      const msg = err.message?.includes("OPENAI_API_KEY")
-        ? "OPENAI_API_KEY não configurada nas variáveis de ambiente do servidor."
-        : `Erro ao processar: ${err.message || 'Erro desconhecido'}`;
+      const msg = `Erro: ${err.message || 'Erro desconhecido'}`;
       addMessage({ role: 'model', text: msg });
       onMessageRef.current?.({ role: 'model', text: msg });
     } finally {
       setIsThinking(false);
     }
-  }, [history, addMessage, setIsThinking, systemInstruction, generateImage, resetSilenceTimer]);
+  }, [history, addMessage, setIsThinking, systemInstruction, generateImage, storedApiKey, openaiApiKey, groqApiKey, chatProvider, chatModel]);
 
   // ============================================================
-  // 🔌 CONEXÃO COM GEMINI LIVE
+  // 📎 ENVIO DE ARQUIVO — análise de imagem/PDF via Gemini multimodal
   // ============================================================
 
-  const connect = useCallback(async (sysInstruction: string) => {
-    if (isConnectedRef.current || isConnectingRef.current || sessionRef.current) {
-      console.warn("[GeminiLive] Já conectado/conectando — ignorando connect() duplicado.");
-      return;
-    }
-    isConnectingRef.current = true;
+  const sendFile = useCallback(async (base64Data: string, mimeType: string, prompt: string): Promise<void> => {
+    setIsThinking(true);
     try {
       setError(null);
       const apiKey = storedApiKey || process.env.GEMINI_API_KEY;
@@ -781,175 +632,20 @@ export const useGeminiLive = ({
           }
         }
       });
-
-      sessionRef.current = sessionPromise;
-      console.log("[GeminiLive] Aguardando sessão resolver...");
-      await sessionPromise;
-      console.log("[GeminiLive] ✅ sessionPromise resolveu — sessão pronta");
-
-      console.log("[GeminiLive] Solicitando permissão de microfone...");
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }
-      });
-      console.log("[GeminiLive] ✅ Microfone obtido, tracks:", stream.getAudioTracks().map(t => t.label));
-      streamRef.current = stream;
-
-      const inputCtx = new AudioContext({ sampleRate: 16000 });
-      inputAudioContextRef.current = inputCtx;
-      console.log("[GeminiLive] InputAudioContext criado, state:", inputCtx.state, "sampleRate:", inputCtx.sampleRate);
-
-      if (inputCtx.state === 'suspended') {
-        await inputCtx.resume();
-        console.log("[GeminiLive] InputAudioContext resumido, state:", inputCtx.state);
-      }
-
-      const micSource = inputCtx.createMediaStreamSource(stream);
-      console.log("[GeminiLive] ScriptProcessorNode configurado — microfone ativo e enviando");
-
-      let _audioChunkCount = 0;
-      const sendAudioChunk = (combined: Int16Array) => {
-        let sum = 0;
-        for (let i = 0; i < combined.length; i++) sum += Math.abs(combined[i] / 0x7FFF);
-        const vol = sum / combined.length;
-        setVolume(vol);
-        if (vol > 0.01) resetSilenceTimer();
-        _audioChunkCount++;
-        if (_audioChunkCount <= 5 || _audioChunkCount % 100 === 0) {
-          console.log(`[GeminiLive] 🎙 chunk #${_audioChunkCount} vol=${vol.toFixed(4)} muted=${isMutedRef.current} connected=${isConnectedRef.current} session=${!!sessionRef.current}`);
-        }
-        if (!isMutedRef.current && sessionRef.current && isConnectedRef.current) {
-          sessionRef.current.then((session: any) => {
-            if (!isConnectedRef.current) return;
-            try { session.sendRealtimeInput({ audio: { data: toBase64(combined.buffer), mimeType: 'audio/pcm;rate=16000' } }); }
-            catch (e) { console.warn("[GeminiLive] sendRealtimeInput falhou:", e); }
-          }).catch((e: any) => console.warn("[GeminiLive] session promise falhou:", e));
-        }
-      };
-
-      // ScriptProcessorNode: universal — funciona em PC, Android, iOS, Safari
-      // eslint-disable-next-line @typescript-eslint/no-deprecated
-      const scriptProc = inputCtx.createScriptProcessor(4096, 1, 1);
-      micSource.connect(scriptProc);
-      scriptProc.connect(inputCtx.destination);
-      scriptProc.onaudioprocess = (e: AudioProcessingEvent) => {
-        const channelData = e.inputBuffer.getChannelData(0);
-        const int16 = new Int16Array(channelData.length);
-        for (let i = 0; i < channelData.length; i++) {
-          int16[i] = Math.max(-1, Math.min(1, channelData[i])) * 0x7FFF;
-        }
-        sendAudioChunk(int16);
-      };
-
+      const replyText = response.text ?? 'Não consegui analisar o arquivo.';
+      addMessage({ role: 'model', text: replyText });
+      onMessageRef.current?.({ role: 'model', text: replyText });
     } catch (err: any) {
-      console.error("[GeminiLive] 💥 CATCH — Falha na conexão:", err);
-      console.error("[GeminiLive] Stack:", err?.stack);
-      isConnectingRef.current = false;
-      setError(`Falha: ${err?.message || String(err)}`);
-      setIsConnected(false);
-      isConnectedRef.current = false;
-      sessionRef.current = null;
+      const msg = `Erro ao analisar arquivo: ${err.message}`;
+      addMessage({ role: 'model', text: msg });
+      onMessageRef.current?.({ role: 'model', text: msg });
+    } finally {
+      setIsThinking(false);
     }
-  }, [
-    voice, storedApiKey, stopAudio, playNextChunk, toBase64,
-    setError, setIsConnected, setIsListening, setVolume,
-    addMessage, setMascotAction, setMascotTarget, setOnboardingStep,
-    wikiSearch, performWebSearch, readUrlContent, generateImage,
-    resetSilenceTimer, stopSilenceTimer
-  ]);
-
-  // ============================================================
-  // 📺 COMPARTILHAMENTO DE TELA
-  // ============================================================
-
-  const startScreenSharing = useCallback(async () => {
-    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-      setError("Compartilhamento de tela não suportado em dispositivos móveis.");
-      return;
-    }
-    try {
-      const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true });
-      screenStreamRef.current = stream;
-      screenAnalysisActiveRef.current = true;
-      const video = document.createElement('video');
-      video.srcObject = stream;
-      await video.play();
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d')!;
-
-      safeSessionSend(sessionRef, isConnectedRef, (session) => {
-        session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela iniciado.]' });
-      });
-
-      const sendFrame = () => {
-        if (!screenStreamRef.current?.active || !sessionRef.current || !screenAnalysisActiveRef.current) return;
-        if (isConnectedRef.current && video.videoWidth > 0) {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          ctx.drawImage(video, 0, 0);
-          const base64 = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
-          safeSessionSend(sessionRef, isConnectedRef, (session) => {
-            session.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } });
-          });
-        }
-        setTimeout(sendFrame, SCREEN_ANALYSIS_INTERVAL_MS);
-      };
-
-      sendFrame();
-
-      stream.getVideoTracks()[0].addEventListener('ended', () => {
-        screenAnalysisActiveRef.current = false;
-        safeSessionSend(sessionRef, isConnectedRef, (session) => {
-          session.sendRealtimeInput({ text: '[SISTEMA: Compartilhamento de tela encerrado.]' });
-        });
-      });
-
-    } catch (e: any) {
-      const msgs: Record<string, string> = {
-        NotAllowedError: "Permissão negada. Verifique as configurações do navegador.",
-        NotFoundError: "Nenhuma fonte de tela encontrada."
-      };
-      setError(msgs[e.name] ?? "Falha ao iniciar compartilhamento de tela.");
-    }
-  }, [setError]);
-
-  const sendLiveMessage = useCallback((text: string) => {
-    if (sessionRef.current && isConnectedRef.current) {
-      resetSilenceTimer();
-      setIsThinking(true);
-      safeSessionSend(sessionRef, isConnectedRef, (session) => {
-        session.sendRealtimeInput({ text });
-      });
-    }
-  }, [setIsThinking, resetSilenceTimer]);
-
-  const sendFile = useCallback(async (base64Data: string, mimeType: string, prompt: string): Promise<void> => {
-    if (!sessionRef.current || !isConnectedRef.current) {
-      throw new Error('Sessão não está ativa');
-    }
-    setIsThinking(true);
-    const s = await sessionRef.current;
-    await s.sendRealtimeInput({ video: { mimeType, data: base64Data } });
-    await new Promise(r => setTimeout(r, 300));
-    await s.sendRealtimeInput({ text: prompt });
-  }, [setIsThinking]);
-
-  const disconnect = useCallback((isReconnecting = false) => {
-    screenAnalysisActiveRef.current = false;
-    stopSilenceTimer();
-    isConnectedRef.current = false;
-    isConnectingRef.current = false;
-    const sessionToClose = sessionRef.current;
-    sessionRef.current = null;
-    sessionToClose?.then((s: any) => {
-      try { s.close(); } catch {}
-    }).catch(() => {});
-    screenStreamRef.current?.getTracks().forEach(t => t.stop());
-    stopAudio(isReconnecting);
-  }, [stopAudio, stopSilenceTimer]);
+  }, [storedApiKey, addMessage, setIsThinking]);
 
   return {
-    isConnected, isSpeaking, isListening, isThinking, volume, error, history,
-    connect, disconnect, startScreenSharing,
-    sendMessage, sendLiveMessage, sendFile, generateImage
+    isThinking, error, history,
+    sendMessage, sendFile, generateImage
   };
 };
