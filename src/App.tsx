@@ -470,6 +470,9 @@ export default function App() {
   const [newNodeName, setNewNodeName]               = useState('');
   const [renamingId, setRenamingId]                 = useState<string | null>(null);
   const [renameValue, setRenameValue]               = useState('');
+  const [vibePrompt, setVibePrompt]                 = useState('');
+  const [vibeBuilding, setVibeBuilding]             = useState(false);
+  const [vibePreviewFiles, setVibePreviewFiles]     = useState<WorkspaceFile[] | null>(null);
   const [interfaceMode, setInterfaceMode]           = useState(0);
   const [swipeDir, setSwipeDir]                     = useState<1 | -1>(1);
   const swipeStartX                                 = useRef(0);
@@ -847,6 +850,86 @@ export default function App() {
     if (isConnected) setIsMuted(!isMuted);
     else connect(systemInstruction);
   }, [isConnected, isMuted, connect, systemInstruction]);
+
+  // ── VIBE CODING ─────────────────────────────────────────────────────────────
+  const generateVibeApp = useCallback(async (prompt: string) => {
+    if (!prompt.trim() || vibeBuilding) return;
+    setVibeBuilding(true);
+    try {
+      const geminiKey = apiKey || process.env.GEMINI_API_KEY;
+      if (!geminiKey) throw new Error('Configure a API Gemini nas configurações.');
+      const { GoogleGenAI } = await import('@google/genai');
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: `Você é um expert em desenvolvimento de software. Crie um aplicativo completo para: "${prompt}".
+
+Responda APENAS com um JSON válido no seguinte formato (sem markdown, sem texto extra):
+{
+  "files": [
+    { "path": "index.html", "content": "..." },
+    { "path": "src/App.jsx", "content": "..." },
+    { "path": "src/styles.css", "content": "..." }
+  ]
+}
+
+Regras:
+- Se for um app simples (landing page, jogo, calculadora), use apenas index.html com tudo inline (CSS + JS dentro do HTML)
+- Se for um app React, inclua todos os arquivos necessários com imports corretos
+- Sempre inclua um index.html funcional e completo
+- Todo código deve estar pronto para funcionar, sem placeholders
+- Máximo 8 arquivos` }] }],
+        config: { responseMimeType: 'application/json' },
+      });
+      const raw = response.text ?? '{}';
+      const parsed = JSON.parse(raw);
+      const files: { path: string; content: string }[] = parsed.files ?? [];
+      if (!files.length) throw new Error('IA não retornou arquivos.');
+
+      // Converter lista plana de paths para árvore de WorkspaceFile
+      const buildTree = (fileList: { path: string; content: string }[]): WorkspaceFile[] => {
+        const root: WorkspaceFile[] = [];
+        fileList.forEach(f => {
+          const parts = f.path.split('/');
+          let current = root;
+          parts.forEach((part, i) => {
+            const isLast = i === parts.length - 1;
+            if (isLast) {
+              current.push({ id: crypto.randomUUID(), name: part, type: 'file', content: f.content });
+            } else {
+              let folder = current.find(n => n.name === part && n.type === 'folder');
+              if (!folder) {
+                folder = { id: crypto.randomUUID(), name: part, type: 'folder', children: [], expanded: true };
+                current.push(folder);
+              }
+              current = folder.children!;
+            }
+          });
+        });
+        return root;
+      };
+
+      const tree = buildTree(files);
+      setWorkspaceFiles(tree);
+      setWorkspaceProjectName(prompt.slice(0, 30));
+      setWorkspaceTab('files');
+      // Seleciona o index.html automaticamente
+      const findIndex = (nodes: WorkspaceFile[]): WorkspaceFile | null => {
+        for (const n of nodes) {
+          if (n.type === 'file' && n.name === 'index.html') return n;
+          if (n.children) { const f = findIndex(n.children); if (f) return f; }
+        }
+        return null;
+      };
+      const indexFile = findIndex(tree);
+      if (indexFile) setSelectedFileId(indexFile.id);
+      setVibePrompt('');
+    } catch (err: any) {
+      setError(`Vibe coding falhou: ${err.message}`);
+    } finally {
+      setVibeBuilding(false);
+    }
+  }, [vibeBuilding, apiKey, setWorkspaceFiles, setWorkspaceProjectName, setError]);
 
   // Nível 1: ElevenLabs fala → orb anima como se estivesse "falando"
   const effectiveSpeaking = voiceLevel === 1 ? elevenSpeaking : isSpeaking;
@@ -1427,6 +1510,28 @@ export default function App() {
                 ));
 
               return (
+                <div className="flex-1 flex flex-col overflow-hidden">
+
+                {/* ── VIBE CODING BAR ── */}
+                <div className="shrink-0 px-3 py-2 border-b border-white/5 flex items-center gap-2">
+                  <span className="text-lg">✨</span>
+                  <input
+                    value={vibePrompt}
+                    onChange={e => setVibePrompt(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') generateVibeApp(vibePrompt); }}
+                    placeholder="Descreva o app que quer criar... ex: calculadora de IMC, jogo da memória"
+                    disabled={vibeBuilding}
+                    className="flex-1 bg-transparent text-xs placeholder:text-white/20 focus:outline-none text-white/70"
+                  />
+                  <button
+                    onClick={() => generateVibeApp(vibePrompt)}
+                    disabled={vibeBuilding || !vibePrompt.trim()}
+                    className="px-3 py-1.5 rounded-xl text-[10px] uppercase tracking-widest font-semibold transition-all disabled:opacity-30"
+                    style={{ backgroundColor: `${moodColor}25`, color: moodColor, border: `1px solid ${moodColor}40` }}>
+                    {vibeBuilding ? '⏳ Gerando...' : 'Gerar App'}
+                  </button>
+                </div>
+
                 <div className="flex-1 flex overflow-hidden">
                   <div className="w-48 border-r border-white/5 flex flex-col shrink-0">
                     <div className="px-3 py-2 border-b border-white/5">
@@ -1547,6 +1652,7 @@ export default function App() {
                       </div>
                     )}
                   </div>
+                </div>
                 </div>
               );
             })()}
@@ -2274,8 +2380,31 @@ export default function App() {
                           />
                         </div>
 
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest text-white/40">Top 5 Vozes ElevenLabs</label>
+                          <div className="grid grid-cols-1 gap-1.5">
+                            {[
+                              { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', desc: 'Feminina, calorosa e clara' },
+                              { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', desc: 'Feminina, suave e agradável' },
+                              { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi', desc: 'Feminina, forte e confiante' },
+                              { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', desc: 'Masculina, equilibrada e natural' },
+                              { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', desc: 'Masculina, grave e autoritária' },
+                            ].map(v => (
+                              <button key={v.id} onClick={() => setElevenLabsVoiceId(v.id)}
+                                className="flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all border"
+                                style={elevenLabsVoiceId === v.id
+                                  ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}40`, color: 'white' }
+                                  : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                                <span className="text-xs font-semibold w-16">{v.name}</span>
+                                <span className="text-[10px] opacity-50 flex-1">{v.desc}</span>
+                                {elevenLabsVoiceId === v.id && <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: moodColor }} />}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
                         <div className="space-y-1">
-                          <label className="text-[10px] uppercase tracking-widest text-white/40">Voice ID</label>
+                          <label className="text-[10px] uppercase tracking-widest text-white/40">Voice ID (personalizado)</label>
                           <input
                             type="text"
                             placeholder="21m00Tcm4TlvDq8ikWAM"
@@ -2284,7 +2413,7 @@ export default function App() {
                             className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
                           />
                           <p className="text-[10px] text-white/20 pl-1">
-                            Encontre em <span className="text-white/40">elevenlabs.io/app/voice-library</span>
+                            Mais vozes em <span className="text-white/40">elevenlabs.io/app/voice-library</span>
                           </p>
                         </div>
 
