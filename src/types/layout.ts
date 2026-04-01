@@ -10,9 +10,11 @@ export interface MainLayoutProps {
 
   // AI state
   statusLabel: string;
+  isConnected: boolean;
   isSpeaking: boolean;
   isListening: boolean;
   isThinking: boolean;
+  isMuted: boolean;
   volume: number;
 
   // Chat
@@ -26,6 +28,7 @@ export interface MainLayoutProps {
   setInputText: (v: string) => void;
   onSendText: () => void;
   onMicToggle: () => void;
+  onDisconnect: () => void;
   fileInputRef: RefObject<HTMLInputElement | null>;
   showAttachMenu: boolean;
   setShowAttachMenu: (v: boolean | ((prev: boolean) => boolean)) => void;

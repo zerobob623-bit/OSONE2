@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Settings, Power, Mic, Send, Paperclip, Monitor, Volume2, VolumeX, Copy, Volume1, Check } from 'lucide-react';
+import { Settings, Power, MicOff, Mic, PhoneOff, Send, Paperclip, Monitor, Volume2, VolumeX, Copy, Volume1, Check } from 'lucide-react';
 import { OrbSphere } from '../OrbSphere';
 import type { MainLayoutProps } from '../../types/layout';
 
@@ -28,9 +28,9 @@ function MsgActions({ text }: { text: string }) {
 
 export function DefaultLayout({
   moodColor, mood, personality, MOOD_CONFIG, PERSONALITY_CONFIG,
-  statusLabel, isSpeaking, isListening, isThinking, volume,
+  statusLabel, isConnected, isSpeaking, isListening, isThinking, isMuted, volume,
   messages, transcriptRef, memory, assistantName,
-  inputText, setInputText, onSendText, onMicToggle,
+  inputText, setInputText, onSendText, onMicToggle, onDisconnect,
   fileInputRef, showAttachMenu, setShowAttachMenu, onFileClick, onScreenShare,
   onOrbClick, currentTime, systemMetrics, focusMode, onFocusModeToggle,
   isAmbientEnabled, onAmbientToggle, onOpenMenu, onOpenSettings, onOpenMoodSettings,
@@ -95,6 +95,10 @@ export function DefaultLayout({
             {isAmbientEnabled ? <Volume2 size={10} /> : <VolumeX size={10} />}
             {isAmbientEnabled ? 'Som ON' : 'Som OFF'}
           </button>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.03] border border-white/[0.05]">
+            <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'animate-pulse' : 'bg-zinc-600'}`} style={{ backgroundColor: isConnected ? moodColor : undefined }} />
+            <span className="text-[9px] uppercase tracking-widest opacity-50 hidden sm:inline">{isConnected ? 'Ativo' : 'Offline'}</span>
+          </div>
           <button onClick={onOpenSettings} className="p-2 hover:bg-white/5 rounded-full opacity-40 hover:opacity-100 transition-all"><Settings size={16} /></button>
           <button onClick={onRestart} className="p-2 hover:bg-white/5 rounded-full opacity-40 hover:opacity-100 transition-all" style={{ color: moodColor }}><Power size={16} /></button>
           {installPrompt && !isInstalled && (
@@ -110,6 +114,7 @@ export function DefaultLayout({
         <div style={{ pointerEvents: 'all' }}>
           <OrbSphere
             moodColor={moodColor}
+            isConnected={isConnected}
             isSpeaking={isSpeaking}
             isListening={isListening}
             isThinking={isThinking}
@@ -124,7 +129,7 @@ export function DefaultLayout({
       <div className="fixed left-0 right-0 flex justify-center" style={{ bottom: '110px', zIndex: 6 }}>
         <motion.p key={statusLabel} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
           className="text-[9px] font-light tracking-[0.4em] uppercase opacity-40"
-          style={{ color: (isSpeaking || isListening) ? moodColor : '#ffffff' }}>
+          style={{ color: isConnected ? moodColor : '#ffffff' }}>
           {statusLabel}
         </motion.p>
       </div>
@@ -184,9 +189,12 @@ export function DefaultLayout({
               <button onClick={onSendText} className="p-2 text-white/40 hover:text-white transition-colors"><Send size={20} /></button>
             ) : (
               <button onClick={onMicToggle} className="p-2 transition-colors relative"
-                style={{ color: isListening ? moodColor : 'rgba(255,255,255,0.4)' }}>
-                <Mic size={20} />
+                style={{ color: isConnected && !isMuted ? moodColor : 'rgba(255,255,255,0.4)' }}>
+                {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
               </button>
+            )}
+            {isConnected && (
+              <button onClick={onDisconnect} className="p-2 text-white/40 hover:text-red-400 transition-colors"><PhoneOff size={20} /></button>
             )}
           </div>
         </div>
