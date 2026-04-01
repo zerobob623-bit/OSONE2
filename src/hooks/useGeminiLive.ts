@@ -429,7 +429,7 @@ export const useGeminiLive = ({
       console.log("[GeminiLive] Hora:", new Date().toISOString());
       console.groupEnd();
 
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: 'v1alpha' } });
 
       // Contexto de saída (playback 24kHz)
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
