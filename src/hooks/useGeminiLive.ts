@@ -770,44 +770,79 @@ export const useGeminiLive = ({
       await sessionPromise;
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }
       });
       streamRef.current = stream;
 
       const inputCtx = new AudioContext({ sampleRate: 16000 });
       inputAudioContextRef.current = inputCtx;
-      try { await inputCtx.audioWorklet.addModule('/audio-processor.js'); } catch {}
+
+      // Mobile (Android/iOS): AudioContext começa suspended — precisa de resume
+      // antes de addModule, senão o worklet não registra e AudioWorkletNode falha
+      if (inputCtx.state === 'suspended') {
+        await inputCtx.resume();
+      }
+
+      let useWorklet = true;
+      try {
+        await inputCtx.audioWorklet.addModule('/audio-processor.js');
+      } catch (e) {
+        console.warn('[mic] addModule falhou, usando ScriptProcessorNode como fallback:', e);
+        useWorklet = false;
+      }
+
       const micSource = inputCtx.createMediaStreamSource(stream);
-      const inputWorklet = new AudioWorkletNode(inputCtx, 'audio-processor');
-      audioWorkletNodeRef.current = inputWorklet;
-      micSource.connect(inputWorklet);
 
-      let micBuffer: Int16Array[] = [];
-      let micBufferSize = 0;
-      const TARGET_BUFFER = 2048;
-
-      inputWorklet.port.onmessage = (event: MessageEvent<Int16Array>) => {
-        micBuffer.push(event.data);
-        micBufferSize += event.data.length;
-        if (micBufferSize >= TARGET_BUFFER) {
-          const combined = new Int16Array(micBufferSize);
-          let offset = 0;
-          for (const chunk of micBuffer) { combined.set(chunk, offset); offset += chunk.length; }
-          let sum = 0;
-          for (let i = 0; i < combined.length; i++) sum += Math.abs(combined[i] / 0x7FFF);
-          setVolume(sum / combined.length);
-          if (sum / combined.length > 0.01) resetSilenceTimer();
-          if (!isMutedRef.current && sessionRef.current && isConnectedRef.current) {
-            sessionRef.current.then((session: any) => {
-              if (!isConnectedRef.current) return;
-              try { session.sendRealtimeInput({ audio: { data: toBase64(combined.buffer), mimeType: 'audio/pcm;rate=16000' } }); }
-              catch (e) { /* WebSocket fechado */ }
-            }).catch(() => {});
-          }
-          micBuffer = [];
-          micBufferSize = 0;
+      const sendAudioChunk = (combined: Int16Array) => {
+        let sum = 0;
+        for (let i = 0; i < combined.length; i++) sum += Math.abs(combined[i] / 0x7FFF);
+        setVolume(sum / combined.length);
+        if (sum / combined.length > 0.01) resetSilenceTimer();
+        if (!isMutedRef.current && sessionRef.current && isConnectedRef.current) {
+          sessionRef.current.then((session: any) => {
+            if (!isConnectedRef.current) return;
+            try { session.sendRealtimeInput({ audio: { data: toBase64(combined.buffer), mimeType: 'audio/pcm;rate=16000' } }); }
+            catch {}
+          }).catch(() => {});
         }
       };
+
+      if (useWorklet) {
+        const inputWorklet = new AudioWorkletNode(inputCtx, 'audio-processor');
+        audioWorkletNodeRef.current = inputWorklet;
+        micSource.connect(inputWorklet);
+
+        let micBuffer: Int16Array[] = [];
+        let micBufferSize = 0;
+        const TARGET_BUFFER = 2048;
+
+        inputWorklet.port.onmessage = (event: MessageEvent<Int16Array>) => {
+          micBuffer.push(event.data);
+          micBufferSize += event.data.length;
+          if (micBufferSize >= TARGET_BUFFER) {
+            const combined = new Int16Array(micBufferSize);
+            let offset = 0;
+            for (const chunk of micBuffer) { combined.set(chunk, offset); offset += chunk.length; }
+            sendAudioChunk(combined);
+            micBuffer = [];
+            micBufferSize = 0;
+          }
+        };
+      } else {
+        // Fallback: ScriptProcessorNode (deprecated mas funciona em mobile/Safari)
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
+        const scriptProc = inputCtx.createScriptProcessor(4096, 1, 1);
+        micSource.connect(scriptProc);
+        scriptProc.connect(inputCtx.destination);
+        scriptProc.onaudioprocess = (e: AudioProcessingEvent) => {
+          const channelData = e.inputBuffer.getChannelData(0);
+          const int16 = new Int16Array(channelData.length);
+          for (let i = 0; i < channelData.length; i++) {
+            int16[i] = Math.max(-1, Math.min(1, channelData[i])) * 0x7FFF;
+          }
+          sendAudioChunk(int16);
+        };
+      }
 
     } catch (err: any) {
       console.error("Falha na conexão:", err);
