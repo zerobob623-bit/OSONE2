@@ -894,18 +894,27 @@ export function NeuralLayout({
         <MetaCogIndicator isThinking={isThinking} />
       </AnimatePresence>
 
-      {/* ── ORB SPHERE + STATUS LABEL ─────────────────────────────────────── */}
-      <div className="fixed left-0 right-0 flex flex-col items-center z-10" style={{ bottom: 130 }}>
-        <div style={{ transform: 'scale(0.32)', transformOrigin: 'bottom center', height: 100 }}>
-          <OrbSphere moodColor="#00C8FF" isConnected={isConnected} isSpeaking={isSpeaking} isListening={isListening} isThinking={isThinking} volume={volume} size={200} />
+      {/* CENTER ORB */}
+      <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ top: '56px', bottom: '120px' }}>
+        <div style={{ pointerEvents: 'all' }}>
+          <OrbSphere
+            moodColor="#00C8FF"
+            isConnected={isConnected}
+            isSpeaking={isSpeaking}
+            isListening={isListening}
+            isThinking={isThinking}
+            volume={volume}
+            size={200}
+            onClick={onOrbClick}
+          />
         </div>
-        <motion.p
-          key={statusLabel}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
+      </div>
+
+      {/* STATUS LABEL */}
+      <div className="fixed left-0 right-0 flex justify-center z-10" style={{ bottom: 140 }}>
+        <motion.p key={statusLabel} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
           className="text-[8px] uppercase tracking-[0.5em]"
-          style={{ color: isConnected ? '#00A8CC' : 'rgba(0,130,180,0.25)' }}
-        >
+          style={{ color: isConnected ? '#00A8CC' : 'rgba(0,130,180,0.25)' }}>
           {statusLabel}
         </motion.p>
       </div>

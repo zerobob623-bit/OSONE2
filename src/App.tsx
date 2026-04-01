@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Monitor, Power, Settings, X, Paperclip, MicOff, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, PhoneOff, Copy, Code, FileText, Volume2, VolumeX, Send, Cpu, Download, Play, FolderPlus, FilePlus, Folder, File, FolderOpen, StopCircle, Eye, Edit3, Plus, ChevronRight, ChevronDown, MoreVertical, Maximize2, Minimize2 } from 'lucide-react';
 import { VoiceOrb } from './components/VoiceOrb';
@@ -649,7 +650,14 @@ export default function App() {
           saveMessage({ role: msg.role, text: cleanText });
           // Nível 1: ElevenLabs narra mensagens do assistente
           if (msg.role === 'model' && voiceLevel === 1 && cleanText) {
-            elevenSpeak(cleanText);
+            elevenSpeak(cleanText).then(spoken => {
+              if (!spoken) {
+                window.speechSynthesis.cancel();
+                const u = new SpeechSynthesisUtterance(cleanText);
+                u.lang = 'pt-BR'; u.rate = 1.0;
+                window.speechSynthesis.speak(u);
+              }
+            });
           }
         }
       }
@@ -771,7 +779,7 @@ export default function App() {
     if (isConnected) { disconnect(); }
     else {
       if (onboardingStep === 'initial') setOnboardingStep('completed');
-      setIsMuted(true);
+      setIsMuted(false);
       await connect(systemInstruction);
       setTimeout(() => sendLiveMessage(PERSONALITY_CONFIG[personality].greeting), 2500);
     }
@@ -1208,9 +1216,19 @@ export default function App() {
                       <Play size={11} /> {playMode ? 'Fechar' : 'Executar'}
                     </button>
                   )}
-                  {memory.workspace && !workspaceEditing && elevenLabsApiKey && elevenLabsVoiceId && (
+                  {memory.workspace && !workspaceEditing && (
                     <button
-                      onClick={() => elevenSpeaking ? elevenStop() : elevenSpeak(memory.workspace || '')}
+                      onClick={() => {
+                        if (elevenSpeaking) { elevenStop(); return; }
+                        if (elevenLabsApiKey && elevenLabsVoiceId) {
+                          elevenSpeak(memory.workspace || '');
+                        } else {
+                          window.speechSynthesis.cancel();
+                          const u = new SpeechSynthesisUtterance(memory.workspace || '');
+                          u.lang = 'pt-BR'; u.rate = 1.0;
+                          window.speechSynthesis.speak(u);
+                        }
+                      }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] uppercase tracking-widest transition-all"
                       style={{ backgroundColor: elevenSpeaking ? `${moodColor}25` : 'rgba(255,255,255,0.05)', color: elevenSpeaking ? moodColor : 'rgba(255,255,255,0.5)', border: `1px solid ${elevenSpeaking ? moodColor+'40' : 'rgba(255,255,255,0.05)'}` }}>
                       <Volume2 size={11} /> {elevenSpeaking ? 'Parar' : 'Narrar'}

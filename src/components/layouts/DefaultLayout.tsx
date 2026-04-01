@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Settings, Power, MicOff, Mic, PhoneOff, Send, Paperclip, Monitor, Volume2, VolumeX, Copy, Volume1, Check } from 'lucide-react';
-import { VoiceOrb } from '../VoiceOrb';
 import { OrbSphere } from '../OrbSphere';
 import type { MainLayoutProps } from '../../types/layout';
 
@@ -110,26 +109,33 @@ export function DefaultLayout({
         </div>
       </div>
 
-      {/* HUD CONTAINER */}
-      <div id="ai-hud-container">
-        <div className="w-full h-24 pointer-events-none">
-          <div className="w-full h-full">
-            <VoiceOrb isSpeaking={isSpeaking} isListening={isListening} isThinking={isThinking} isConnected={isConnected} isMuted={isMuted} volume={volume} moodColor={moodColor} />
-          </div>
-        </div>
-        {/* Orb sphere compacto abaixo das ondas */}
-        <div className="flex flex-col items-center pointer-events-none" style={{ marginTop: -8 }}>
-          <div style={{ transform: 'scale(0.38)', transformOrigin: 'top center', height: 120 }}>
-            <OrbSphere moodColor={moodColor} isConnected={isConnected} isSpeaking={isSpeaking} isListening={isListening} isThinking={isThinking} volume={volume} size={220} />
-          </div>
-          <motion.p key={statusLabel} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="text-[9px] font-light tracking-[0.4em] uppercase opacity-40" style={{ color: isConnected ? moodColor : '#ffffff', marginTop: -4 }}>
-            {statusLabel}
-          </motion.p>
+      {/* CENTER ORB */}
+      <div className="fixed inset-0 flex items-center justify-center" style={{ top: '56px', bottom: '100px', zIndex: 5, pointerEvents: 'none' }}>
+        <div style={{ pointerEvents: 'all' }}>
+          <OrbSphere
+            moodColor={moodColor}
+            isConnected={isConnected}
+            isSpeaking={isSpeaking}
+            isListening={isListening}
+            isThinking={isThinking}
+            volume={volume}
+            size={200}
+            onClick={onOrbClick}
+          />
         </div>
       </div>
 
+      {/* STATUS */}
+      <div className="fixed left-0 right-0 flex justify-center" style={{ bottom: '110px', zIndex: 6 }}>
+        <motion.p key={statusLabel} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+          className="text-[9px] font-light tracking-[0.4em] uppercase opacity-40"
+          style={{ color: isConnected ? moodColor : '#ffffff' }}>
+          {statusLabel}
+        </motion.p>
+      </div>
+
       {/* CHAT TRANSCRIPT */}
-      <div className="chat-transcript" ref={transcriptRef}>
+      <div className="chat-transcript" ref={transcriptRef} style={{ zIndex: 8 }}>
         <AnimatePresence initial={false}>
           {messages.slice(0, 3).reverse().map((msg, idx) => (
             <motion.div key={msg.id || idx} initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.3 }}
