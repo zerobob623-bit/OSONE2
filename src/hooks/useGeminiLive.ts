@@ -736,33 +736,38 @@ export const useGeminiLive = ({
           },
           onclose: () => {
             isConnectingRef.current = false;
+            setIsConnected(false);
             isConnectedRef.current = false;
             sessionRef.current = null;
             stopSilenceTimer();
-            stopAudio();
-            setIsConnected(false);
+            // Libera apenas o stream do microfone, sem fechar o AudioContext de saída
+            streamRef.current?.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+            if (audioWorkletNodeRef.current) {
+              audioWorkletNodeRef.current.port.onmessage = null;
+              audioWorkletNodeRef.current.disconnect();
+              audioWorkletNodeRef.current = null;
+            }
+            if (inputAudioContextRef.current?.state !== 'closed') {
+              inputAudioContextRef.current?.close().catch(() => {});
+              inputAudioContextRef.current = null;
+            }
+            setIsListening(false);
           },
           onerror: (err: any) => {
             console.error("Gemini Live error:", err);
             isConnectingRef.current = false;
+            setError(`Erro na API Live: ${err.message || 'Erro desconhecido'}`);
+            setIsConnected(false);
             isConnectedRef.current = false;
             sessionRef.current = null;
             stopSilenceTimer();
-            stopAudio();
-            setError(`Erro na API Live: ${err.message || 'Erro desconhecido'}`);
-            setIsConnected(false);
           }
         }
       });
 
       sessionRef.current = sessionPromise;
       await sessionPromise;
-
-      // Se a conexão caiu enquanto aguardávamos (modelo inválido, rede, etc.)
-      if (!isConnectedRef.current) {
-        stopAudio();
-        return;
-      }
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
