@@ -430,7 +430,7 @@ export const useGeminiLive = ({
       }
 
       const sessionPromise = ai.live.connect({
-        model: "gemini-live-2.5-flash-native-audio",
+        model: "gemini-live-2.5-flash-preview",
         config: {
           responseModalities: [Modality.AUDIO],
           ...(sysInstruction ? { systemInstruction: sysInstruction } : {}),
@@ -736,25 +736,33 @@ export const useGeminiLive = ({
           },
           onclose: () => {
             isConnectingRef.current = false;
-            setIsConnected(false);
             isConnectedRef.current = false;
             sessionRef.current = null;
             stopSilenceTimer();
+            stopAudio();
+            setIsConnected(false);
           },
           onerror: (err: any) => {
             console.error("Gemini Live error:", err);
             isConnectingRef.current = false;
-            setError(`Erro na API Live: ${err.message || 'Erro desconhecido'}`);
-            setIsConnected(false);
             isConnectedRef.current = false;
             sessionRef.current = null;
             stopSilenceTimer();
+            stopAudio();
+            setError(`Erro na API Live: ${err.message || 'Erro desconhecido'}`);
+            setIsConnected(false);
           }
         }
       });
 
       sessionRef.current = sessionPromise;
       await sessionPromise;
+
+      // Se a conexão caiu enquanto aguardávamos (modelo inválido, rede, etc.)
+      if (!isConnectedRef.current) {
+        stopAudio();
+        return;
+      }
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
