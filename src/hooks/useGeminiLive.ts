@@ -2,7 +2,7 @@
 // ✅ Análise automática de tela (a cada troca de app)
 // ✅ Fala espontânea após 60s de silêncio
 
-import { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { useAppStore, VoiceName, VOICE_MAPPING } from '../store/useAppStore';
 import { TOOL_DECLARATIONS, DELEGATED_TOOLS, buildCustomToolDeclarations } from './geminiToolDeclarations';

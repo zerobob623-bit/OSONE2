@@ -5,6 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mic, MicOff, PhoneOff, Send, Settings, Paperclip, Monitor, Volume1, Copy, Check } from 'lucide-react';
+import { OrbSphere } from '../OrbSphere';
 import type { MainLayoutProps } from '../../types/layout';
 
 // ─── Tipos internos do canvas ────────────────────────────────────────────────
@@ -893,9 +894,11 @@ export function NeuralLayout({
         <MetaCogIndicator isThinking={isThinking} />
       </AnimatePresence>
 
-      {/* ── STATUS LABEL ───────────────────────────────────────────────────── */}
-      <div className="fixed left-0 right-0 flex justify-center z-10"
-        style={{ bottom: 140 }}>
+      {/* ── ORB SPHERE + STATUS LABEL ─────────────────────────────────────── */}
+      <div className="fixed left-0 right-0 flex flex-col items-center z-10" style={{ bottom: 130 }}>
+        <div style={{ transform: 'scale(0.32)', transformOrigin: 'bottom center', height: 100 }}>
+          <OrbSphere moodColor="#00C8FF" isConnected={isConnected} isSpeaking={isSpeaking} isListening={isListening} isThinking={isThinking} volume={volume} size={200} />
+        </div>
         <motion.p
           key={statusLabel}
           initial={{ opacity: 0, y: 4 }}
