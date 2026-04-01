@@ -2492,8 +2492,7 @@ export default function App() {
                         </div>
                       </div>
                       </div>
-                  </div>
-
+                  
                   {/* ── ElevenLabs ── */}
                   <div className="pt-4 border-t border-white/5 space-y-3">
                     <div className="flex items-center gap-2">
