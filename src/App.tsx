@@ -7,7 +7,7 @@ import { OrbSphere } from './components/OrbSphere';
 import { Supernova } from './components/Supernova';
 import { Mascot } from './components/Mascot';
 import { useGeminiLive } from './hooks/useGeminiLive';
-import { useElevenLabs } from './hooks/useEleveneLabs';
+import { useElevenLabs } from './hooks/useElevenLabs';
 import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey, CustomSkill, WorkspaceFile } from './store/useAppStore';
 import CATALOG, { CATALOG_CATEGORIES, type CatalogSkill } from './data/skillsCatalog';
 import { useConversationHistory } from './hooks/useConversationHistory';
