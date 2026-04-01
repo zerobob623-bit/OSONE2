@@ -24,7 +24,7 @@ export const VOICE_MAPPING: Record<VoiceName, string> = {
 export type OnboardingStep = 'initial' | 'boot' | 'active' | 'supernova' | 'completed';
 export type PersonalityType = 'brother' | 'uncle' | 'best_friend' | 'partner' | 'father' | 'mother' | 'none';
 export type MascotEyeStyle = 'normal' | 'happy' | 'cool' | 'wink' | 'heart';
-export type MascotAction = 'idle' | 'pointing' | 'clicking';
+export type MascotAction = 'idle' | 'pointing' | 'clicking' | 'thinking' | 'searching' | 'speaking';
 
 export interface MascotAppearance {
   primaryColor: string;
