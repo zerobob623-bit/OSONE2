@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Monitor, Power, Settings, X, Paperclip, MicOff, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, PhoneOff, Copy, Code, FileText, Volume2, VolumeX, Send, Cpu, Download, Play, FolderPlus, FilePlus, Folder, File, FolderOpen, StopCircle, Eye, Edit3, Plus, ChevronRight, ChevronDown, MoreVertical, Maximize2, Minimize2 } from 'lucide-react';
 import { VoiceOrb } from './components/VoiceOrb';
@@ -29,6 +30,53 @@ async function sendWhatsApp(phone: string, message: string) {
 }
 
 type Screen = 'main' | 'history' | 'diary' | 'workspace' | 'skills';
+
+// ─── PREVIEW SRC GENERATOR ────────────────────────────────────────────────────
+function getPreviewSrc(code: string): string {
+  const hasHtml = /<html|<!DOCTYPE|<body/i.test(code);
+  if (hasHtml) return code;
+
+  const hasThree = /(?:import|require).*three|new THREE\.|THREE\.WebGLRenderer/i.test(code);
+  if (hasThree) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script></head><body style="margin:0;background:#000"><script>${code}</script></body></html>`;
+  }
+
+  const hasReactImport = /import\s+React|from\s+['"]react['"]|ReactDOM/i.test(code);
+  const hasJsx = /<[A-Z][A-Za-z0-9]*[\s\/>]|<[a-z]+[\s\/>]/.test(code) && !hasHtml;
+  const hasTsx = /:\s*(?:React\.FC|JSX\.Element|ReactNode)|interface\s+\w+Props/.test(code);
+
+  if (hasReactImport || hasJsx || hasTsx) {
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0a0a; color: #fff; font-family: system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react,typescript" data-plugins="transform-modules-umd">
+${code}
+  </script>
+</body>
+</html>`;
+  }
+
+  // Plain JS / CSS / other
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{background:#0a0a0a;color:#e2e8f0;font-family:monospace;padding:20px;margin:0;white-space:pre-wrap}</style></head><body><script>
+try {
+${code}
+} catch(e) {
+  document.body.innerHTML = '<pre style="color:#f87171;background:#1a0505;padding:16px;border-radius:8px">❌ Erro: ' + e.message + '\\n\\n' + e.stack + '</pre>';
+}
+</script></body></html>`;
+}
 
 const MOOD_CONFIG: Record<Mood, { color: string; label: string; emoji: string }> = {
   happy:       { color: '#feca57', label: 'Animada',     emoji: '😄' },
@@ -649,7 +697,14 @@ export default function App() {
           saveMessage({ role: msg.role, text: cleanText });
           // Nível 1: ElevenLabs narra mensagens do assistente
           if (msg.role === 'model' && voiceLevel === 1 && cleanText) {
-            elevenSpeak(cleanText);
+            elevenSpeak(cleanText).then(spoken => {
+              if (!spoken) {
+                window.speechSynthesis.cancel();
+                const u = new SpeechSynthesisUtterance(cleanText);
+                u.lang = 'pt-BR'; u.rate = 1.0;
+                window.speechSynthesis.speak(u);
+              }
+            });
           }
         }
       }
@@ -771,7 +826,7 @@ export default function App() {
     if (isConnected) { disconnect(); }
     else {
       if (onboardingStep === 'initial') setOnboardingStep('completed');
-      setIsMuted(true);
+      setIsMuted(false);
       await connect(systemInstruction);
       setTimeout(() => sendLiveMessage(PERSONALITY_CONFIG[personality].greeting), 2500);
     }
@@ -1208,9 +1263,19 @@ export default function App() {
                       <Play size={11} /> {playMode ? 'Fechar' : 'Executar'}
                     </button>
                   )}
-                  {memory.workspace && !workspaceEditing && elevenLabsApiKey && elevenLabsVoiceId && (
+                  {memory.workspace && !workspaceEditing && (
                     <button
-                      onClick={() => elevenSpeaking ? elevenStop() : elevenSpeak(memory.workspace || '')}
+                      onClick={() => {
+                        if (elevenSpeaking) { elevenStop(); return; }
+                        if (elevenLabsApiKey && elevenLabsVoiceId) {
+                          elevenSpeak(memory.workspace || '');
+                        } else {
+                          window.speechSynthesis.cancel();
+                          const u = new SpeechSynthesisUtterance(memory.workspace || '');
+                          u.lang = 'pt-BR'; u.rate = 1.0;
+                          window.speechSynthesis.speak(u);
+                        }
+                      }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] uppercase tracking-widest transition-all"
                       style={{ backgroundColor: elevenSpeaking ? `${moodColor}25` : 'rgba(255,255,255,0.05)', color: elevenSpeaking ? moodColor : 'rgba(255,255,255,0.5)', border: `1px solid ${elevenSpeaking ? moodColor+'40' : 'rgba(255,255,255,0.05)'}` }}>
                       <Volume2 size={11} /> {elevenSpeaking ? 'Parar' : 'Narrar'}
@@ -1235,29 +1300,42 @@ export default function App() {
                   )}
                 </div>
                 {playMode && memory.workspace && (
-                  <div className={`shrink-0 border-b border-white/10 relative ${previewFullscreen ? 'fixed inset-0 z-[200]' : ''}`} style={previewFullscreen ? {} : { height: '45vh' }}>
+                  <div className="shrink-0 border-b border-white/10 relative" style={{ height: '45vh' }}>
                     <button
-                      onClick={() => setPreviewFullscreen(!previewFullscreen)}
+                      onClick={() => setPreviewFullscreen(true)}
                       className="absolute top-2 right-2 z-10 p-1.5 rounded-lg backdrop-blur-sm transition-all hover:scale-110"
                       style={{ backgroundColor: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.8)' }}
-                      title={previewFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+                      title="Tela cheia"
                     >
-                      {previewFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                      <Maximize2 size={14} />
                     </button>
                     <iframe
-                      srcDoc={(() => {
-                        const code = memory.workspace || '';
-                        const hasHtml = /<html|<!DOCTYPE|<body|<div|<script/i.test(code);
-                        const hasThree = /three|Three\.js|THREE/i.test(code);
-                        if (hasHtml) return code;
-                        if (hasThree) return `<!DOCTYPE html><html><head><meta charset="utf-8"><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script></head><body style="margin:0;background:#000"><script>${code}</script></body></html>`;
-                        return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{background:#0a0505;color:#e2e8f0;font-family:monospace;padding:20px;margin:0}</style></head><body><script>\ntry{\n${code}\n}catch(e){document.body.innerHTML='<pre style="color:#f87171">Erro: '+e.message+'</pre>';}\n</script></body></html>`;
-                      })()}
+                      srcDoc={getPreviewSrc(memory.workspace || '')}
                       className="w-full h-full bg-white"
                       sandbox="allow-scripts allow-same-origin"
                       title="Preview"
                     />
                   </div>
+                )}
+
+                {/* FULLSCREEN PREVIEW PORTAL */}
+                {previewFullscreen && playMode && memory.workspace && createPortal(
+                  <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
+                    <button
+                      onClick={() => setPreviewFullscreen(false)}
+                      className="absolute top-3 right-3 z-10 p-2 rounded-lg"
+                      style={{ backgroundColor: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.2)', color: 'white' }}
+                    >
+                      <Minimize2 size={16} />
+                    </button>
+                    <iframe
+                      srcDoc={getPreviewSrc(memory.workspace || '')}
+                      className="w-full h-full"
+                      sandbox="allow-scripts allow-same-origin"
+                      title="Preview Fullscreen"
+                    />
+                  </div>,
+                  document.body
                 )}
                 <div className="flex-1 overflow-hidden">
                   {workspaceEditing ? (

@@ -10,6 +10,7 @@ interface OrbSphereProps {
   isThinking: boolean;
   volume: number;
   size?: number; // diâmetro da esfera em px (padrão 220)
+  onClick?: () => void;
 }
 
 const PARTICLES = Array.from({ length: 8 }, (_, i) => ({
@@ -109,7 +110,7 @@ function DistortionWave({ moodColor, isConnected, isSpeaking, isListening, volum
   );
 }
 
-export function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isThinking, volume, size = 220 }: OrbSphereProps) {
+export function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isThinking, volume, size = 220, onClick }: OrbSphereProps) {
   const scale = isSpeaking ? 1 + volume * 0.08 : isListening ? 0.97 : isThinking ? 1.01 : 1;
   const glowIntensity = isConnected ? (isSpeaking ? 60 + volume * 40 : 40) : 20;
 
@@ -130,7 +131,11 @@ export function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isT
   };
 
   return (
-    <div className="relative flex items-center justify-center" style={{ width: size + 100, height: size + 100 }}>
+    <div
+      className="relative flex items-center justify-center"
+      style={{ width: size + 100, height: size + 100, cursor: onClick ? 'pointer' : 'default' }}
+      onClick={onClick}
+    >
       <DistortionWave moodColor={moodColor} isConnected={isConnected} isSpeaking={isSpeaking} isListening={isListening} volume={volume} />
 
       <motion.div
