@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Settings, Power, MicOff, Mic, PhoneOff, Send, Paperclip, Monitor, Volume2, VolumeX, Copy, Volume1, Check } from 'lucide-react';
 import { VoiceOrb } from '../VoiceOrb';
+import { OrbSphere } from '../OrbSphere';
 import type { MainLayoutProps } from '../../types/layout';
 
 function speak(text: string) {
@@ -116,8 +117,12 @@ export function DefaultLayout({
             <VoiceOrb isSpeaking={isSpeaking} isListening={isListening} isThinking={isThinking} isConnected={isConnected} isMuted={isMuted} volume={volume} moodColor={moodColor} />
           </div>
         </div>
-        <div className="flex flex-col items-center pointer-events-none mt-2">
-          <motion.p key={statusLabel} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="text-[9px] font-light tracking-[0.4em] uppercase opacity-40" style={{ color: isConnected ? moodColor : '#ffffff' }}>
+        {/* Orb sphere compacto abaixo das ondas */}
+        <div className="flex flex-col items-center pointer-events-none" style={{ marginTop: -8 }}>
+          <div style={{ transform: 'scale(0.38)', transformOrigin: 'top center', height: 120 }}>
+            <OrbSphere moodColor={moodColor} isConnected={isConnected} isSpeaking={isSpeaking} isListening={isListening} isThinking={isThinking} volume={volume} size={220} />
+          </div>
+          <motion.p key={statusLabel} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="text-[9px] font-light tracking-[0.4em] uppercase opacity-40" style={{ color: isConnected ? moodColor : '#ffffff', marginTop: -4 }}>
             {statusLabel}
           </motion.p>
         </div>

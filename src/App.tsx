@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Monitor, Power, Settings, X, Paperclip, MicOff, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, PhoneOff, Copy, Code, FileText, Volume2, VolumeX, Send, Cpu, Download, Play, FolderPlus, FilePlus, Folder, File, FolderOpen, StopCircle, Eye, Edit3, Plus, ChevronRight, ChevronDown, MoreVertical } from 'lucide-react';
+import { Monitor, Power, Settings, X, Paperclip, MicOff, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, PhoneOff, Copy, Code, FileText, Volume2, VolumeX, Send, Cpu, Download, Play, FolderPlus, FilePlus, Folder, File, FolderOpen, StopCircle, Eye, Edit3, Plus, ChevronRight, ChevronDown, MoreVertical, Maximize2, Minimize2 } from 'lucide-react';
 import { VoiceOrb } from './components/VoiceOrb';
+import { OrbSphere } from './components/OrbSphere';
 import { Supernova } from './components/Supernova';
 import { Mascot } from './components/Mascot';
 import { useGeminiLive } from './hooks/useGeminiLive';
+import { useElevenLabs } from './hooks/useEleveneLabs';
 import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey, CustomSkill, WorkspaceFile } from './store/useAppStore';
 import CATALOG, { CATALOG_CATEGORIES, type CatalogSkill } from './data/skillsCatalog';
 import { useConversationHistory } from './hooks/useConversationHistory';
@@ -353,6 +355,7 @@ export default function App() {
     // ✅ ElevenLabs
     elevenLabsApiKey, setElevenLabsApiKey,
     elevenLabsVoiceId, setElevenLabsVoiceId,
+    voiceLevel, setVoiceLevel,
   } = useAppStore();
 
   const [isRestarting, setIsRestarting]             = useState(false);
@@ -411,6 +414,7 @@ export default function App() {
   const [workspaceEditing, setWorkspaceEditing]     = useState(false);
   const [workspaceEditContent, setWorkspaceEditContent] = useState('');
   const [playMode, setPlayMode]                     = useState(false);
+  const [previewFullscreen, setPreviewFullscreen]   = useState(false);
   const [selectedFileId, setSelectedFileId]         = useState<string | null>(null);
   const [editingFileId, setEditingFileId]           = useState<string | null>(null);
   const [newNodeParentId, setNewNodeParentId]       = useState<string | null>(null);
@@ -428,6 +432,12 @@ export default function App() {
   const transcriptRef                               = useRef<HTMLDivElement>(null);
 
   const { messages: firebaseMessages, addMessage: saveMessage, deleteAll: deleteAllMessages } = useConversationHistory();
+
+  // ── Nível 1: ElevenLabs TTS ──────────────────────────────────────────────
+  const { speak: elevenSpeak, stop: elevenStop, isSpeaking: elevenSpeaking } = useElevenLabs({
+    apiKey: elevenLabsApiKey,
+    voiceId: elevenLabsVoiceId,
+  });
 
   useEffect(() => {
     if (userId) { deleteAllMessages(); }
@@ -635,7 +645,13 @@ export default function App() {
       const isInternalReasoning = /^\*\*[A-Z]/.test(msg.text.trim());
       if (!isInternalReasoning) {
         const cleanText = msg.text.replace(/\*\*[^*]+\*\*\s*/g, '').trim();
-        if (cleanText) saveMessage({ role: msg.role, text: cleanText });
+        if (cleanText) {
+          saveMessage({ role: msg.role, text: cleanText });
+          // Nível 1: ElevenLabs narra mensagens do assistente
+          if (msg.role === 'model' && voiceLevel === 1 && cleanText) {
+            elevenSpeak(cleanText);
+          }
+        }
       }
       if (msg.role === 'user') {
         const match = msg.text.match(/meu nome é (\w+)/i);
@@ -777,13 +793,15 @@ export default function App() {
     else connect(systemInstruction);
   }, [isConnected, isMuted, connect, systemInstruction]);
 
-  const statusLabel = isThinking ? 'Pensando...' : isSpeaking ? 'Falando...' : (isConnected && isMuted) ? 'Microfone Silenciado' : isListening ? 'Ouvindo...' : isConnected ? 'Toque para desligar' : 'Toque para ativar';
+  // Nível 1: ElevenLabs fala → orb anima como se estivesse "falando"
+  const effectiveSpeaking = voiceLevel === 1 ? elevenSpeaking : isSpeaking;
+  const statusLabel = isThinking ? 'Pensando...' : effectiveSpeaking ? 'Falando...' : (isConnected && isMuted) ? 'Microfone Silenciado' : isListening ? 'Ouvindo...' : isConnected ? 'Toque para desligar' : 'Toque para ativar';
 
   const layoutProps = {
     moodColor, mood, personality,
     MOOD_CONFIG, PERSONALITY_CONFIG,
     statusLabel,
-    isConnected, isSpeaking, isListening, isThinking, isMuted, volume,
+    isConnected, isSpeaking: effectiveSpeaking, isListening, isThinking, isMuted, volume,
     messages: firebaseMessages,
     transcriptRef,
     memory,
@@ -1190,6 +1208,14 @@ export default function App() {
                       <Play size={11} /> {playMode ? 'Fechar' : 'Executar'}
                     </button>
                   )}
+                  {memory.workspace && !workspaceEditing && elevenLabsApiKey && elevenLabsVoiceId && (
+                    <button
+                      onClick={() => elevenSpeaking ? elevenStop() : elevenSpeak(memory.workspace || '')}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] uppercase tracking-widest transition-all"
+                      style={{ backgroundColor: elevenSpeaking ? `${moodColor}25` : 'rgba(255,255,255,0.05)', color: elevenSpeaking ? moodColor : 'rgba(255,255,255,0.5)', border: `1px solid ${elevenSpeaking ? moodColor+'40' : 'rgba(255,255,255,0.05)'}` }}>
+                      <Volume2 size={11} /> {elevenSpeaking ? 'Parar' : 'Narrar'}
+                    </button>
+                  )}
                   <div className="flex-1" />
                   {memory.workspace && (
                     <button onClick={() => { navigator.clipboard.writeText(memory.workspace || ''); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
@@ -1209,7 +1235,15 @@ export default function App() {
                   )}
                 </div>
                 {playMode && memory.workspace && (
-                  <div className="shrink-0 border-b border-white/10" style={{ height: '45vh' }}>
+                  <div className={`shrink-0 border-b border-white/10 relative ${previewFullscreen ? 'fixed inset-0 z-[200]' : ''}`} style={previewFullscreen ? {} : { height: '45vh' }}>
+                    <button
+                      onClick={() => setPreviewFullscreen(!previewFullscreen)}
+                      className="absolute top-2 right-2 z-10 p-1.5 rounded-lg backdrop-blur-sm transition-all hover:scale-110"
+                      style={{ backgroundColor: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.8)' }}
+                      title={previewFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+                    >
+                      {previewFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                    </button>
                     <iframe
                       srcDoc={(() => {
                         const code = memory.workspace || '';
@@ -1719,6 +1753,32 @@ export default function App() {
                   {/* ── ABA: VOZ ── */}
                   {activeSettingsTab === 'voice' && (
                     <motion.div key="voice" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+
+                      {/* ── NÍVEL DE VOZ ── */}
+                      <div className="space-y-3">
+                        <label className="text-[10px] uppercase tracking-widest opacity-40 block">Modo de Voz</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {([1, 2] as const).map(lvl => (
+                            <button key={lvl} onClick={() => setVoiceLevel(lvl)}
+                              className="p-4 rounded-2xl text-left transition-all border"
+                              style={voiceLevel === lvl ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}50`, color: 'white' } : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.45)' }}>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-base">{lvl === 1 ? '🎙️' : '🤖'}</span>
+                                <span className="text-xs font-semibold">Nível {lvl}</span>
+                                {voiceLevel === lvl && <div className="w-1.5 h-1.5 rounded-full ml-auto" style={{ backgroundColor: moodColor }} />}
+                              </div>
+                              <p className="text-[10px] opacity-50 leading-snug">{lvl === 1 ? 'ElevenLabs — voz ultra-realista narra o chat e o workspace' : 'Gemini Live — conversa de voz bidirecional em tempo real'}</p>
+                            </button>
+                          ))}
+                        </div>
+                        {voiceLevel === 1 && (!elevenLabsApiKey || !elevenLabsVoiceId) && (
+                          <p className="text-[10px] text-yellow-400/60 px-1">⚠ Configure a API ElevenLabs na aba APIs para usar o Nível 1</p>
+                        )}
+                      </div>
+
+                      {/* Vozes Gemini — só relevantes no Nível 2 */}
+                      <div className={`space-y-4 transition-opacity ${voiceLevel === 1 ? 'opacity-40 pointer-events-none' : ''}`}>
+                        <label className="text-[10px] uppercase tracking-widest opacity-40 block">Voz Gemini Live (Nível 2)</label>
                       <div className="space-y-4">
                         <div className="flex items-center gap-2 opacity-40"><span className="text-xs">♀</span><label className="text-[9px] uppercase tracking-[0.2em]">Feminino</label></div>
                         <div className="grid grid-cols-1 gap-2">
@@ -1749,6 +1809,7 @@ export default function App() {
                           ))}
                         </div>
                       </div>
+                      </div>{/* end vozes gemini wrapper */}
                     </motion.div>
                   )}
 
