@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MicOff, Mic, PhoneOff, Send, Settings, Paperclip, Monitor, Volume1, Copy, Check } from 'lucide-react';
+import { Mic, Send, Settings, Paperclip, Monitor, Volume1, Copy, Check } from 'lucide-react';
 import type { MainLayoutProps } from '../../types/layout';
 
 function speak(text: string) {
@@ -35,8 +35,8 @@ const PARTICLES = Array.from({ length: 8 }, (_, i) => ({
 }));
 
 // ─── Distorção de onda circular invisível (heat-shimmer) ─────────────────────
-function DistortionWave({ moodColor, isConnected, isSpeaking, isListening, volume }: {
-  moodColor: string; isConnected: boolean; isSpeaking: boolean; isListening: boolean; volume: number;
+function DistortionWave({ moodColor, isSpeaking, isListening, volume }: {
+  moodColor: string; isSpeaking: boolean; isListening: boolean; volume: number;
 }) {
   const turbRef = useRef<SVGFETurbulenceElement | null>(null);
   const dispRef = useRef<SVGFEDisplacementMapElement | null>(null);
@@ -45,12 +45,10 @@ function DistortionWave({ moodColor, isConnected, isSpeaking, isListening, volum
   const volumeRef  = useRef(volume);
   const speakRef   = useRef(isSpeaking);
   const listenRef  = useRef(isListening);
-  const connRef    = useRef(isConnected);
 
   useEffect(() => { volumeRef.current  = volume;      }, [volume]);
   useEffect(() => { speakRef.current   = isSpeaking;  }, [isSpeaking]);
   useEffect(() => { listenRef.current  = isListening; }, [isListening]);
-  useEffect(() => { connRef.current    = isConnected; }, [isConnected]);
 
   // Loop de animação da turbulência — sem re-renders React
   useEffect(() => {
@@ -66,14 +64,11 @@ function DistortionWave({ moodColor, isConnected, isSpeaking, isListening, volum
       }
       if (dispRef.current) {
         const v    = volumeRef.current;
-        const conn = connRef.current;
         const speak = speakRef.current;
         const listen = listenRef.current;
-        const scale = conn
-          ? speak  ? (10 + v * 18).toFixed(1)
+        const scale = speak  ? (10 + v * 18).toFixed(1)
           : listen ? '6.0'
-          :          '3.0'
-          : '0.5';
+          :          '3.0';
         dispRef.current.setAttribute('scale', scale);
       }
       raf = requestAnimationFrame(loop);
@@ -123,7 +118,7 @@ function DistortionWave({ moodColor, isConnected, isSpeaking, isListening, volum
       {/* Camada de distorção — sobreposição quase invisível ao redor do orb */}
       <motion.div
         className="absolute pointer-events-none rounded-full"
-        animate={{ opacity: isConnected ? 1 : 0 }}
+        animate={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
         style={{
           width: 320, height: 320,
@@ -131,7 +126,7 @@ function DistortionWave({ moodColor, isConnected, isSpeaking, isListening, volum
           transform: 'translate(-50%, -50%)',
           // Gradiente radial extremamente sutil — é ele que "carrega" o deslocamento
           background: `radial-gradient(circle at 50% 50%, ${moodColor}05 0%, ${moodColor}02 50%, transparent 72%)`,
-          filter: isConnected ? 'url(#orb-heat-distort)' : 'none',
+          filter: 'url(#orb-heat-distort)',
         }}
       />
 
@@ -140,10 +135,10 @@ function DistortionWave({ moodColor, isConnected, isSpeaking, isListening, volum
         <motion.div
           key={i}
           className="absolute rounded-full pointer-events-none"
-          animate={isConnected ? {
+          animate={{
             scale: [1, 2.4],
             opacity: [isSpeaking ? 0.14 : 0.06, 0],
-          } : { scale: 1, opacity: 0 }}
+          }}
           transition={{
             duration: isSpeaking ? 2.4 : 3.6,
             repeat: Infinity,
@@ -163,12 +158,12 @@ function DistortionWave({ moodColor, isConnected, isSpeaking, isListening, volum
   );
 }
 
-function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isThinking, volume }: {
-  moodColor: string; isConnected: boolean; isSpeaking: boolean;
+function OrbSphere({ moodColor, isSpeaking, isListening, isThinking, volume }: {
+  moodColor: string; isSpeaking: boolean;
   isListening: boolean; isThinking: boolean; volume: number;
 }) {
   const scale = isSpeaking ? 1 + volume * 0.08 : isListening ? 0.97 : isThinking ? 1.01 : 1;
-  const glowIntensity = isConnected ? (isSpeaking ? 60 + volume * 40 : 40) : 20;
+  const glowIntensity = isSpeaking ? 60 + volume * 40 : (isListening || isThinking) ? 40 : 20;
 
   const orb3DStyle = {
     width: 220,
@@ -193,7 +188,6 @@ function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isThinking
       {/* Distorção de calor + anéis expansivos */}
       <DistortionWave
         moodColor={moodColor}
-        isConnected={isConnected}
         isSpeaking={isSpeaking}
         isListening={isListening}
         volume={volume}
@@ -211,8 +205,8 @@ function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isThinking
         }}
       />
 
-      {/* Orbital rings — only when connected */}
-      {isConnected && (
+      {/* Orbital rings — when speaking or listening */}
+      {(isSpeaking || isListening || isThinking) && (
         <>
           <motion.div
             className="absolute rounded-full border"
@@ -252,7 +246,7 @@ function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isThinking
 
       {/* The sphere itself */}
       <motion.div
-        animate={{ scale, rotateY: isConnected ? [0, 2, 0, -2, 0] : 0 }}
+        animate={{ scale, rotateY: (isSpeaking || isListening) ? [0, 2, 0, -2, 0] : 0 }}
         transition={{
           scale: { type: 'spring', stiffness: 200, damping: 20 },
           rotateY: { duration: 8, repeat: Infinity, ease: 'easeInOut' },
@@ -275,9 +269,9 @@ function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isThinking
 
 export function OrbLayout({
   moodColor, personality, PERSONALITY_CONFIG,
-  statusLabel, isConnected, isSpeaking, isListening, isThinking, isMuted, volume,
+  statusLabel, isSpeaking, isListening, isThinking, volume,
   messages, transcriptRef,
-  inputText, setInputText, onSendText, onMicToggle, onDisconnect,
+  inputText, setInputText, onSendText, onMicToggle,
   fileInputRef, showAttachMenu, setShowAttachMenu, onFileClick, onScreenShare,
   onOrbClick, currentTime, onOpenSettings, onOpenPersonalityPicker, onOpenMenu,
   showInstallBanner, onDismissInstallBanner, installPrompt, isInstalled, onInstallApp,
@@ -357,7 +351,6 @@ export function OrbLayout({
         <button onClick={onOrbClick} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
           <OrbSphere
             moodColor={moodColor}
-            isConnected={isConnected}
             isSpeaking={isSpeaking}
             isListening={isListening}
             isThinking={isThinking}
@@ -373,7 +366,7 @@ export function OrbLayout({
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-[9px] uppercase tracking-[0.35em]"
-          style={{ color: isConnected ? moodColor : 'rgba(255,255,255,0.2)' }}
+          style={{ color: (isSpeaking || isListening) ? moodColor : 'rgba(255,255,255,0.2)' }}
         >
           {statusLabel}
         </motion.p>
@@ -427,15 +420,7 @@ export function OrbLayout({
               </button>
             ) : (
               <button onClick={onMicToggle} className="p-1.5 transition-colors">
-                {isMuted
-                  ? <MicOff size={18} color="rgba(255,255,255,0.3)" />
-                  : <Mic size={18} style={{ color: isConnected ? moodColor : 'rgba(255,255,255,0.3)' }} />
-                }
-              </button>
-            )}
-            {isConnected && (
-              <button onClick={onDisconnect} className="p-1.5 opacity-40 hover:opacity-80 transition-opacity">
-                <PhoneOff size={16} color="rgba(255,255,255,0.5)" />
+                <Mic size={18} style={{ color: isListening ? moodColor : 'rgba(255,255,255,0.3)' }} />
               </button>
             )}
           </div>

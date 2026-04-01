@@ -4,7 +4,6 @@ import { motion } from 'motion/react';
 
 interface OrbSphereProps {
   moodColor: string;
-  isConnected: boolean;
   isSpeaking: boolean;
   isListening: boolean;
   isThinking: boolean;
@@ -21,20 +20,18 @@ const PARTICLES = Array.from({ length: 8 }, (_, i) => ({
   delay: i * 0.5,
 }));
 
-function DistortionWave({ moodColor, isConnected, isSpeaking, isListening, volume }: {
-  moodColor: string; isConnected: boolean; isSpeaking: boolean; isListening: boolean; volume: number;
+function DistortionWave({ moodColor, isSpeaking, isListening, volume }: {
+  moodColor: string; isSpeaking: boolean; isListening: boolean; volume: number;
 }) {
   const turbRef = useRef<SVGFETurbulenceElement | null>(null);
   const dispRef = useRef<SVGFEDisplacementMapElement | null>(null);
   const volumeRef  = useRef(volume);
   const speakRef   = useRef(isSpeaking);
   const listenRef  = useRef(isListening);
-  const connRef    = useRef(isConnected);
 
   useEffect(() => { volumeRef.current  = volume;      }, [volume]);
   useEffect(() => { speakRef.current   = isSpeaking;  }, [isSpeaking]);
   useEffect(() => { listenRef.current  = isListening; }, [isListening]);
-  useEffect(() => { connRef.current    = isConnected; }, [isConnected]);
 
   useEffect(() => {
     let t = 0;
@@ -49,14 +46,11 @@ function DistortionWave({ moodColor, isConnected, isSpeaking, isListening, volum
       }
       if (dispRef.current) {
         const v    = volumeRef.current;
-        const conn = connRef.current;
         const speak = speakRef.current;
         const listen = listenRef.current;
-        const scale = conn
-          ? speak  ? (10 + v * 18).toFixed(1)
+        const scale = speak  ? (10 + v * 18).toFixed(1)
           : listen ? '6.0'
-          :          '3.0'
-          : '0.5';
+          :          '3.0';
         dispRef.current.setAttribute('scale', scale);
       }
       raf = requestAnimationFrame(loop);
@@ -81,14 +75,14 @@ function DistortionWave({ moodColor, isConnected, isSpeaking, isListening, volum
 
       <motion.div
         className="absolute pointer-events-none rounded-full"
-        animate={{ opacity: isConnected ? 1 : 0 }}
+        animate={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
         style={{
           width: 320, height: 320,
           top: '50%', left: '50%',
           transform: 'translate(-50%, -50%)',
           background: `radial-gradient(circle at 50% 50%, ${moodColor}05 0%, ${moodColor}02 50%, transparent 72%)`,
-          filter: isConnected ? `url(#${id})` : 'none',
+          filter: `url(#${id})`,
         }}
       />
 
@@ -96,7 +90,7 @@ function DistortionWave({ moodColor, isConnected, isSpeaking, isListening, volum
         <motion.div
           key={i}
           className="absolute rounded-full pointer-events-none"
-          animate={isConnected ? { scale: [1, 2.4], opacity: [isSpeaking ? 0.14 : 0.06, 0] } : { scale: 1, opacity: 0 }}
+          animate={{ scale: [1, 2.4], opacity: [isSpeaking ? 0.14 : 0.06, 0] }}
           transition={{
             duration: isSpeaking ? 2.4 : 3.6,
             repeat: Infinity,
@@ -110,9 +104,9 @@ function DistortionWave({ moodColor, isConnected, isSpeaking, isListening, volum
   );
 }
 
-export function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isThinking, volume, size = 220, onClick }: OrbSphereProps) {
+export function OrbSphere({ moodColor, isSpeaking, isListening, isThinking, volume, size = 220, onClick }: OrbSphereProps) {
   const scale = isSpeaking ? 1 + volume * 0.08 : isListening ? 0.97 : isThinking ? 1.01 : 1;
-  const glowIntensity = isConnected ? (isSpeaking ? 60 + volume * 40 : 40) : 20;
+  const glowIntensity = isSpeaking ? 60 + volume * 40 : (isListening || isThinking) ? 40 : 20;
 
   const orb3DStyle = {
     width: size, height: size,
@@ -136,7 +130,7 @@ export function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isT
       style={{ width: size + 100, height: size + 100, cursor: onClick ? 'pointer' : 'default' }}
       onClick={onClick}
     >
-      <DistortionWave moodColor={moodColor} isConnected={isConnected} isSpeaking={isSpeaking} isListening={isListening} volume={volume} />
+      <DistortionWave moodColor={moodColor} isSpeaking={isSpeaking} isListening={isListening} volume={volume} />
 
       <motion.div
         className="absolute rounded-full"
@@ -145,7 +139,7 @@ export function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isT
         style={{ width: size + 40, height: size + 40, border: `1px solid ${moodColor}40`, borderRadius: '50%' }}
       />
 
-      {isConnected && (
+      {(isSpeaking || isListening || isThinking) && (
         <>
           <motion.div
             className="absolute rounded-full border"
@@ -177,7 +171,7 @@ export function OrbSphere({ moodColor, isConnected, isSpeaking, isListening, isT
       ))}
 
       <motion.div
-        animate={{ scale, rotateY: isConnected ? [0, 2, 0, -2, 0] : 0 }}
+        animate={{ scale, rotateY: (isSpeaking || isListening) ? [0, 2, 0, -2, 0] : 0 }}
         transition={{ scale: { type: 'spring', stiffness: 200, damping: 20 }, rotateY: { duration: 8, repeat: Infinity, ease: 'easeInOut' } }}
         style={orb3DStyle}
       />
