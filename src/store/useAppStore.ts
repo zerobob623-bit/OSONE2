@@ -71,9 +71,9 @@ export interface WorkspaceFile {
   id: string;
   name: string;
   type: 'file' | 'folder';
-  content?: string;      // só para arquivos
-  language?: string;     // js, ts, html, css, py, etc.
-  children?: WorkspaceFile[];  // só para pastas
+  content?: string;
+  language?: string;
+  children?: WorkspaceFile[];
   expanded?: boolean;
 }
 
@@ -155,7 +155,7 @@ interface AppState {
   error: string | null;
   setError: (error: string | null) => void;
 
-  // API Key
+  // API Keys
   apiKey: string;
   setApiKey: (key: string) => void;
   openaiApiKey: string;
@@ -166,6 +166,12 @@ interface AppState {
   setChatProvider: (provider: 'openai' | 'groq') => void;
   chatModel: string;
   setChatModel: (model: string) => void;
+
+  // ✅ ElevenLabs
+  elevenLabsApiKey: string;
+  setElevenLabsApiKey: (key: string) => void;
+  elevenLabsVoiceId: string;
+  setElevenLabsVoiceId: (id: string) => void;
 
   // WhatsApp
   myWhatsappNumber: string;
@@ -195,7 +201,7 @@ interface AppState {
   removeCustomSkill: (id: string) => void;
   toggleCustomSkill: (id: string) => void;
 
-  // Workspace Dev Mode (pasta/arquivos)
+  // Workspace Dev Mode
   workspaceProjectName: string;
   setWorkspaceProjectName: (name: string) => void;
   workspaceFiles: WorkspaceFile[];
@@ -314,7 +320,7 @@ export const useAppStore = create<AppState>()(
       error: null,
       setError: (error) => set({ error }),
 
-      // API Key
+      // API Keys
       apiKey: (typeof process !== 'undefined' && (process.env.GEMINI_API_KEY || process.env.API_KEY)) || (import.meta as any).env?.VITE_GEMINI_API_KEY || '',
       setApiKey: (apiKey) => set({ apiKey }),
       openaiApiKey: (import.meta as any).env?.VITE_OPENAI_API_KEY || '',
@@ -325,6 +331,12 @@ export const useAppStore = create<AppState>()(
       setChatProvider: (chatProvider) => set({ chatProvider }),
       chatModel: 'gpt-4.1-mini',
       setChatModel: (chatModel) => set({ chatModel }),
+
+      // ✅ ElevenLabs
+      elevenLabsApiKey: (import.meta as any).env?.VITE_ELEVENLABS_API_KEY || '',
+      setElevenLabsApiKey: (elevenLabsApiKey) => set({ elevenLabsApiKey }),
+      elevenLabsVoiceId: (import.meta as any).env?.VITE_ELEVENLABS_VOICE_ID || '',
+      setElevenLabsVoiceId: (elevenLabsVoiceId) => set({ elevenLabsVoiceId }),
 
       // WhatsApp
       myWhatsappNumber: '',
@@ -463,7 +475,7 @@ export const useAppStore = create<AppState>()(
         chatModel: state.chatModel,
         focusMode: state.focusMode,
         mood: state.mood,
-        personalityMemories: state.personalityMemories, // ✅ persiste memória por personagem
+        personalityMemories: state.personalityMemories,
         myWhatsappNumber: state.myWhatsappNumber,
         whatsappContacts: state.whatsappContacts,
         tuyaClientId: state.tuyaClientId,
@@ -474,6 +486,9 @@ export const useAppStore = create<AppState>()(
         customSkills: state.customSkills,
         workspaceProjectName: state.workspaceProjectName,
         workspaceFiles: state.workspaceFiles,
+        // ✅ ElevenLabs persiste no localStorage
+        elevenLabsApiKey: state.elevenLabsApiKey,
+        elevenLabsVoiceId: state.elevenLabsVoiceId,
       }),
     }
   )
