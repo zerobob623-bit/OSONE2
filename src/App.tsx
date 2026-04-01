@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Monitor, Power, Settings, X, Paperclip, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, Copy, Code, FileText, Volume2, VolumeX, Send, Cpu, Download, Play, FolderPlus, FilePlus, Folder, File, FolderOpen, StopCircle, Eye, Edit3, Plus, ChevronRight, ChevronDown, MoreVertical, Maximize2, Minimize2 } from 'lucide-react';
+import { Monitor, Power, Settings, X, Paperclip, MicOff, Mic, History, ChevronLeft, BookOpen, Calendar, Trash2, PhoneOff, Copy, Code, FileText, Volume2, VolumeX, Send, Cpu, Download, Play, FolderPlus, FilePlus, Folder, File, FolderOpen, StopCircle, Eye, Edit3, Plus, ChevronRight, ChevronDown, MoreVertical, Maximize2, Minimize2 } from 'lucide-react';
 import { VoiceOrb } from './components/VoiceOrb';
 import { OrbSphere } from './components/OrbSphere';
 import { Supernova } from './components/Supernova';
@@ -380,7 +380,7 @@ export default function App() {
     isMascotVisible, setIsMascotVisible,
     mascotAppearance, setMascotAppearance,
     focusMode, setFocusMode,
-    isThinking, setIsThinking, setIsListening, volume,
+    isConnected, isSpeaking, isListening, isThinking, setIsThinking, volume,
     error, setError, history: storeHistory, resetSystem,
     userId, setUserId, setUserProfile,
     personalityMemories, addPersonalityFact, setPersonalityUserName, getPersonalityMemory,
@@ -403,6 +403,7 @@ export default function App() {
     // ✅ ElevenLabs
     elevenLabsApiKey, setElevenLabsApiKey,
     elevenLabsVoiceId, setElevenLabsVoiceId,
+    voiceLevel, setVoiceLevel,
   } = useAppStore();
 
   const [isRestarting, setIsRestarting]             = useState(false);
@@ -431,6 +432,7 @@ export default function App() {
   const [showInstallBanner, setShowInstallBanner]   = useState(false);
   const [isInstalled, setIsInstalled]               = useState(false);
   const [isMenuOpen, setIsMenuOpen]                 = useState(false);
+  const [isMuted, setIsMuted]                       = useState(false);
   const [isAmbientEnabled, setIsAmbientEnabled]     = useState(false);
   const [copied, setCopied]                         = useState(false);
   const [personality, setPersonality]               = useState<Personality>('osone');
@@ -664,16 +666,37 @@ export default function App() {
     }, safeTempo);
   }, []);
 
-  const { sendMessage, sendFile } = useGeminiLive({
+  const handleVoiceChange = async (newVoice: VoiceName, connected: boolean, disconnectFn: (r?: boolean) => void, connectFn: (si: string) => Promise<void>) => {
+    setVoice(newVoice);
+    if (connected) { disconnectFn(true); await new Promise(r => setTimeout(r, 500)); await connectFn(systemInstruction); }
+  };
+
+  const muteRef = useRef(isMuted);
+  useEffect(() => { muteRef.current = isMuted; }, [isMuted]);
+
+  const { connect, disconnect, startScreenSharing, sendMessage, sendLiveMessage, sendFile } = useGeminiLive({
+    isMuted,
     systemInstruction,
+    onToggleScreenSharing: async (enabled) => { if (enabled) { await startScreenSharing(); setIsScreenSharing(true); } else setIsScreenSharing(false); },
+    onChangeVoice: (v) => handleVoiceChange(v, isConnected, disconnect, connect),
+    onOpenUrl: (url) => window.open(url, '_blank'),
+    onInteract: (action, x, y) => {
+      if (x !== undefined && y !== undefined) {
+        const el = document.createElement('div');
+        el.className = 'fixed pointer-events-none z-[9999] w-6 h-6 rounded-full border-2 border-white animate-ping';
+        el.style.cssText = `left:${x - 12}px;top:${y - 12}px;background:${moodColor}60`;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 1000);
+      }
+    },
     onMessage: (msg) => {
       const isInternalReasoning = /^\*\*[A-Z]/.test(msg.text.trim());
       if (!isInternalReasoning) {
         const cleanText = msg.text.replace(/\*\*[^*]+\*\*\s*/g, '').trim();
         if (cleanText) {
           saveMessage({ role: msg.role, text: cleanText });
-          // ElevenLabs narra mensagens do assistente
-          if (msg.role === 'model' && cleanText) {
+          // Nível 1: ElevenLabs narra mensagens do assistente
+          if (msg.role === 'model' && voiceLevel === 1 && cleanText) {
             elevenSpeak(cleanText).then(spoken => {
               if (!spoken) {
                 window.speechSynthesis.cancel();
@@ -715,7 +738,7 @@ export default function App() {
       if (toolName === 'update_workspace' && args.content) { updateWorkspace(args.content); setScreen('workspace'); }
       if (toolName === 'clear_workspace') { clearWorkspace(); }
       if (toolName === 'save_semantic_fact' && args.concept && args.definition && args.category) { handleSaveSemanticFact(args.concept, args.definition, args.category); }
-      if (toolName === 'search_semantic_memory' && args.query) { searchSemanticMemory(args.query).then(res => sendMessage(`RESULTADO DA BUSCA SEMÂNTICA: ${JSON.stringify(res)}`)); }
+      if (toolName === 'search_semantic_memory' && args.query) { searchSemanticMemory(args.query).then(res => sendLiveMessage(`RESULTADO DA BUSCA SEMÂNTICA: ${JSON.stringify(res)}`)); }
       if (toolName === 'save_conversation_summary' && args.summary && args.topics) { handleSaveSummary(args.summary, args.topics); }
       if (toolName === 'search_web_start') { setIsSearching(true); setWebSearchResult(null); }
       if (toolName === 'search_web' && args.result) {
@@ -746,9 +769,10 @@ export default function App() {
     const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
     const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
     const isPdf   = file.type === 'application/pdf';
-    if (!isImage && !isPdf) { sendMessage(`❌ Formato não suportado: "${file.type}". Envie imagens JPEG, PNG ou WEBP, ou documentos PDF.`); return; }
+    if (!isImage && !isPdf) { sendLiveMessage(`❌ Formato não suportado: "${file.type}". Envie imagens JPEG, PNG ou WEBP, ou documentos PDF.`); return; }
     const MAX_BYTES = 4 * 1024 * 1024;
-    if (file.size > MAX_BYTES) { sendMessage(`❌ Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)} MB). O limite é 4 MB.`); return; }
+    if (file.size > MAX_BYTES) { sendLiveMessage(`❌ Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)} MB). O limite é 4 MB.`); return; }
+    if (!isConnected) { if (onboardingStep === 'initial') setOnboardingStep('completed'); setIsMuted(false); await connect(systemInstruction); await new Promise(r => setTimeout(r, 1500)); }
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload  = () => resolve(reader.result as string);
@@ -758,7 +782,9 @@ export default function App() {
     const base64 = dataUrl.split(',')[1];
     setAttachPreview({ type: file.type, name: file.name, data: dataUrl });
     setTimeout(() => setAttachPreview(null), 6000);
+    setIsThinking(true);
     try {
+      if (!isConnected) { await connect(systemInstruction); await new Promise(r => setTimeout(r, 1200)); }
       if (isImage) {
         await sendFile(base64, file.type, `[PVCO] Protocolo de análise visual ativado. Descreva brevemente o que vê nesta imagem antes de responder. Identifique todos os elementos relevantes. Se houver texto, código, erro, produto, monumento ou qualquer elemento desconhecido, use search_web para buscar contexto antes de responder.`);
       } else {
@@ -766,9 +792,9 @@ export default function App() {
       }
     } catch (err: any) {
       setIsThinking(false);
-      sendMessage(`❌ Falha na análise visual: ${err?.message ?? 'erro desconhecido'}`);
+      sendLiveMessage(`❌ Falha na análise visual: ${err?.message ?? 'erro desconhecido'}`);
     }
-  }, [sendMessage, sendFile, setIsThinking]);
+  }, [sendLiveMessage, sendFile, isConnected, connect, systemInstruction, onboardingStep, setOnboardingStep, setIsThinking]);
 
   useEffect(() => {
     if (!showAttachMenu) return;
@@ -777,41 +803,34 @@ export default function App() {
     return () => document.removeEventListener('click', handler, true);
   }, [showAttachMenu]);
 
-  const onManualVoiceChange = (v: VoiceName) => setVoice(v);
+  const onManualVoiceChange = (v: VoiceName) => handleVoiceChange(v, isConnected, disconnect, connect);
 
   const handlePersonalityChange = useCallback(async (newPersonality: Personality) => {
     setPersonality(newPersonality);
     setShowPersonalityPicker(false);
     const config = PERSONALITY_CONFIG[newPersonality];
     setVoice(config.voice);
-  }, [setVoice]);
+    if (isConnected) {
+      disconnect(true);
+      await new Promise(r => setTimeout(r, 600));
+      await connect(
+        newPersonality === 'ezer' ? getEzerInstruction(memory, focusMode) :
+        newPersonality === 'samuel' ? getSamuelInstruction(memory, focusMode) :
+        newPersonality === 'jonas' ? getJonasInstruction(memory, focusMode) :
+        getSystemInstruction(assistantName, memory, mood, focusMode, upcomingDates, voice)
+      );
+    }
+  }, [isConnected, disconnect, connect, memory, focusMode, mood, assistantName, upcomingDates, voice, setVoice]);
 
-  const recognitionRef = useRef<any>(null);
-  const [isListeningLocal, setIsListeningLocal] = useState(false);
-
-  const startMic = useCallback(() => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { setError('Reconhecimento de voz não suportado neste dispositivo.'); return; }
-    if (recognitionRef.current) { recognitionRef.current.stop(); return; }
-    const rec = new SR();
-    rec.lang = 'pt-BR';
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.onstart = () => { setIsListeningLocal(true); setIsListening(true); };
-    rec.onresult = (e: any) => {
-      const transcript = e.results[0][0].transcript;
-      if (transcript.trim()) sendMessage(transcript.trim());
-    };
-    rec.onend = () => { setIsListeningLocal(false); setIsListening(false); recognitionRef.current = null; };
-    rec.onerror = () => { setIsListeningLocal(false); setIsListening(false); recognitionRef.current = null; };
-    recognitionRef.current = rec;
-    rec.start();
-  }, [sendMessage, setIsListening, setError]);
-
-  const handleOrbClick = useCallback(() => {
-    if (elevenSpeaking) { elevenStop(); return; }
-    startMic();
-  }, [elevenSpeaking, elevenStop, startMic]);
+  const handleOrbClick = async () => {
+    if (isConnected) { disconnect(); }
+    else {
+      if (onboardingStep === 'initial') setOnboardingStep('completed');
+      setIsMuted(false);
+      await connect(systemInstruction);
+      setTimeout(() => sendLiveMessage(PERSONALITY_CONFIG[personality].greeting), 2500);
+    }
+  };
 
   const handleSendText = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -819,22 +838,25 @@ export default function App() {
   };
 
   const handleScreenShare = useCallback(async () => {
-    setIsScreenSharing(!isScreenSharing);
-  }, [isScreenSharing]);
+    if (!isConnected) { if (onboardingStep === 'initial') setOnboardingStep('completed'); setIsMuted(false); await connect(systemInstruction); await new Promise(r => setTimeout(r, 1500)); }
+    await startScreenSharing();
+    setIsScreenSharing(true);
+  }, [isConnected, connect, systemInstruction, startScreenSharing, onboardingStep, setOnboardingStep]);
 
   const handleMicToggle = useCallback(() => {
-    if (elevenSpeaking) { elevenStop(); return; }
-    startMic();
-  }, [elevenSpeaking, elevenStop, startMic]);
+    if (isConnected) setIsMuted(!isMuted);
+    else connect(systemInstruction);
+  }, [isConnected, isMuted, connect, systemInstruction]);
 
-  const effectiveSpeaking = elevenSpeaking;
-  const statusLabel = isThinking ? 'Pensando...' : effectiveSpeaking ? 'Falando...' : isListeningLocal ? 'Ouvindo...' : 'Fale ou escreva...';
+  // Nível 1: ElevenLabs fala → orb anima como se estivesse "falando"
+  const effectiveSpeaking = voiceLevel === 1 ? elevenSpeaking : isSpeaking;
+  const statusLabel = isThinking ? 'Pensando...' : effectiveSpeaking ? 'Falando...' : (isConnected && isMuted) ? 'Microfone Silenciado' : isListening ? 'Ouvindo...' : isConnected ? 'Toque para desligar' : 'Toque para ativar';
 
   const layoutProps = {
     moodColor, mood, personality,
     MOOD_CONFIG, PERSONALITY_CONFIG,
     statusLabel,
-    isSpeaking: effectiveSpeaking, isListening: isListeningLocal, isThinking, volume,
+    isConnected, isSpeaking: effectiveSpeaking, isListening, isThinking, isMuted, volume,
     messages: firebaseMessages,
     transcriptRef,
     memory,
@@ -842,6 +864,7 @@ export default function App() {
     inputText, setInputText,
     onSendText: handleSendText,
     onMicToggle: handleMicToggle,
+    onDisconnect: () => disconnect(),
     fileInputRef,
     showAttachMenu, setShowAttachMenu,
     onFileClick: () => fileInputRef.current?.click(),
@@ -884,7 +907,7 @@ export default function App() {
         switchInterface(dx < 0 ? 1 : -1);
       }}
     >
-      {onboardingStep === 'supernova' && <Supernova onComplete={() => { setOnboardingStep('completed'); }} />}
+      {onboardingStep === 'supernova' && <Supernova onComplete={() => { setOnboardingStep('completed'); connect(systemInstruction); setTimeout(() => sendLiveMessage("Oi, estou aqui."), 2500); }} />}
       <Mascot onToggleVoice={handleOrbClick} />
 
       <AnimatePresence mode="wait">
@@ -1809,16 +1832,31 @@ export default function App() {
                   {activeSettingsTab === 'voice' && (
                     <motion.div key="voice" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
 
-                      {/* ElevenLabs info */}
-                      <div className="p-3 rounded-xl flex items-center gap-2 text-[10px]"
-                        style={{ backgroundColor: elevenLabsApiKey && elevenLabsVoiceId ? '#22c55e10' : `${moodColor}10`, border: `1px solid ${elevenLabsApiKey && elevenLabsVoiceId ? '#22c55e20' : `${moodColor}20`}`, color: elevenLabsApiKey && elevenLabsVoiceId ? '#22c55e' : moodColor }}>
-                        <span>🔊</span>
-                        <span>{elevenLabsApiKey && elevenLabsVoiceId ? 'ElevenLabs ativo — configure na aba APIs' : 'Configure ElevenLabs na aba APIs para voz ultra-realista'}</span>
+                      {/* ── NÍVEL DE VOZ ── */}
+                      <div className="space-y-3">
+                        <label className="text-[10px] uppercase tracking-widest opacity-40 block">Modo de Voz</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {([1, 2] as const).map(lvl => (
+                            <button key={lvl} onClick={() => setVoiceLevel(lvl)}
+                              className="p-4 rounded-2xl text-left transition-all border"
+                              style={voiceLevel === lvl ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}50`, color: 'white' } : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.45)' }}>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-base">{lvl === 1 ? '🎙️' : '🤖'}</span>
+                                <span className="text-xs font-semibold">Nível {lvl}</span>
+                                {voiceLevel === lvl && <div className="w-1.5 h-1.5 rounded-full ml-auto" style={{ backgroundColor: moodColor }} />}
+                              </div>
+                              <p className="text-[10px] opacity-50 leading-snug">{lvl === 1 ? 'ElevenLabs — voz ultra-realista narra o chat e o workspace' : 'Gemini Live — conversa de voz bidirecional em tempo real'}</p>
+                            </button>
+                          ))}
+                        </div>
+                        {voiceLevel === 1 && (!elevenLabsApiKey || !elevenLabsVoiceId) && (
+                          <p className="text-[10px] text-yellow-400/60 px-1">⚠ Configure a API ElevenLabs na aba APIs para usar o Nível 1</p>
+                        )}
                       </div>
 
-                      {/* Vozes (apenas para referência/personalidade) */}
-                      <div className="space-y-4">
-                        <label className="text-[10px] uppercase tracking-widest opacity-40 block">Voz da Personalidade</label>
+                      {/* Vozes Gemini — só relevantes no Nível 2 */}
+                      <div className={`space-y-4 transition-opacity ${voiceLevel === 1 ? 'opacity-40 pointer-events-none' : ''}`}>
+                        <label className="text-[10px] uppercase tracking-widest opacity-40 block">Voz Gemini Live (Nível 2)</label>
                       <div className="space-y-4">
                         <div className="flex items-center gap-2 opacity-40"><span className="text-xs">♀</span><label className="text-[9px] uppercase tracking-[0.2em]">Feminino</label></div>
                         <div className="grid grid-cols-1 gap-2">
@@ -1849,7 +1887,7 @@ export default function App() {
                           ))}
                         </div>
                       </div>
-                      </div>
+                      </div>{/* end vozes gemini wrapper */}
                     </motion.div>
                   )}
 

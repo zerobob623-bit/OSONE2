@@ -4,7 +4,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, Send, Settings, Paperclip, Monitor, Volume1, Copy, Check } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Send, Settings, Paperclip, Monitor, Volume1, Copy, Check } from 'lucide-react';
 import { OrbSphere } from '../OrbSphere';
 import type { MainLayoutProps } from '../../types/layout';
 
@@ -403,8 +403,9 @@ function signalSpeed(isSpeaking: boolean, isListening: boolean, isThinking: bool
 
 // ─── Canvas Component ─────────────────────────────────────────────────────────
 function NeuralCanvas({
-  isSpeaking, isListening, isThinking, volume,
+  isConnected, isSpeaking, isListening, isThinking, volume,
 }: {
+  isConnected: boolean;
   isSpeaking: boolean;
   isListening: boolean;
   isThinking: boolean;
@@ -413,10 +414,10 @@ function NeuralCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Refs para props sem recriar o loop
-  const stateRef = useRef({ isConnected: true, isSpeaking, isListening, isThinking, volume });
+  const stateRef = useRef({ isConnected, isSpeaking, isListening, isThinking, volume });
   useEffect(() => {
-    stateRef.current = { isConnected: true, isSpeaking, isListening, isThinking, volume };
-  }, [isSpeaking, isListening, isThinking, volume]);
+    stateRef.current = { isConnected, isSpeaking, isListening, isThinking, volume };
+  }, [isConnected, isSpeaking, isListening, isThinking, volume]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -781,9 +782,9 @@ function MetaCogIndicator({ isThinking }: { isThinking: boolean }) {
 // ─── Layout principal ─────────────────────────────────────────────────────────
 export function NeuralLayout({
   moodColor, personality, PERSONALITY_CONFIG,
-  statusLabel, isSpeaking, isListening, isThinking, volume,
+  statusLabel, isConnected, isSpeaking, isListening, isThinking, isMuted, volume,
   messages, transcriptRef,
-  inputText, setInputText, onSendText, onMicToggle,
+  inputText, setInputText, onSendText, onMicToggle, onDisconnect,
   fileInputRef, showAttachMenu, setShowAttachMenu, onFileClick, onScreenShare,
   onOrbClick, currentTime, onOpenSettings, onOpenPersonalityPicker, onOpenMenu,
   showInstallBanner, onDismissInstallBanner, installPrompt, isInstalled, onInstallApp,
@@ -793,6 +794,7 @@ export function NeuralLayout({
 
       {/* Canvas neural — camada base */}
       <NeuralCanvas
+        isConnected={isConnected}
         isSpeaking={isSpeaking}
         isListening={isListening}
         isThinking={isThinking}
@@ -897,6 +899,7 @@ export function NeuralLayout({
         <div style={{ pointerEvents: 'all' }}>
           <OrbSphere
             moodColor="#00C8FF"
+            isConnected={isConnected}
             isSpeaking={isSpeaking}
             isListening={isListening}
             isThinking={isThinking}
@@ -911,7 +914,7 @@ export function NeuralLayout({
       <div className="fixed left-0 right-0 flex justify-center z-10" style={{ bottom: 140 }}>
         <motion.p key={statusLabel} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
           className="text-[8px] uppercase tracking-[0.5em]"
-          style={{ color: (isSpeaking || isListening) ? '#00A8CC' : 'rgba(0,130,180,0.25)' }}>
+          style={{ color: isConnected ? '#00A8CC' : 'rgba(0,130,180,0.25)' }}>
           {statusLabel}
         </motion.p>
       </div>
@@ -975,7 +978,15 @@ export function NeuralLayout({
               </button>
             ) : (
               <button onClick={onMicToggle} className="p-1.5 transition-colors">
-                <Mic size={18} color={isListening ? '#00C8FF' : 'rgba(0,180,220,0.45)'} />
+                {isMuted
+                  ? <MicOff size={18} color="rgba(255,255,255,0.25)" />
+                  : <Mic size={18} color={isConnected ? '#00C8FF' : 'rgba(0,180,220,0.45)'} />
+                }
+              </button>
+            )}
+            {isConnected && (
+              <button onClick={onDisconnect} className="p-1.5 opacity-35 hover:opacity-80 transition-opacity">
+                <PhoneOff size={16} color="rgba(255,255,255,0.45)" />
               </button>
             )}
           </div>

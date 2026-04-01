@@ -114,6 +114,8 @@ interface AppState {
   setSystemMetrics: (metrics: SystemMetrics) => void;
 
   // Connection and Status
+  isConnected: boolean;
+  setIsConnected: (connected: boolean) => void;
   isSpeaking: boolean;
   setIsSpeaking: (speaking: boolean) => void;
   isListening: boolean;
@@ -170,6 +172,10 @@ interface AppState {
   setElevenLabsApiKey: (key: string) => void;
   elevenLabsVoiceId: string;
   setElevenLabsVoiceId: (id: string) => void;
+
+  // Voice Level: 1 = ElevenLabs TTS, 2 = Gemini Live
+  voiceLevel: 1 | 2;
+  setVoiceLevel: (level: 1 | 2) => void;
 
   // WhatsApp
   myWhatsappNumber: string;
@@ -261,6 +267,8 @@ export const useAppStore = create<AppState>()(
       setSystemMetrics: (systemMetrics) => set({ systemMetrics }),
 
       // Connection and Status
+      isConnected: false,
+      setIsConnected: (isConnected) => set({ isConnected }),
       isSpeaking: false,
       setIsSpeaking: (isSpeaking) => set({ isSpeaking }),
       isListening: false,
@@ -333,6 +341,9 @@ export const useAppStore = create<AppState>()(
       setElevenLabsApiKey: (elevenLabsApiKey) => set({ elevenLabsApiKey }),
       elevenLabsVoiceId: (import.meta as any).env?.VITE_ELEVENLABS_VOICE_ID || '',
       setElevenLabsVoiceId: (elevenLabsVoiceId) => set({ elevenLabsVoiceId }),
+
+      voiceLevel: 2,
+      setVoiceLevel: (voiceLevel) => set({ voiceLevel }),
 
       // WhatsApp
       myWhatsappNumber: '',
@@ -446,6 +457,7 @@ export const useAppStore = create<AppState>()(
         },
         assistantName: 'OSONE',
         mood: 'calm',
+        isConnected: false,
         isMascotVisible: false,
         isScreenSharing: false,
         focusMode: false,
@@ -481,6 +493,7 @@ export const useAppStore = create<AppState>()(
         customSkills: state.customSkills,
         workspaceProjectName: state.workspaceProjectName,
         workspaceFiles: state.workspaceFiles,
+          voiceLevel: state.voiceLevel,
         // ✅ ElevenLabs persiste no localStorage
         elevenLabsApiKey: state.elevenLabsApiKey,
         elevenLabsVoiceId: state.elevenLabsVoiceId,

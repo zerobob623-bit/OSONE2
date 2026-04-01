@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, Send, Settings, ChevronUp, ChevronDown, Volume1, Copy, Check } from 'lucide-react';
+import { Mic, MicOff, Send, Settings, ChevronUp, ChevronDown, Volume1, Copy, Check, PhoneOff } from 'lucide-react';
 import type { MainLayoutProps } from '../../types/layout';
 
 // ─── Paleta "Her" (2013) ──────────────────────────────────────────────────────
@@ -33,15 +33,15 @@ const SHAPES = [
 
 // ─── Símbolo que muda de forma ────────────────────────────────────────────────
 function MorphingSymbol({
-  isSpeaking, isListening, isThinking, volume,
+  isConnected, isSpeaking, isListening, isThinking, volume,
 }: {
-  isSpeaking: boolean; isListening: boolean;
+  isConnected: boolean; isSpeaking: boolean; isListening: boolean;
   isThinking: boolean; volume: number;
 }) {
   const [shapeIdx, setShapeIdx] = useState(4); // começa no infinito
   const v      = Math.min(1, volume * 6);
-  const active = isSpeaking || isListening;
-  const think  = isThinking && !active;
+  const active = isConnected && (isSpeaking || isListening);
+  const think  = isConnected && isThinking && !active;
 
   // Ciclo automático — mais rápido quando falando/ouvindo
   useEffect(() => {
@@ -53,7 +53,7 @@ function MorphingSymbol({
   }, [isSpeaking, isListening]);
 
   const dur = active ? Math.max(0.28, 0.7 - v * 0.45) : think ? 1.2 : 3.5;
-  const sw  = 1.5 + v * 3;
+  const sw  = isConnected ? 1.5 + v * 3 : 0.8;
 
   // Transição de morph suave com easing cinematográfico
   const morphTransition = { duration: 1.6, ease: [0.4, 0, 0.2, 1] as any };
@@ -61,16 +61,18 @@ function MorphingSymbol({
   return (
     <motion.div
       className="relative flex items-center justify-center"
-      animate={{ scale: [1, 1 + v * 0.04, 1] }}
+      animate={{ scale: isConnected ? [1, 1 + v * 0.04, 1] : 1 }}
       transition={{ duration: dur, repeat: Infinity, ease: 'easeInOut' }}
     >
       {/* Halo externo */}
       <motion.div
         className="absolute pointer-events-none"
         animate={{
-          opacity: active ? [0.18 + v * 0.25, 0.35 + v * 0.35, 0.18 + v * 0.25]
+          opacity: isConnected
+            ? active ? [0.18 + v * 0.25, 0.35 + v * 0.35, 0.18 + v * 0.25]
             : think  ? [0.08, 0.18, 0.08]
-            :          [0.04, 0.09, 0.04],
+            :          [0.04, 0.09, 0.04]
+            : 0,
         }}
         transition={{ duration: dur, repeat: Infinity, ease: 'easeInOut' }}
         style={{
@@ -109,11 +111,11 @@ function MorphingSymbol({
         <motion.path
           fill="none"
           strokeLinecap="round"
-          stroke="rgba(212,137,92,0.28)"
+          stroke={isConnected ? 'rgba(212,137,92,0.28)' : 'transparent'}
           filter="url(#her-glow)"
           animate={{
             d: SHAPES[shapeIdx],
-            strokeWidth: [sw + 3, sw + 6, sw + 3],
+            strokeWidth: isConnected ? [sw + 3, sw + 6, sw + 3] : 0,
           }}
           transition={{
             d: morphTransition,
@@ -125,11 +127,11 @@ function MorphingSymbol({
         <motion.path
           fill="none"
           strokeLinecap="round"
-          stroke={HER.peach}
-          filter="url(#her-glow)"
+          stroke={isConnected ? HER.peach : 'rgba(196,162,130,0.18)'}
+          filter={isConnected ? 'url(#her-glow)' : 'none'}
           animate={{
             d: SHAPES[shapeIdx],
-            strokeWidth: [sw, sw + v * 1.5, sw],
+            strokeWidth: isConnected ? [sw, sw + v * 1.5, sw] : [0.8, 1, 0.8],
           }}
           transition={{
             d: morphTransition,
@@ -171,9 +173,9 @@ function MsgActions({ text }: { text: string }) {
 // ─── Layout principal ─────────────────────────────────────────────────────────
 export function HerLayout({
   personality, PERSONALITY_CONFIG,
-  statusLabel, isSpeaking, isListening, isThinking, volume,
+  statusLabel, isConnected, isSpeaking, isListening, isThinking, isMuted, volume,
   messages, transcriptRef,
-  inputText, setInputText, onSendText, onMicToggle,
+  inputText, setInputText, onSendText, onMicToggle, onDisconnect,
   onOrbClick, currentTime, onOpenSettings, onOpenPersonalityPicker, onOpenMenu,
   showInstallBanner, onDismissInstallBanner, installPrompt, isInstalled, onInstallApp,
 }: MainLayoutProps) {
@@ -193,7 +195,7 @@ export function HerLayout({
       {/* Vinheta radial quente */}
       <motion.div
         className="absolute inset-0 pointer-events-none"
-        animate={{ opacity: (isSpeaking || isListening) ? [0.05, 0.1, 0.05] : 0.03 }}
+        animate={{ opacity: isConnected ? [0.05, 0.1, 0.05] : 0.03 }}
         transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
         style={{ background: `radial-gradient(ellipse 70% 55% at 50% 48%, ${HER.peach} 0%, transparent 100%)` }}
       />
@@ -220,12 +222,12 @@ export function HerLayout({
         )}
       </AnimatePresence>
 
-      {/* ── TOP BAR ────────────────────────────────────────────────────────── */}
+      {/* ── TOP BAR — desaparece quando conectado ──────────────────────────── */}
       <motion.div
         className="fixed top-0 left-0 right-0 h-14 px-6 flex items-center justify-between z-50"
-        animate={{ opacity: 1, y: 0 }}
+        animate={{ opacity: isConnected ? 0 : 1, y: isConnected ? -10 : 0 }}
         transition={{ duration: 0.55, ease: 'easeInOut' }}
-        style={{ pointerEvents: 'auto' }}
+        style={{ pointerEvents: isConnected ? 'none' : 'auto' }}
       >
         <div className="flex items-center gap-3">
           <button onClick={onOpenMenu}
@@ -253,8 +255,9 @@ export function HerLayout({
       {/* ── CENTRO — Símbolo morfável + status ─────────────────────────────── */}
       <div className="fixed inset-0 flex flex-col items-center justify-center"
         style={{
-          top: '56px',
-          bottom: '140px',
+          top: isConnected ? '0px' : '56px',
+          bottom: isConnected ? '148px' : '140px',
+          transition: 'top 0.55s ease, bottom 0.55s ease',
           pointerEvents: 'none',
         }}>
         <button
@@ -263,6 +266,7 @@ export function HerLayout({
           style={{ outline: 'none', background: 'none', border: 'none', cursor: 'pointer', pointerEvents: 'auto' }}
         >
           <MorphingSymbol
+            isConnected={isConnected}
             isSpeaking={isSpeaking}
             isListening={isListening}
             isThinking={isThinking}
@@ -277,7 +281,7 @@ export function HerLayout({
             className="text-[11px] italic tracking-[0.22em]"
             style={{
               fontFamily: 'Cormorant Garamond, serif',
-              color: (isSpeaking || isListening) ? HER.peach : 'rgba(232,208,184,0.18)',
+              color: isConnected ? HER.peach : 'rgba(232,208,184,0.18)',
             }}
           >
             {statusLabel.toLowerCase()}
@@ -357,54 +361,100 @@ export function HerLayout({
           )}
         </AnimatePresence>
 
-        {/* ── MIC + INPUT ─────────────────────────────────────────────────── */}
-        <div className="flex flex-col items-center gap-3 px-6">
-          {/* Mic */}
-          <motion.button
-            onClick={onMicToggle}
-            className="relative flex items-center justify-center rounded-full"
-            animate={{
-              boxShadow: (isSpeaking || isListening)
-                ? [`0 0 ${16 + v * 36}px rgba(212,137,92,${0.12 + v * 0.28})`,
-                   `0 0 ${24 + v * 48}px rgba(212,137,92,${0.18 + v * 0.32})`,
-                   `0 0 ${16 + v * 36}px rgba(212,137,92,${0.12 + v * 0.28})`]
-                : '0 0 0px transparent',
-            }}
-            transition={{ duration: 0.5, repeat: Infinity }}
-            style={{
-              width: 68, height: 68,
-              background: `radial-gradient(circle at 40% 35%, rgba(212,137,92,0.22) 0%, rgba(212,137,92,0.07) 100%)`,
-              border: `1.5px solid ${isListening ? 'rgba(212,137,92,0.52)' : 'rgba(212,137,92,0.32)'}`,
-            }}
-          >
-            <Mic size={26} color={isListening || isSpeaking ? HER.peach : 'rgba(212,137,92,0.65)'} />
-          </motion.button>
-
-          {/* Input de texto */}
-          <div className="w-full max-w-xs flex items-center gap-3">
-            <input
-              type="text"
-              value={inputText}
-              onChange={e => setInputText(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') onSendText(); }}
-              placeholder="ou escreva..."
-              className="flex-1 bg-transparent focus:outline-none text-center"
-              style={{
-                fontFamily: 'Cormorant Garamond, serif',
-                fontSize: '0.88rem',
-                color: 'rgba(232,208,184,0.38)',
-                borderBottom: '1px solid rgba(196,114,74,0.14)',
-                padding: '5px 0',
-                caretColor: HER.peach,
+        {/* ── MODO CONECTADO: mic grande central ──────────────────────────── */}
+        {isConnected ? (
+          <div className="flex flex-col items-center gap-3 px-6">
+            {/* Mic */}
+            <motion.button
+              onClick={onMicToggle}
+              className="relative flex items-center justify-center rounded-full"
+              animate={{
+                boxShadow: !isMuted && (isSpeaking || isListening)
+                  ? [`0 0 ${16 + v * 36}px rgba(212,137,92,${0.12 + v * 0.28})`,
+                     `0 0 ${24 + v * 48}px rgba(212,137,92,${0.18 + v * 0.32})`,
+                     `0 0 ${16 + v * 36}px rgba(212,137,92,${0.12 + v * 0.28})`]
+                  : '0 0 0px transparent',
               }}
-            />
-            {inputText.trim() && (
-              <button onClick={onSendText} className="opacity-45 hover:opacity-90 transition-opacity flex-shrink-0">
-                <Send size={13} color={HER.peach} />
+              transition={{ duration: 0.5, repeat: Infinity }}
+              style={{
+                width: 68, height: 68,
+                background: isMuted
+                  ? 'rgba(232,208,184,0.05)'
+                  : `radial-gradient(circle at 40% 35%, rgba(212,137,92,0.22) 0%, rgba(212,137,92,0.07) 100%)`,
+                border: `1.5px solid ${isMuted ? 'rgba(232,208,184,0.12)' : 'rgba(212,137,92,0.32)'}`,
+              }}
+            >
+              {isMuted
+                ? <MicOff size={26} color="rgba(232,208,184,0.3)" />
+                : <Mic size={26} color={isListening || isSpeaking ? HER.peach : 'rgba(212,137,92,0.65)'} />
+              }
+            </motion.button>
+
+            {/* Input de texto + desconectar */}
+            <div className="w-full max-w-xs flex items-center gap-3">
+              <input
+                type="text"
+                value={inputText}
+                onChange={e => setInputText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') onSendText(); }}
+                placeholder="ou escreva..."
+                className="flex-1 bg-transparent focus:outline-none text-center"
+                style={{
+                  fontFamily: 'Cormorant Garamond, serif',
+                  fontSize: '0.88rem',
+                  color: 'rgba(232,208,184,0.38)',
+                  borderBottom: '1px solid rgba(196,114,74,0.14)',
+                  padding: '5px 0',
+                  caretColor: HER.peach,
+                }}
+              />
+              {inputText.trim() && (
+                <button onClick={onSendText} className="opacity-45 hover:opacity-90 transition-opacity flex-shrink-0">
+                  <Send size={13} color={HER.peach} />
+                </button>
+              )}
+              <button onClick={onDisconnect} className="opacity-18 hover:opacity-50 transition-opacity flex-shrink-0">
+                <PhoneOff size={13} color={HER.cream} />
               </button>
-            )}
+            </div>
           </div>
-        </div>
+        ) : (
+          /* ── MODO DESCONECTADO: input padrão ──────────────────────────── */
+          <div className="px-6">
+            <div className="max-w-lg mx-auto flex items-center gap-3">
+              <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 opacity-18"
+                style={{ backgroundColor: HER.cream }} />
+              <input
+                type="text"
+                value={inputText}
+                onChange={e => setInputText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') onSendText(); }}
+                placeholder="diga algo..."
+                className="flex-1 bg-transparent focus:outline-none"
+                style={{
+                  fontFamily: 'Cormorant Garamond, serif',
+                  fontSize: '1rem',
+                  color: HER.cream,
+                  borderBottom: '1px solid rgba(196,114,74,0.22)',
+                  padding: '8px 0',
+                  caretColor: HER.peach,
+                }}
+              />
+              {inputText.trim() ? (
+                <button onClick={onSendText} className="opacity-45 hover:opacity-90 transition-opacity">
+                  <Send size={15} color={HER.peach} />
+                </button>
+              ) : (
+                <button onClick={onMicToggle} className="opacity-45 hover:opacity-90 transition-opacity">
+                  {isMuted
+                    ? <MicOff size={15} color="rgba(232,208,184,0.35)" />
+                    : <Mic size={15} color="rgba(212,137,92,0.65)" />
+                  }
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
