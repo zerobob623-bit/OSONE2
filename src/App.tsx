@@ -2491,6 +2491,56 @@ export default function App() {
                           ))}
                         </div>
                       </div>
+                      </div>
+                  </div>
+
+                  {/* ── ElevenLabs ── */}
+                  <div className="pt-4 border-t border-white/5 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm"
+                        style={{ backgroundColor: `${moodColor}20` }}>🔊</div>
+                      <div>
+                        <p className="text-xs font-medium">ElevenLabs</p>
+                        <p className="text-[10px] text-white/30">Voz ultra-realista (fallback do Gemini)</p>
+                      </div>
+                      <div className={`ml-auto w-2 h-2 rounded-full ${elevenLabsApiKey && elevenLabsVoiceId ? 'bg-green-500 animate-pulse' : 'bg-zinc-600'}`} />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase tracking-widest text-white/40">ElevenLabs API Key</label>
+                      <input
+                        type="password"
+                        placeholder="sk_..."
+                        value={elevenLabsApiKey}
+                        onChange={e => setElevenLabsApiKey(e.target.value.trim())}
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase tracking-widest text-white/40">Voice ID</label>
+                      <input
+                        type="text"
+                        placeholder="21m00Tcm4TlvDq8ikWAM"
+                        value={elevenLabsVoiceId}
+                        onChange={e => setElevenLabsVoiceId(e.target.value.trim())}
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
+                      />
+                      <p className="text-[10px] text-white/20 pl-1">
+                        Encontre em <span className="text-white/40">elevenlabs.io/app/voice-library</span>
+                      </p>
+                    </div>
+
+                    {elevenLabsApiKey && elevenLabsVoiceId && (
+                      <div className="p-3 rounded-xl flex items-center gap-2 text-[10px] text-green-400"
+                        style={{ backgroundColor: '#22c55e10', border: '1px solid #22c55e20' }}>
+                        <span>✓</span>
+                        <span>Configurado. Reconecte a IA para ativar.</span>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
                     </motion.div>
                   )}
 
