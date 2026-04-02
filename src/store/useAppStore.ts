@@ -173,7 +173,17 @@ interface AppState {
   elevenLabsVoiceId: string;
   setElevenLabsVoiceId: (id: string) => void;
 
-  // Voice Level: 1 = ElevenLabs TTS, 2 = Gemini Live
+  // Qwen TTS
+  qwenApiKey: string;
+  setQwenApiKey: (key: string) => void;
+  qwenVoice: string;
+  setQwenVoice: (voice: string) => void;
+
+  // TTS provider para Nível 1: 'elevenlabs' | 'qwen'
+  ttsProvider: 'elevenlabs' | 'qwen';
+  setTtsProvider: (p: 'elevenlabs' | 'qwen') => void;
+
+  // Voice Level: 1 = TTS externo (ElevenLabs/Qwen), 2 = Gemini Live
   voiceLevel: 1 | 2;
   setVoiceLevel: (level: 1 | 2) => void;
 
@@ -341,6 +351,12 @@ export const useAppStore = create<AppState>()(
       setElevenLabsApiKey: (elevenLabsApiKey) => set({ elevenLabsApiKey }),
       elevenLabsVoiceId: (import.meta as any).env?.VITE_ELEVENLABS_VOICE_ID || '',
       setElevenLabsVoiceId: (elevenLabsVoiceId) => set({ elevenLabsVoiceId }),
+      qwenApiKey: '',
+      setQwenApiKey: (qwenApiKey) => set({ qwenApiKey }),
+      qwenVoice: 'longxiaochun',
+      setQwenVoice: (qwenVoice) => set({ qwenVoice }),
+      ttsProvider: 'elevenlabs' as const,
+      setTtsProvider: (ttsProvider) => set({ ttsProvider }),
 
       voiceLevel: 2,
       setVoiceLevel: (voiceLevel) => set({ voiceLevel }),
@@ -497,6 +513,9 @@ export const useAppStore = create<AppState>()(
         // ✅ ElevenLabs persiste no localStorage
         elevenLabsApiKey: state.elevenLabsApiKey,
         elevenLabsVoiceId: state.elevenLabsVoiceId,
+        qwenApiKey: state.qwenApiKey,
+        qwenVoice: state.qwenVoice,
+        ttsProvider: state.ttsProvider,
       }),
     }
   )
