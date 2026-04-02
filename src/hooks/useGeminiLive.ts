@@ -69,7 +69,6 @@ export const useGeminiLive = ({
     setOnboardingStep,
     apiKey: storedApiKey,
     openaiApiKey,
-    voiceLevel,
     groqApiKey,
     chatProvider,
     chatModel,
@@ -446,15 +445,9 @@ export const useGeminiLive = ({
       const sessionPromise = ai.live.connect({
         model: LIVE_MODEL,
         config: {
-          // Nível 1: Gemini só envia texto → ElevenLabs fala
-          // Nível 2: Gemini envia áudio diretamente (voz natural)
-          responseModalities: voiceLevel === 1 ? [Modality.TEXT] : [Modality.AUDIO],
+          // Gemini envia texto → ElevenLabs fala
+          responseModalities: [Modality.TEXT],
           ...(sysInstruction ? { systemInstruction: sysInstruction } : {}),
-          ...(voiceLevel === 2 ? {
-            speechConfig: {
-              voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAPPING[voice] || 'Kore' } },
-            },
-          } : {}),
           tools: [
             { functionDeclarations: [...TOOL_DECLARATIONS, ...buildCustomToolDeclarations(useAppStore.getState().customSkills)] },
             { googleSearch: {} } as any,
