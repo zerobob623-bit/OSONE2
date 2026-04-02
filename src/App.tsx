@@ -8,6 +8,8 @@ import { Supernova } from './components/Supernova';
 import { Mascot } from './components/Mascot';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { useElevenLabs } from './hooks/useElevenLabs';
+import { useQwenTTS, QWEN_VOICES } from './hooks/useQwenTTS';
+import { usePiperTTS, PIPER_VOICES } from './hooks/usePiperTTS';
 import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey, CustomSkill, WorkspaceFile } from './store/useAppStore';
 import CATALOG, { CATALOG_CATEGORIES, type CatalogSkill } from './data/skillsCatalog';
 import { useConversationHistory } from './hooks/useConversationHistory';
@@ -403,6 +405,13 @@ export default function App() {
     // ✅ ElevenLabs
     elevenLabsApiKey, setElevenLabsApiKey,
     elevenLabsVoiceId, setElevenLabsVoiceId,
+    // ✅ Qwen TTS
+    qwenApiKey, setQwenApiKey,
+    qwenVoice, setQwenVoice,
+    // ✅ Piper TTS (local)
+    piperServerUrl, setPiperServerUrl,
+    piperVoice, setPiperVoice,
+    ttsProvider, setTtsProvider,
     voiceLevel, setVoiceLevel,
   } = useAppStore();
 
@@ -489,6 +498,23 @@ export default function App() {
     apiKey: elevenLabsApiKey,
     voiceId: elevenLabsVoiceId,
   });
+
+  // ── Nível 1 (alternativa): Qwen TTS ──────────────────────────────────────
+  const { speak: qwenSpeak, stop: qwenStop, isSpeaking: qwenSpeaking } = useQwenTTS({
+    apiKey: qwenApiKey,
+    voice: qwenVoice as any,
+  });
+
+  // ── Nível 1 (local): Piper TTS ────────────────────────────────────────────
+  const { speak: piperSpeak, stop: piperStop, isSpeaking: piperSpeaking } = usePiperTTS({
+    serverUrl: piperServerUrl,
+    voice: piperVoice,
+  });
+
+  // Funções unificadas de TTS (usa o provider ativo do Nível 1)
+  const ttsSpeak    = ttsProvider === 'qwen' ? qwenSpeak    : ttsProvider === 'piper' ? piperSpeak    : elevenSpeak;
+  const ttsStop     = ttsProvider === 'qwen' ? qwenStop     : ttsProvider === 'piper' ? piperStop     : elevenStop;
+  const ttsSpeaking = ttsProvider === 'qwen' ? qwenSpeaking : ttsProvider === 'piper' ? piperSpeaking : elevenSpeaking;
 
   useEffect(() => {
     if (userId) { deleteAllMessages(); }
@@ -700,7 +726,7 @@ export default function App() {
           saveMessage({ role: msg.role, text: cleanText });
           // Nível 1: ElevenLabs narra mensagens do assistente
           if (msg.role === 'model' && voiceLevel === 1 && cleanText) {
-            elevenSpeak(cleanText).then(spoken => {
+            ttsSpeak(cleanText).then(spoken => {
               if (!spoken) {
                 window.speechSynthesis.cancel();
                 const u = new SpeechSynthesisUtterance(cleanText);
@@ -932,7 +958,7 @@ Regras:
   }, [vibeBuilding, apiKey, setWorkspaceFiles, setWorkspaceProjectName, setError]);
 
   // Nível 1: ElevenLabs fala → orb anima como se estivesse "falando"
-  const effectiveSpeaking = voiceLevel === 1 ? elevenSpeaking : isSpeaking;
+  const effectiveSpeaking = voiceLevel === 1 ? ttsSpeaking : isSpeaking;
   const statusLabel = isThinking ? 'Pensando...' : effectiveSpeaking ? 'Falando...' : (isConnected && isMuted) ? 'Microfone Silenciado' : isListening ? 'Ouvindo...' : isConnected ? 'Toque para desligar' : 'Toque para ativar';
 
   const layoutProps = {
@@ -1349,9 +1375,9 @@ Regras:
                   {memory.workspace && !workspaceEditing && (
                     <button
                       onClick={() => {
-                        if (elevenSpeaking) { elevenStop(); return; }
+                        if (ttsSpeaking) { ttsStop(); return; }
                         if (elevenLabsApiKey && elevenLabsVoiceId) {
-                          elevenSpeak(memory.workspace || '');
+                          ttsSpeak(memory.workspace || '');
                         } else {
                           window.speechSynthesis.cancel();
                           const u = new SpeechSynthesisUtterance(memory.workspace || '');
@@ -1360,8 +1386,8 @@ Regras:
                         }
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] uppercase tracking-widest transition-all"
-                      style={{ backgroundColor: elevenSpeaking ? `${moodColor}25` : 'rgba(255,255,255,0.05)', color: elevenSpeaking ? moodColor : 'rgba(255,255,255,0.5)', border: `1px solid ${elevenSpeaking ? moodColor+'40' : 'rgba(255,255,255,0.05)'}` }}>
-                      <Volume2 size={11} /> {elevenSpeaking ? 'Parar' : 'Narrar'}
+                      style={{ backgroundColor: ttsSpeaking ? `${moodColor}25` : 'rgba(255,255,255,0.05)', color: ttsSpeaking ? moodColor : 'rgba(255,255,255,0.5)', border: `1px solid ${ttsSpeaking ? moodColor+'40' : 'rgba(255,255,255,0.05)'}` }}>
+                      <Volume2 size={11} /> {ttsSpeaking ? 'Parar' : 'Narrar'}
                     </button>
                   )}
                   <div className="flex-1" />
@@ -2421,9 +2447,112 @@ Regras:
                           <div className="p-3 rounded-xl flex items-center gap-2 text-[10px] text-green-400"
                             style={{ backgroundColor: '#22c55e10', border: '1px solid #22c55e20' }}>
                             <span>✓</span>
-                            <span>Configurado. Reconecte a IA para ativar.</span>
+                            <span>Configurado.</span>
                           </div>
                         )}
+                      </div>
+
+                      {/* ✅ Qwen TTS */}
+                      <div className="pt-4 border-t border-white/5 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ backgroundColor: `${moodColor}20` }}>🈶</div>
+                          <div>
+                            <p className="text-xs font-medium">Qwen TTS (DashScope)</p>
+                            <p className="text-[10px] text-white/30">Voz natural multilingual — dashscope.aliyuncs.com</p>
+                          </div>
+                          <div className={`ml-auto w-2 h-2 rounded-full ${qwenApiKey ? 'bg-green-500 animate-pulse' : 'bg-zinc-600'}`} />
+                        </div>
+
+                        {/* Seletor de provider */}
+                        <div className="grid grid-cols-3 gap-2">
+                          {(['elevenlabs', 'qwen', 'piper'] as const).map(p => (
+                            <button key={p} onClick={() => setTtsProvider(p)}
+                              className="p-3 rounded-xl text-left border transition-all text-[10px]"
+                              style={ttsProvider === p
+                                ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}50`, color: 'white' }
+                                : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
+                              {p === 'elevenlabs' ? '🔊 ElevenLabs' : p === 'qwen' ? '🈶 Qwen' : '🖥️ Piper'}
+                              {ttsProvider === p && <span className="ml-1 text-[8px] uppercase tracking-widest opacity-70">ativo</span>}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase tracking-widest text-white/40">DashScope API Key</label>
+                          <input
+                            type="password"
+                            placeholder="sk-..."
+                            value={qwenApiKey}
+                            onChange={e => setQwenApiKey(e.target.value.trim())}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
+                          />
+                          <p className="text-[10px] text-white/20 pl-1">Chave em dashscope.aliyuncs.com/user/info</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest text-white/40">Voz</label>
+                          <div className="grid grid-cols-1 gap-1.5">
+                            {QWEN_VOICES.map(v => (
+                              <button key={v.id} onClick={() => setQwenVoice(v.id)}
+                                className="flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all border"
+                                style={qwenVoice === v.id
+                                  ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}40`, color: 'white' }
+                                  : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                                <span className="text-xs font-semibold w-20">{v.name}</span>
+                                <span className="text-[10px] opacity-50 flex-1">{v.desc}</span>
+                                {qwenVoice === v.id && <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: moodColor }} />}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ✅ Piper TTS (local) */}
+                      <div className="pt-4 border-t border-white/5 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ backgroundColor: `${moodColor}20` }}>🖥️</div>
+                          <div>
+                            <p className="text-xs font-medium">Piper TTS (local)</p>
+                            <p className="text-[10px] text-white/30">100% offline — roda na sua máquina</p>
+                          </div>
+                        </div>
+
+                        <div className="p-3 rounded-xl text-[10px] text-white/40 space-y-1"
+                          style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                          <p className="font-semibold text-white/60">Como configurar:</p>
+                          <p>1. <code className="text-white/70">pip install piper-tts flask flask-cors</code></p>
+                          <p>2. Baixe a voz PT-BR em huggingface.co/rhasspy/piper-voices</p>
+                          <p>3. Coloque o .onnx na pasta <code className="text-white/70">piper-models/</code></p>
+                          <p>4. Execute <code className="text-white/70">python scripts/piper-server.py</code></p>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase tracking-widest text-white/40">URL do servidor local</label>
+                          <input
+                            type="text"
+                            placeholder="http://localhost:5000"
+                            value={piperServerUrl}
+                            onChange={e => setPiperServerUrl(e.target.value.trim())}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest text-white/40">Voz</label>
+                          <div className="grid grid-cols-1 gap-1.5">
+                            {PIPER_VOICES.map(v => (
+                              <button key={v.id} onClick={() => setPiperVoice(v.id)}
+                                className="flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all border"
+                                style={piperVoice === v.id
+                                  ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}40`, color: 'white' }
+                                  : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                                <span className="text-xs font-semibold w-20">{v.name}</span>
+                                <span className="text-[10px] opacity-50 flex-1">{v.desc}</span>
+                                {piperVoice === v.id && <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: moodColor }} />}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </motion.div>
                   )}
