@@ -1977,12 +1977,22 @@ Regras:
                                 <span className="text-xs font-semibold">Nível {lvl}</span>
                                 {voiceLevel === lvl && <div className="w-1.5 h-1.5 rounded-full ml-auto" style={{ backgroundColor: moodColor }} />}
                               </div>
-                              <p className="text-[10px] opacity-50 leading-snug">{lvl === 1 ? 'ElevenLabs — voz ultra-realista narra o chat e o workspace' : 'Gemini Live — conversa de voz bidirecional em tempo real'}</p>
+                              <p className="text-[10px] opacity-50 leading-snug">
+                                {lvl === 1
+                                  ? `${ttsProvider === 'piper' ? '🖥️ Piper (local)' : ttsProvider === 'qwen' ? '🈶 Qwen TTS' : '🔊 ElevenLabs'} — texto narrado pela voz escolhida`
+                                  : '🤖 Gemini Live — voz natural bidirecional em tempo real'}
+                              </p>
                             </button>
                           ))}
                         </div>
-                        {voiceLevel === 1 && (!elevenLabsApiKey || !elevenLabsVoiceId) && (
-                          <p className="text-[10px] text-yellow-400/60 px-1">⚠ Configure a API ElevenLabs na aba APIs para usar o Nível 1</p>
+                        {voiceLevel === 1 && ttsProvider === 'elevenlabs' && (!elevenLabsApiKey || !elevenLabsVoiceId) && (
+                          <p className="text-[10px] text-yellow-400/60 px-1">⚠ Configure ElevenLabs na aba APIs ou troque o provider de voz</p>
+                        )}
+                        {voiceLevel === 1 && ttsProvider === 'qwen' && !qwenApiKey && (
+                          <p className="text-[10px] text-yellow-400/60 px-1">⚠ Configure a chave DashScope na aba APIs para usar Qwen TTS</p>
+                        )}
+                        {voiceLevel === 1 && ttsProvider === 'piper' && (
+                          <p className="text-[10px] text-blue-400/60 px-1">🖥️ Piper local — execute <code>python scripts/piper-server.py</code> antes de usar</p>
                         )}
                       </div>
 
