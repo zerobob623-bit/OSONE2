@@ -9,6 +9,7 @@ import { Mascot } from './components/Mascot';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { useElevenLabs } from './hooks/useElevenLabs';
 import { useQwenTTS, QWEN_VOICES } from './hooks/useQwenTTS';
+import { usePiperTTS, PIPER_VOICES } from './hooks/usePiperTTS';
 import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey, CustomSkill, WorkspaceFile } from './store/useAppStore';
 import CATALOG, { CATALOG_CATEGORIES, type CatalogSkill } from './data/skillsCatalog';
 import { useConversationHistory } from './hooks/useConversationHistory';
@@ -407,6 +408,9 @@ export default function App() {
     // ✅ Qwen TTS
     qwenApiKey, setQwenApiKey,
     qwenVoice, setQwenVoice,
+    // ✅ Piper TTS (local)
+    piperServerUrl, setPiperServerUrl,
+    piperVoice, setPiperVoice,
     ttsProvider, setTtsProvider,
     voiceLevel, setVoiceLevel,
   } = useAppStore();
@@ -501,10 +505,16 @@ export default function App() {
     voice: qwenVoice as any,
   });
 
+  // ── Nível 1 (local): Piper TTS ────────────────────────────────────────────
+  const { speak: piperSpeak, stop: piperStop, isSpeaking: piperSpeaking } = usePiperTTS({
+    serverUrl: piperServerUrl,
+    voice: piperVoice,
+  });
+
   // Funções unificadas de TTS (usa o provider ativo do Nível 1)
-  const ttsSpeak = ttsProvider === 'qwen' ? qwenSpeak : elevenSpeak;
-  const ttsStop  = ttsProvider === 'qwen' ? qwenStop  : elevenStop;
-  const ttsSpeaking = ttsProvider === 'qwen' ? qwenSpeaking : elevenSpeaking;
+  const ttsSpeak    = ttsProvider === 'qwen' ? qwenSpeak    : ttsProvider === 'piper' ? piperSpeak    : elevenSpeak;
+  const ttsStop     = ttsProvider === 'qwen' ? qwenStop     : ttsProvider === 'piper' ? piperStop     : elevenStop;
+  const ttsSpeaking = ttsProvider === 'qwen' ? qwenSpeaking : ttsProvider === 'piper' ? piperSpeaking : elevenSpeaking;
 
   useEffect(() => {
     if (userId) { deleteAllMessages(); }
@@ -2454,14 +2464,14 @@ Regras:
                         </div>
 
                         {/* Seletor de provider */}
-                        <div className="grid grid-cols-2 gap-2">
-                          {(['elevenlabs', 'qwen'] as const).map(p => (
+                        <div className="grid grid-cols-3 gap-2">
+                          {(['elevenlabs', 'qwen', 'piper'] as const).map(p => (
                             <button key={p} onClick={() => setTtsProvider(p)}
                               className="p-3 rounded-xl text-left border transition-all text-[10px]"
                               style={ttsProvider === p
                                 ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}50`, color: 'white' }
                                 : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
-                              {p === 'elevenlabs' ? '🔊 ElevenLabs' : '🈶 Qwen TTS'}
+                              {p === 'elevenlabs' ? '🔊 ElevenLabs' : p === 'qwen' ? '🈶 Qwen' : '🖥️ Piper'}
                               {ttsProvider === p && <span className="ml-1 text-[8px] uppercase tracking-widest opacity-70">ativo</span>}
                             </button>
                           ))}
@@ -2491,6 +2501,54 @@ Regras:
                                 <span className="text-xs font-semibold w-20">{v.name}</span>
                                 <span className="text-[10px] opacity-50 flex-1">{v.desc}</span>
                                 {qwenVoice === v.id && <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: moodColor }} />}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ✅ Piper TTS (local) */}
+                      <div className="pt-4 border-t border-white/5 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ backgroundColor: `${moodColor}20` }}>🖥️</div>
+                          <div>
+                            <p className="text-xs font-medium">Piper TTS (local)</p>
+                            <p className="text-[10px] text-white/30">100% offline — roda na sua máquina</p>
+                          </div>
+                        </div>
+
+                        <div className="p-3 rounded-xl text-[10px] text-white/40 space-y-1"
+                          style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                          <p className="font-semibold text-white/60">Como configurar:</p>
+                          <p>1. <code className="text-white/70">pip install piper-tts flask flask-cors</code></p>
+                          <p>2. Baixe a voz PT-BR em huggingface.co/rhasspy/piper-voices</p>
+                          <p>3. Coloque o .onnx na pasta <code className="text-white/70">piper-models/</code></p>
+                          <p>4. Execute <code className="text-white/70">python scripts/piper-server.py</code></p>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase tracking-widest text-white/40">URL do servidor local</label>
+                          <input
+                            type="text"
+                            placeholder="http://localhost:5000"
+                            value={piperServerUrl}
+                            onChange={e => setPiperServerUrl(e.target.value.trim())}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest text-white/40">Voz</label>
+                          <div className="grid grid-cols-1 gap-1.5">
+                            {PIPER_VOICES.map(v => (
+                              <button key={v.id} onClick={() => setPiperVoice(v.id)}
+                                className="flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all border"
+                                style={piperVoice === v.id
+                                  ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}40`, color: 'white' }
+                                  : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                                <span className="text-xs font-semibold w-20">{v.name}</span>
+                                <span className="text-[10px] opacity-50 flex-1">{v.desc}</span>
+                                {piperVoice === v.id && <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: moodColor }} />}
                               </button>
                             ))}
                           </div>

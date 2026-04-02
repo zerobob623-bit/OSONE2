@@ -179,9 +179,15 @@ interface AppState {
   qwenVoice: string;
   setQwenVoice: (voice: string) => void;
 
-  // TTS provider para Nível 1: 'elevenlabs' | 'qwen'
-  ttsProvider: 'elevenlabs' | 'qwen';
-  setTtsProvider: (p: 'elevenlabs' | 'qwen') => void;
+  // Piper TTS (local)
+  piperServerUrl: string;
+  setPiperServerUrl: (url: string) => void;
+  piperVoice: string;
+  setPiperVoice: (voice: string) => void;
+
+  // TTS provider para Nível 1: 'elevenlabs' | 'qwen' | 'piper'
+  ttsProvider: 'elevenlabs' | 'qwen' | 'piper';
+  setTtsProvider: (p: 'elevenlabs' | 'qwen' | 'piper') => void;
 
   // Voice Level: 1 = TTS externo (ElevenLabs/Qwen), 2 = Gemini Live
   voiceLevel: 1 | 2;
@@ -355,6 +361,10 @@ export const useAppStore = create<AppState>()(
       setQwenApiKey: (qwenApiKey) => set({ qwenApiKey }),
       qwenVoice: 'longxiaochun',
       setQwenVoice: (qwenVoice) => set({ qwenVoice }),
+      piperServerUrl: 'http://localhost:5000',
+      setPiperServerUrl: (piperServerUrl) => set({ piperServerUrl }),
+      piperVoice: 'pt_BR-faber-medium',
+      setPiperVoice: (piperVoice) => set({ piperVoice }),
       ttsProvider: 'elevenlabs' as const,
       setTtsProvider: (ttsProvider) => set({ ttsProvider }),
 
@@ -515,6 +525,8 @@ export const useAppStore = create<AppState>()(
         elevenLabsVoiceId: state.elevenLabsVoiceId,
         qwenApiKey: state.qwenApiKey,
         qwenVoice: state.qwenVoice,
+        piperServerUrl: state.piperServerUrl,
+        piperVoice: state.piperVoice,
         ttsProvider: state.ttsProvider,
       }),
     }
