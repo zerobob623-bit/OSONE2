@@ -72,6 +72,7 @@ export const useGeminiLive = ({
     groqApiKey,
     chatProvider,
     chatModel,
+    voiceProvider,
   } = useAppStore();
 
   const sessionRef = useRef<any>(null);
@@ -445,8 +446,13 @@ export const useGeminiLive = ({
       const sessionPromise = ai.live.connect({
         model: LIVE_MODEL,
         config: {
-          // Gemini envia texto → ElevenLabs fala
-          responseModalities: [Modality.TEXT],
+          // gemini = áudio nativo; elevenlabs/piper = Gemini envia texto, TTS externo fala
+          responseModalities: voiceProvider === 'gemini' ? [Modality.AUDIO] : [Modality.TEXT],
+          ...(voiceProvider === 'gemini' ? {
+            speechConfig: {
+              voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAPPING[voice] || 'Kore' } },
+            },
+          } : {}),
           ...(sysInstruction ? { systemInstruction: sysInstruction } : {}),
           tools: [
             { functionDeclarations: [...TOOL_DECLARATIONS, ...buildCustomToolDeclarations(useAppStore.getState().customSkills)] },

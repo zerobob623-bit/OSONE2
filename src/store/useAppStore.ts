@@ -173,6 +173,16 @@ interface AppState {
   elevenLabsVoiceId: string;
   setElevenLabsVoiceId: (id: string) => void;
 
+  // Provedor de voz: 'elevenlabs' | 'gemini' | 'piper'
+  voiceProvider: 'elevenlabs' | 'gemini' | 'piper';
+  setVoiceProvider: (p: 'elevenlabs' | 'gemini' | 'piper') => void;
+
+  // Piper TTS (local/offline)
+  piperServerUrl: string;
+  setPiperServerUrl: (url: string) => void;
+  piperVoice: string;
+  setPiperVoice: (voice: string) => void;
+
   // WhatsApp
   myWhatsappNumber: string;
   setMyWhatsappNumber: (number: string) => void;
@@ -338,6 +348,14 @@ export const useAppStore = create<AppState>()(
       elevenLabsVoiceId: (import.meta as any).env?.VITE_ELEVENLABS_VOICE_ID || '',
       setElevenLabsVoiceId: (elevenLabsVoiceId) => set({ elevenLabsVoiceId }),
 
+      voiceProvider: 'elevenlabs' as const,
+      setVoiceProvider: (voiceProvider) => set({ voiceProvider }),
+
+      piperServerUrl: 'http://localhost:5000',
+      setPiperServerUrl: (piperServerUrl) => set({ piperServerUrl }),
+      piperVoice: 'pt_BR-faber-medium',
+      setPiperVoice: (piperVoice) => set({ piperVoice }),
+
       // WhatsApp
       myWhatsappNumber: '',
       setMyWhatsappNumber: (myWhatsappNumber) => set({ myWhatsappNumber }),
@@ -486,9 +504,12 @@ export const useAppStore = create<AppState>()(
         customSkills: state.customSkills,
         workspaceProjectName: state.workspaceProjectName,
         workspaceFiles: state.workspaceFiles,
-        // ✅ ElevenLabs persiste no localStorage
+        // ✅ ElevenLabs + provedor de voz persistem no localStorage
         elevenLabsApiKey: state.elevenLabsApiKey,
         elevenLabsVoiceId: state.elevenLabsVoiceId,
+        voiceProvider: state.voiceProvider,
+        piperServerUrl: state.piperServerUrl,
+        piperVoice: state.piperVoice,
       }),
     }
   )
