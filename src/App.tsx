@@ -8,8 +8,6 @@ import { Supernova } from './components/Supernova';
 import { Mascot } from './components/Mascot';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { useElevenLabs } from './hooks/useElevenLabs';
-import { useQwenTTS, QWEN_VOICES } from './hooks/useQwenTTS';
-import { usePiperTTS, PIPER_VOICES } from './hooks/usePiperTTS';
 import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey, CustomSkill, WorkspaceFile } from './store/useAppStore';
 import CATALOG, { CATALOG_CATEGORIES, type CatalogSkill } from './data/skillsCatalog';
 import { useConversationHistory } from './hooks/useConversationHistory';
@@ -405,14 +403,6 @@ export default function App() {
     // ✅ ElevenLabs
     elevenLabsApiKey, setElevenLabsApiKey,
     elevenLabsVoiceId, setElevenLabsVoiceId,
-    // ✅ Qwen TTS
-    qwenApiKey, setQwenApiKey,
-    qwenVoice, setQwenVoice,
-    // ✅ Piper TTS (local)
-    piperServerUrl, setPiperServerUrl,
-    piperVoice, setPiperVoice,
-    ttsProvider, setTtsProvider,
-    voiceLevel, setVoiceLevel,
   } = useAppStore();
 
   const [isRestarting, setIsRestarting]             = useState(false);
@@ -493,28 +483,11 @@ export default function App() {
 
   const { messages: firebaseMessages, addMessage: saveMessage, deleteAll: deleteAllMessages } = useConversationHistory();
 
-  // ── Nível 1: ElevenLabs TTS ──────────────────────────────────────────────
+  // ── ElevenLabs TTS ────────────────────────────────────────────────────────
   const { speak: elevenSpeak, stop: elevenStop, isSpeaking: elevenSpeaking } = useElevenLabs({
     apiKey: elevenLabsApiKey,
     voiceId: elevenLabsVoiceId,
   });
-
-  // ── Nível 1 (alternativa): Qwen TTS ──────────────────────────────────────
-  const { speak: qwenSpeak, stop: qwenStop, isSpeaking: qwenSpeaking } = useQwenTTS({
-    apiKey: qwenApiKey,
-    voice: qwenVoice as any,
-  });
-
-  // ── Nível 1 (local): Piper TTS ────────────────────────────────────────────
-  const { speak: piperSpeak, stop: piperStop, isSpeaking: piperSpeaking } = usePiperTTS({
-    serverUrl: piperServerUrl,
-    voice: piperVoice,
-  });
-
-  // Funções unificadas de TTS (usa o provider ativo do Nível 1)
-  const ttsSpeak    = ttsProvider === 'qwen' ? qwenSpeak    : ttsProvider === 'piper' ? piperSpeak    : elevenSpeak;
-  const ttsStop     = ttsProvider === 'qwen' ? qwenStop     : ttsProvider === 'piper' ? piperStop     : elevenStop;
-  const ttsSpeaking = ttsProvider === 'qwen' ? qwenSpeaking : ttsProvider === 'piper' ? piperSpeaking : elevenSpeaking;
 
   useEffect(() => {
     if (userId) { deleteAllMessages(); }
@@ -724,9 +697,9 @@ export default function App() {
         const cleanText = msg.text.replace(/\*\*[^*]+\*\*\s*/g, '').trim();
         if (cleanText) {
           saveMessage({ role: msg.role, text: cleanText });
-          // Nível 1: ElevenLabs narra mensagens do assistente
-          if (msg.role === 'model' && voiceLevel === 1 && cleanText) {
-            ttsSpeak(cleanText).then(spoken => {
+          // ElevenLabs narra mensagens do assistente
+          if (msg.role === 'model' && cleanText) {
+            elevenSpeak(cleanText).then(spoken => {
               if (!spoken) {
                 window.speechSynthesis.cancel();
                 const u = new SpeechSynthesisUtterance(cleanText);
@@ -957,8 +930,8 @@ Regras:
     }
   }, [vibeBuilding, apiKey, setWorkspaceFiles, setWorkspaceProjectName, setError]);
 
-  // Nível 1: ElevenLabs fala → orb anima como se estivesse "falando"
-  const effectiveSpeaking = voiceLevel === 1 ? ttsSpeaking : isSpeaking;
+  // ElevenLabs fala → orb anima como se estivesse "falando"
+  const effectiveSpeaking = elevenSpeaking || isSpeaking;
   const statusLabel = isThinking ? 'Pensando...' : effectiveSpeaking ? 'Falando...' : (isConnected && isMuted) ? 'Microfone Silenciado' : isListening ? 'Ouvindo...' : isConnected ? 'Toque para desligar' : 'Toque para ativar';
 
   const layoutProps = {
@@ -1375,9 +1348,9 @@ Regras:
                   {memory.workspace && !workspaceEditing && (
                     <button
                       onClick={() => {
-                        if (ttsSpeaking) { ttsStop(); return; }
+                        if (elevenSpeaking) { elevenStop(); return; }
                         if (elevenLabsApiKey && elevenLabsVoiceId) {
-                          ttsSpeak(memory.workspace || '');
+                          elevenSpeak(memory.workspace || '');
                         } else {
                           window.speechSynthesis.cancel();
                           const u = new SpeechSynthesisUtterance(memory.workspace || '');
@@ -1386,8 +1359,8 @@ Regras:
                         }
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] uppercase tracking-widest transition-all"
-                      style={{ backgroundColor: ttsSpeaking ? `${moodColor}25` : 'rgba(255,255,255,0.05)', color: ttsSpeaking ? moodColor : 'rgba(255,255,255,0.5)', border: `1px solid ${ttsSpeaking ? moodColor+'40' : 'rgba(255,255,255,0.05)'}` }}>
-                      <Volume2 size={11} /> {ttsSpeaking ? 'Parar' : 'Narrar'}
+                      style={{ backgroundColor: elevenSpeaking ? `${moodColor}25` : 'rgba(255,255,255,0.05)', color: elevenSpeaking ? moodColor : 'rgba(255,255,255,0.5)', border: `1px solid ${elevenSpeaking ? moodColor+'40' : 'rgba(255,255,255,0.05)'}` }}>
+                      <Volume2 size={11} /> {elevenSpeaking ? 'Parar' : 'Narrar'}
                     </button>
                   )}
                   <div className="flex-1" />
@@ -1964,72 +1937,43 @@ Regras:
                   {activeSettingsTab === 'voice' && (
                     <motion.div key="voice" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
 
-                      {/* ── NÍVEL DE VOZ ── */}
+                      {/* ── ElevenLabs Voice ── */}
                       <div className="space-y-3">
-                        <label className="text-[10px] uppercase tracking-widest opacity-40 block">Modo de Voz</label>
-                        <div className="grid grid-cols-2 gap-2">
-                          {([1, 2] as const).map(lvl => (
-                            <button key={lvl} onClick={() => setVoiceLevel(lvl)}
-                              className="p-4 rounded-2xl text-left transition-all border"
-                              style={voiceLevel === lvl ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}50`, color: 'white' } : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.45)' }}>
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-base">{lvl === 1 ? '🎙️' : '🤖'}</span>
-                                <span className="text-xs font-semibold">Nível {lvl}</span>
-                                {voiceLevel === lvl && <div className="w-1.5 h-1.5 rounded-full ml-auto" style={{ backgroundColor: moodColor }} />}
-                              </div>
-                              <p className="text-[10px] opacity-50 leading-snug">
-                                {lvl === 1
-                                  ? `${ttsProvider === 'piper' ? '🖥️ Piper (local)' : ttsProvider === 'qwen' ? '🈶 Qwen TTS' : '🔊 ElevenLabs'} — texto narrado pela voz escolhida`
-                                  : '🤖 Gemini Live — voz natural bidirecional em tempo real'}
-                              </p>
+                        <label className="text-[10px] uppercase tracking-widest opacity-40 block">Voz ElevenLabs</label>
+                        {!elevenLabsApiKey && (
+                          <p className="text-[10px] text-yellow-400/60 px-1">⚠ Configure sua API Key ElevenLabs na aba APIs</p>
+                        )}
+                        <div className="grid grid-cols-1 gap-1.5">
+                          {[
+                            { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', desc: 'Feminina, calorosa e clara' },
+                            { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', desc: 'Feminina, suave e agradável' },
+                            { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi', desc: 'Feminina, forte e confiante' },
+                            { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', desc: 'Masculina, equilibrada e natural' },
+                            { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', desc: 'Masculina, grave e autoritária' },
+                          ].map(v => (
+                            <button key={v.id} onClick={() => setElevenLabsVoiceId(v.id)}
+                              className="flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all border"
+                              style={elevenLabsVoiceId === v.id
+                                ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}40`, color: 'white' }
+                                : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                              <span className="text-xs font-semibold w-16">{v.name}</span>
+                              <span className="text-[10px] opacity-50 flex-1">{v.desc}</span>
+                              {elevenLabsVoiceId === v.id && <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: moodColor }} />}
                             </button>
                           ))}
                         </div>
-                        {voiceLevel === 1 && ttsProvider === 'elevenlabs' && (!elevenLabsApiKey || !elevenLabsVoiceId) && (
-                          <p className="text-[10px] text-yellow-400/60 px-1">⚠ Configure ElevenLabs na aba APIs ou troque o provider de voz</p>
-                        )}
-                        {voiceLevel === 1 && ttsProvider === 'qwen' && !qwenApiKey && (
-                          <p className="text-[10px] text-yellow-400/60 px-1">⚠ Configure a chave DashScope na aba APIs para usar Qwen TTS</p>
-                        )}
-                        {voiceLevel === 1 && ttsProvider === 'piper' && (
-                          <p className="text-[10px] text-blue-400/60 px-1">🖥️ Piper local — execute <code>python scripts/piper-server.py</code> antes de usar</p>
-                        )}
-                      </div>
-
-                      {/* Vozes Gemini — só relevantes no Nível 2 */}
-                      <div className={`space-y-4 transition-opacity ${voiceLevel === 1 ? 'opacity-40 pointer-events-none' : ''}`}>
-                        <label className="text-[10px] uppercase tracking-widest opacity-40 block">Voz Gemini Live (Nível 2)</label>
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-2 opacity-40"><span className="text-xs">♀</span><label className="text-[9px] uppercase tracking-[0.2em]">Feminino</label></div>
-                        <div className="grid grid-cols-1 gap-2">
-                          {(['Kore', 'Zephyr', 'Leda', 'Callirrhoe', 'Vindemiatrix'] as VoiceName[]).map(v => (
-                            <button key={v} onClick={() => onManualVoiceChange(v)} className="w-full p-4 rounded-2xl text-left transition-all border"
-                              style={voice === v ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' } : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium">{v}</span>
-                                {voice === v && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: moodColor }} />}
-                              </div>
-                              <p className="text-[10px] opacity-40 mt-1">{VOICE_DESCRIPTIONS[v]}</p>
-                            </button>
-                          ))}
+                        <div className="space-y-1 pt-1">
+                          <label className="text-[10px] uppercase tracking-widest text-white/40">Voice ID personalizado</label>
+                          <input
+                            type="text"
+                            placeholder="21m00Tcm4TlvDq8ikWAM"
+                            value={elevenLabsVoiceId}
+                            onChange={e => setElevenLabsVoiceId(e.target.value.trim())}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
+                          />
+                          <p className="text-[10px] text-white/20 pl-1">Mais vozes em elevenlabs.io/app/voice-library</p>
                         </div>
                       </div>
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-2 opacity-40"><span className="text-xs">♂</span><label className="text-[9px] uppercase tracking-[0.2em]">Masculino</label></div>
-                        <div className="grid grid-cols-1 gap-2">
-                          {(['Charon', 'Puck', 'Fenrir', 'Orus', 'Aoede'] as VoiceName[]).map(v => (
-                            <button key={v} onClick={() => onManualVoiceChange(v)} className="w-full p-4 rounded-2xl text-left transition-all border"
-                              style={voice === v ? { backgroundColor: `${moodColor}15`, borderColor: `${moodColor}40`, color: 'white' } : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium">{v}</span>
-                                {voice === v && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: moodColor }} />}
-                              </div>
-                              <p className="text-[10px] opacity-40 mt-1">{VOICE_DESCRIPTIONS[v]}</p>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      </div>{/* end vozes gemini wrapper */}
                     </motion.div>
                   )}
 
@@ -2400,7 +2344,7 @@ Regras:
                           <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ backgroundColor: `${moodColor}20` }}>🔊</div>
                           <div>
                             <p className="text-xs font-medium">ElevenLabs</p>
-                            <p className="text-[10px] text-white/30">Voz ultra-realista (fallback do Gemini)</p>
+                            <p className="text-[10px] text-white/30">Voz ultra-realista — configure e escolha a voz em Configurações &gt; Voz</p>
                           </div>
                           <div className={`ml-auto w-2 h-2 rounded-full ${elevenLabsApiKey && elevenLabsVoiceId ? 'bg-green-500 animate-pulse' : 'bg-zinc-600'}`} />
                         </div>
@@ -2414,43 +2358,7 @@ Regras:
                             onChange={e => setElevenLabsApiKey(e.target.value.trim())}
                             className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
                           />
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-[10px] uppercase tracking-widest text-white/40">Top 5 Vozes ElevenLabs</label>
-                          <div className="grid grid-cols-1 gap-1.5">
-                            {[
-                              { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', desc: 'Feminina, calorosa e clara' },
-                              { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', desc: 'Feminina, suave e agradável' },
-                              { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi', desc: 'Feminina, forte e confiante' },
-                              { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', desc: 'Masculina, equilibrada e natural' },
-                              { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', desc: 'Masculina, grave e autoritária' },
-                            ].map(v => (
-                              <button key={v.id} onClick={() => setElevenLabsVoiceId(v.id)}
-                                className="flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all border"
-                                style={elevenLabsVoiceId === v.id
-                                  ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}40`, color: 'white' }
-                                  : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
-                                <span className="text-xs font-semibold w-16">{v.name}</span>
-                                <span className="text-[10px] opacity-50 flex-1">{v.desc}</span>
-                                {elevenLabsVoiceId === v.id && <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: moodColor }} />}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-[10px] uppercase tracking-widest text-white/40">Voice ID (personalizado)</label>
-                          <input
-                            type="text"
-                            placeholder="21m00Tcm4TlvDq8ikWAM"
-                            value={elevenLabsVoiceId}
-                            onChange={e => setElevenLabsVoiceId(e.target.value.trim())}
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
-                          />
-                          <p className="text-[10px] text-white/20 pl-1">
-                            Mais vozes em <span className="text-white/40">elevenlabs.io/app/voice-library</span>
-                          </p>
+                          <p className="text-[10px] text-white/20 pl-1">Obtenha em elevenlabs.io → Profile → API Key</p>
                         </div>
 
                         {elevenLabsApiKey && elevenLabsVoiceId && (
@@ -2460,109 +2368,6 @@ Regras:
                             <span>Configurado.</span>
                           </div>
                         )}
-                      </div>
-
-                      {/* ✅ Qwen TTS */}
-                      <div className="pt-4 border-t border-white/5 space-y-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ backgroundColor: `${moodColor}20` }}>🈶</div>
-                          <div>
-                            <p className="text-xs font-medium">Qwen TTS (DashScope)</p>
-                            <p className="text-[10px] text-white/30">Voz natural multilingual — dashscope.aliyuncs.com</p>
-                          </div>
-                          <div className={`ml-auto w-2 h-2 rounded-full ${qwenApiKey ? 'bg-green-500 animate-pulse' : 'bg-zinc-600'}`} />
-                        </div>
-
-                        {/* Seletor de provider */}
-                        <div className="grid grid-cols-3 gap-2">
-                          {(['elevenlabs', 'qwen', 'piper'] as const).map(p => (
-                            <button key={p} onClick={() => setTtsProvider(p)}
-                              className="p-3 rounded-xl text-left border transition-all text-[10px]"
-                              style={ttsProvider === p
-                                ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}50`, color: 'white' }
-                                : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
-                              {p === 'elevenlabs' ? '🔊 ElevenLabs' : p === 'qwen' ? '🈶 Qwen' : '🖥️ Piper'}
-                              {ttsProvider === p && <span className="ml-1 text-[8px] uppercase tracking-widest opacity-70">ativo</span>}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-[10px] uppercase tracking-widest text-white/40">DashScope API Key</label>
-                          <input
-                            type="password"
-                            placeholder="sk-..."
-                            value={qwenApiKey}
-                            onChange={e => setQwenApiKey(e.target.value.trim())}
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
-                          />
-                          <p className="text-[10px] text-white/20 pl-1">Chave em dashscope.aliyuncs.com/user/info</p>
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-[10px] uppercase tracking-widest text-white/40">Voz</label>
-                          <div className="grid grid-cols-1 gap-1.5">
-                            {QWEN_VOICES.map(v => (
-                              <button key={v.id} onClick={() => setQwenVoice(v.id)}
-                                className="flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all border"
-                                style={qwenVoice === v.id
-                                  ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}40`, color: 'white' }
-                                  : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
-                                <span className="text-xs font-semibold w-20">{v.name}</span>
-                                <span className="text-[10px] opacity-50 flex-1">{v.desc}</span>
-                                {qwenVoice === v.id && <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: moodColor }} />}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* ✅ Piper TTS (local) */}
-                      <div className="pt-4 border-t border-white/5 space-y-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ backgroundColor: `${moodColor}20` }}>🖥️</div>
-                          <div>
-                            <p className="text-xs font-medium">Piper TTS (local)</p>
-                            <p className="text-[10px] text-white/30">100% offline — roda na sua máquina</p>
-                          </div>
-                        </div>
-
-                        <div className="p-3 rounded-xl text-[10px] text-white/40 space-y-1"
-                          style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                          <p className="font-semibold text-white/60">Como configurar:</p>
-                          <p>1. <code className="text-white/70">pip install piper-tts flask flask-cors</code></p>
-                          <p>2. Baixe a voz PT-BR em huggingface.co/rhasspy/piper-voices</p>
-                          <p>3. Coloque o .onnx na pasta <code className="text-white/70">piper-models/</code></p>
-                          <p>4. Execute <code className="text-white/70">python scripts/piper-server.py</code></p>
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-[10px] uppercase tracking-widest text-white/40">URL do servidor local</label>
-                          <input
-                            type="text"
-                            placeholder="http://localhost:5000"
-                            value={piperServerUrl}
-                            onChange={e => setPiperServerUrl(e.target.value.trim())}
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-[10px] uppercase tracking-widest text-white/40">Voz</label>
-                          <div className="grid grid-cols-1 gap-1.5">
-                            {PIPER_VOICES.map(v => (
-                              <button key={v.id} onClick={() => setPiperVoice(v.id)}
-                                className="flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all border"
-                                style={piperVoice === v.id
-                                  ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}40`, color: 'white' }
-                                  : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
-                                <span className="text-xs font-semibold w-20">{v.name}</span>
-                                <span className="text-[10px] opacity-50 flex-1">{v.desc}</span>
-                                {piperVoice === v.id && <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: moodColor }} />}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
                       </div>
                     </motion.div>
                   )}

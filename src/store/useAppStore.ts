@@ -173,26 +173,6 @@ interface AppState {
   elevenLabsVoiceId: string;
   setElevenLabsVoiceId: (id: string) => void;
 
-  // Qwen TTS
-  qwenApiKey: string;
-  setQwenApiKey: (key: string) => void;
-  qwenVoice: string;
-  setQwenVoice: (voice: string) => void;
-
-  // Piper TTS (local)
-  piperServerUrl: string;
-  setPiperServerUrl: (url: string) => void;
-  piperVoice: string;
-  setPiperVoice: (voice: string) => void;
-
-  // TTS provider para Nível 1: 'elevenlabs' | 'qwen' | 'piper'
-  ttsProvider: 'elevenlabs' | 'qwen' | 'piper';
-  setTtsProvider: (p: 'elevenlabs' | 'qwen' | 'piper') => void;
-
-  // Voice Level: 1 = TTS externo (ElevenLabs/Qwen), 2 = Gemini Live
-  voiceLevel: 1 | 2;
-  setVoiceLevel: (level: 1 | 2) => void;
-
   // WhatsApp
   myWhatsappNumber: string;
   setMyWhatsappNumber: (number: string) => void;
@@ -357,19 +337,6 @@ export const useAppStore = create<AppState>()(
       setElevenLabsApiKey: (elevenLabsApiKey) => set({ elevenLabsApiKey }),
       elevenLabsVoiceId: (import.meta as any).env?.VITE_ELEVENLABS_VOICE_ID || '',
       setElevenLabsVoiceId: (elevenLabsVoiceId) => set({ elevenLabsVoiceId }),
-      qwenApiKey: '',
-      setQwenApiKey: (qwenApiKey) => set({ qwenApiKey }),
-      qwenVoice: 'longxiaochun',
-      setQwenVoice: (qwenVoice) => set({ qwenVoice }),
-      piperServerUrl: 'http://localhost:5000',
-      setPiperServerUrl: (piperServerUrl) => set({ piperServerUrl }),
-      piperVoice: 'pt_BR-faber-medium',
-      setPiperVoice: (piperVoice) => set({ piperVoice }),
-      ttsProvider: 'elevenlabs' as const,
-      setTtsProvider: (ttsProvider) => set({ ttsProvider }),
-
-      voiceLevel: 2,
-      setVoiceLevel: (voiceLevel) => set({ voiceLevel }),
 
       // WhatsApp
       myWhatsappNumber: '',
@@ -519,15 +486,9 @@ export const useAppStore = create<AppState>()(
         customSkills: state.customSkills,
         workspaceProjectName: state.workspaceProjectName,
         workspaceFiles: state.workspaceFiles,
-          voiceLevel: state.voiceLevel,
         // ✅ ElevenLabs persiste no localStorage
         elevenLabsApiKey: state.elevenLabsApiKey,
         elevenLabsVoiceId: state.elevenLabsVoiceId,
-        qwenApiKey: state.qwenApiKey,
-        qwenVoice: state.qwenVoice,
-        piperServerUrl: state.piperServerUrl,
-        piperVoice: state.piperVoice,
-        ttsProvider: state.ttsProvider,
       }),
     }
   )
