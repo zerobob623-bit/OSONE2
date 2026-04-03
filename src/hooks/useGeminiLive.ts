@@ -90,6 +90,7 @@ export const useGeminiLive = ({
 
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const screenAnalysisActiveRef = useRef(false);
+  const lastSysInstructionRef = useRef<string>('');
 
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
 
@@ -417,6 +418,7 @@ export const useGeminiLive = ({
       console.warn("[GeminiLive] Já conectado/conectando — ignorando connect() duplicado.");
       return;
     }
+    lastSysInstructionRef.current = sysInstruction;
     isConnectingRef.current = true;
     try {
       setError(null);
@@ -781,7 +783,13 @@ export const useGeminiLive = ({
             );
             if (isNativeAudioError) {
               useAppStore.setState({ voiceProvider: 'elevenlabs' });
-              setError('Gemini áudio nativo indisponível para sua chave. Mudando para ElevenLabs automaticamente. Toque novamente para conectar.');
+              setError('Voz nativa indisponível. Reconectando com ElevenLabs…');
+              // Reconecta automaticamente em 1.5s com ElevenLabs
+              setTimeout(() => {
+                if (!isConnectedRef.current && !isConnectingRef.current) {
+                  connect(lastSysInstructionRef.current);
+                }
+              }, 1500);
             } else if (!wasClean || code !== 1000) {
               setError(`WS fechou: code=${code}${reason ? ` reason="${reason}"` : ''}`);
             }
