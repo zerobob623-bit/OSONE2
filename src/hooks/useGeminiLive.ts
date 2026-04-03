@@ -423,14 +423,16 @@ export const useGeminiLive = ({
       const apiKey = storedApiKey || process.env.GEMINI_API_KEY;
       if (!apiKey) throw new Error("Chave de API não encontrada. Configure nas Configurações.");
 
-      const LIVE_MODEL = "gemini-live-2.5-flash-native-audio";
+      const isNativeAudio = voiceProvider === 'gemini';
+      const liveModel = 'gemini-live-2.5-flash-preview';
+
       console.group("[GeminiLive] 🔌 Iniciando conexão...");
       console.log("[GeminiLive] API key prefix:", apiKey.substring(0, 8) + "...");
-      console.log("[GeminiLive] Modelo:", LIVE_MODEL, "| API:", API_VERSION);
+      console.log("[GeminiLive] Modelo:", liveModel, "| isNativeAudio:", isNativeAudio);
       console.log("[GeminiLive] Hora:", new Date().toISOString());
       console.groupEnd();
 
-      const ai = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: API_VERSION } });
+      const ai = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: 'v1beta' } });
 
       // Contexto de saída (playback 24kHz)
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
@@ -444,7 +446,7 @@ export const useGeminiLive = ({
 
       console.log("[GeminiLive] Chamando ai.live.connect()...");
       const sessionPromise = ai.live.connect({
-        model: LIVE_MODEL,
+        model: liveModel,
         config: {
           // gemini = áudio nativo; elevenlabs/piper = Gemini envia texto, TTS externo fala
           responseModalities: voiceProvider === 'gemini' ? [Modality.AUDIO] : [Modality.TEXT],
