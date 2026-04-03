@@ -40,6 +40,8 @@ export interface UserMemory {
   workspace?: string;
   semanticMemory?: SemanticFact[];
   summaries?: ConversationSummary[];
+  lastSessionAt?: string;     // ISO — quando a última sessão terminou
+  lastSessionNote?: string;   // resumo do último assunto
 }
 
 // ─── Chaves localStorage ──────────────────────────────────────────────────────
@@ -170,6 +172,55 @@ export function useUserMemory() {
     [mutate],
   );
 
+  /** Salva o momento do fim da sessão e um resumo breve do último assunto. */
+  const saveSessionEnd = useCallback((note?: string) => {
+    mutate(prev => ({
+      ...prev,
+      lastSessionAt: new Date().toISOString(),
+      ...(note ? { lastSessionNote: note } : {}),
+    }));
+  }, [mutate]);
+
+  /**
+   * Gera um parágrafo de contexto de retomada para incluir no system instruction.
+   * Retorna string vazia se é a primeira sessão.
+   */
+  const getSessionContext = useCallback((): string => {
+    const mem = readMemory();
+    if (!mem.lastSessionAt) return '';
+
+    const now  = new Date();
+    const last = new Date(mem.lastSessionAt);
+    const diffMs   = now.getTime() - last.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays  = Math.floor(diffHours / 24);
+
+    let elapsed = '';
+    if (diffMins < 2)        elapsed = 'há poucos minutos';
+    else if (diffMins < 60)  elapsed = `há ${diffMins} minutos`;
+    else if (diffHours < 24) elapsed = `há ${diffHours} hora${diffHours > 1 ? 's' : ''}`;
+    else if (diffDays === 1) elapsed = 'ontem';
+    else if (diffDays < 7)   elapsed = `há ${diffDays} dias`;
+    else if (diffDays < 30)  elapsed = `há ${Math.floor(diffDays / 7)} semana${Math.floor(diffDays / 7) > 1 ? 's' : ''}`;
+    else                     elapsed = `há ${Math.floor(diffDays / 30)} mese${Math.floor(diffDays / 30) > 1 ? 's' : ''}`;
+
+    const lastNote = mem.lastSessionNote
+      ? `O último assunto foi: "${mem.lastSessionNote}".`
+      : '';
+
+    const recentFact = mem.facts?.slice(-1)[0]
+      ? `A última coisa que você aprendeu sobre o usuário: "${mem.facts.slice(-1)[0]}".`
+      : '';
+
+    return `\n━━ RETOMADA DE SESSÃO ━━
+O usuário está voltando após ${elapsed} (última sessão: ${last.toLocaleString('pt-BR')}).
+${lastNote}
+${recentFact}
+INSTRUÇÃO: Cumprimente referenciando o tempo que passou e, se houver nota do último assunto, retome naturalmente. Seja espontânea, não mecânica.
+━━ FIM DA RETOMADA ━━`;
+  }, []);
+
   return {
     memory,
     diary,
@@ -182,5 +233,7 @@ export function useUserMemory() {
     addSemanticFact,
     addSummary,
     getUpcomingDates,
+    saveSessionEnd,
+    getSessionContext,
   };
 }

@@ -9,6 +9,7 @@ import { Mascot } from './components/Mascot';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { useElevenLabs } from './hooks/useElevenLabs';
 import { usePiperTTS, PIPER_VOICES } from './hooks/usePiperTTS';
+import { useWakeWord } from './hooks/useWakeWord';
 import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey, CustomSkill, WorkspaceFile } from './store/useAppStore';
 import CATALOG, { CATALOG_CATEGORIES, type CatalogSkill } from './data/skillsCatalog';
 import { useConversationHistory } from './hooks/useConversationHistory';
@@ -507,6 +508,25 @@ export default function App() {
   const ttsStop     = voiceProvider === 'piper' ? piperStop     : elevenStop;
   const ttsSpeaking = voiceProvider === 'piper' ? piperSpeaking : elevenSpeaking;
 
+  // ── Wake Word ─────────────────────────────────────────────────────────────
+  // Desabilitado quando já está conectado (evita loop de feedback)
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
+  const { isListening: wakeListening, isSupported: wakeSupported } = useWakeWord({
+    triggerWords: [assistantName.toLowerCase(), `ei ${assistantName.toLowerCase()}`, `oi ${assistantName.toLowerCase()}`, `hey ${assistantName.toLowerCase()}`],
+    disabled: isConnected || !wakeWordEnabled,
+    onDetected: async () => {
+      if (isConnected) return;
+      if (onboardingStep === 'initial') setOnboardingStep('completed');
+      setIsMuted(false);
+      await connect(systemInstruction);
+      const hasLastSession = !!memory.lastSessionAt;
+      const greeting = hasLastSession
+        ? `[Wake word detectado. Retome a conversa naturalmente conforme o contexto de retomada no system instruction.]`
+        : PERSONALITY_CONFIG[personality as Personality].greeting;
+      setTimeout(() => sendLiveMessage(greeting), 2500);
+    },
+  });
+
   useEffect(() => {
     if (userId) { deleteAllMessages(); }
   }, [userId, deleteAllMessages]);
@@ -517,9 +537,10 @@ export default function App() {
     }
   }, [firebaseMessages]);
 
-  const { 
-    memory, diary, saveMemory, addFact, addImportantDate, addDiaryEntry, 
-    updateWorkspace, clearWorkspace, addSemanticFact, addSummary, getUpcomingDates 
+  const {
+    memory, diary, saveMemory, addFact, addImportantDate, addDiaryEntry,
+    updateWorkspace, clearWorkspace, addSemanticFact, addSummary, getUpcomingDates,
+    saveSessionEnd, getSessionContext,
   } = useUserMemory();
 
   const MOOD_SOUNDS: Partial<Record<Mood, string>> = {
@@ -626,10 +647,13 @@ export default function App() {
       ? `\n\nHABILIDADES EXTERNAS ATIVAS (chame-as usando skill_<id> quando o contexto indicar):\n${activeSkills.map((s: CustomSkill) => `• ${s.displayName} (skill_${s.id}): ${s.description}`).join('\n')}`
       : '';
 
-    return base + workspaceCtx + personalityCtx + skillsCtx;
+    const sessionCtx = getSessionContext();
+
+    return base + sessionCtx + workspaceCtx + personalityCtx + skillsCtx;
   }, [personality, assistantName, memory.userName, memory.facts, memory.preferences,
-      memory.semanticMemory, memory.importantDates, memory.workspace,
-      mood, focusMode, upcomingDates, voice, activePersonalityMemory, customSkills]);
+      memory.semanticMemory, memory.importantDates, memory.workspace, memory.lastSessionAt,
+      mood, focusMode, upcomingDates, voice, activePersonalityMemory, customSkills,
+      getSessionContext]);
 
   const moodColor = personality === 'ezer' ? PERSONALITY_CONFIG.ezer.color : MOOD_CONFIG[mood].color;
 
@@ -843,12 +867,22 @@ export default function App() {
   }, [isConnected, disconnect, connect, memory, focusMode, mood, assistantName, upcomingDates, voice, setVoice]);
 
   const handleOrbClick = async () => {
-    if (isConnected) { disconnect(); }
-    else {
+    if (isConnected) {
+      // Salva o fim da sessão com o último assunto
+      const lastMsg = firebaseMessages.find(m => m.role === 'model')?.text;
+      const note = lastMsg ? lastMsg.slice(0, 120) : undefined;
+      saveSessionEnd(note);
+      disconnect();
+    } else {
       if (onboardingStep === 'initial') setOnboardingStep('completed');
       setIsMuted(false);
       await connect(systemInstruction);
-      setTimeout(() => sendLiveMessage(PERSONALITY_CONFIG[personality].greeting), 2500);
+      // Saudação contextual: inclui retomada de sessão se houver
+      const hasLastSession = !!memory.lastSessionAt;
+      const greeting = hasLastSession
+        ? `[Retome a conversa naturalmente, referenciando o tempo que passou conforme o contexto de retomada no system instruction. Seja espontânea e pessoal, não robótica.]`
+        : PERSONALITY_CONFIG[personality].greeting;
+      setTimeout(() => sendLiveMessage(greeting), 2500);
     }
   };
 
@@ -950,7 +984,7 @@ Regras:
 
   // Orb pulsa enquanto qualquer TTS está ativo
   const effectiveSpeaking = voiceProvider === 'gemini' ? isSpeaking : (ttsSpeaking || isSpeaking);
-  const statusLabel = isThinking ? 'Pensando...' : effectiveSpeaking ? 'Falando...' : (isConnected && isMuted) ? 'Microfone Silenciado' : isListening ? 'Ouvindo...' : isConnected ? 'Toque para desligar' : 'Toque para ativar';
+  const statusLabel = isThinking ? 'Pensando...' : effectiveSpeaking ? 'Falando...' : (isConnected && isMuted) ? 'Microfone Silenciado' : isListening ? 'Ouvindo...' : isConnected ? 'Toque para desligar' : wakeListening ? `Aguardando "${assistantName}"…` : 'Toque para ativar';
 
   const layoutProps = {
     moodColor, mood, personality,
@@ -2127,6 +2161,26 @@ Regras:
                             <motion.div animate={{ x: focusMode ? 22 : 3 }} className="absolute top-1 left-0 w-4 h-4 bg-white rounded-full shadow" />
                           </button>
                         </div>
+
+                        {/* Wake Word toggle */}
+                        {wakeSupported && (
+                          <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl mt-2">
+                            <div>
+                              <p className="text-sm">🎙️ Wake Word</p>
+                              <p className="text-[10px] text-white/30 mt-0.5">
+                                {wakeWordEnabled
+                                  ? `Diga "${assistantName}" para ativar sem tocar`
+                                  : 'Ativação por voz desligada'}
+                              </p>
+                            </div>
+                            <button onClick={() => setWakeWordEnabled(v => !v)} className="w-11 h-6 rounded-full transition-all relative" style={{ backgroundColor: wakeWordEnabled ? moodColor : 'rgba(255,255,255,0.1)' }}>
+                              <motion.div animate={{ x: wakeWordEnabled ? 22 : 3 }} className="absolute top-1 left-0 w-4 h-4 bg-white rounded-full shadow" />
+                            </button>
+                          </div>
+                        )}
+                        {!wakeSupported && (
+                          <p className="text-[10px] text-white/25 px-1 mt-1">⚠ Wake word não suportado neste navegador (use Chrome/Edge)</p>
+                        )}
                       </div>
                       {memory.userName && (
                         <div className="pt-4 border-t border-white/5 space-y-2">
