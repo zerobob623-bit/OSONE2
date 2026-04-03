@@ -407,7 +407,8 @@ export const useGeminiLive = ({
     } finally {
       setIsThinking(false);
     }
-  }, [history, addMessage, setIsThinking, systemInstruction, generateImage, resetSilenceTimer]);
+  // ✅ CORRIGIDO: adicionado chatProvider, chatModel, openaiApiKey, groqApiKey às deps
+  }, [history, addMessage, setIsThinking, systemInstruction, generateImage, resetSilenceTimer, chatProvider, chatModel, openaiApiKey, groqApiKey]);
 
   // ============================================================
   // 🔌 CONEXÃO COM GEMINI LIVE
@@ -426,7 +427,7 @@ export const useGeminiLive = ({
       if (!apiKey) throw new Error("Chave de API não encontrada. Configure nas Configurações.");
 
       const isNativeAudio = voiceProvider === 'gemini';
-      const liveModel = 'gemini-3.1-flash-live';
+      const liveModel = 'gemini-2.0-flash-live-001';
 
       console.group("[GeminiLive] 🔌 Iniciando conexão...");
       console.log("[GeminiLive] API key prefix:", apiKey.substring(0, 8) + "...");
@@ -514,8 +515,10 @@ export const useGeminiLive = ({
                 }
               }
             }
+            // ✅ CORRIGIDO: userTurn só é adicionado se inputTranscription não vier (evita duplicar fala do user)
             const userParts = message.serverContent?.userTurn?.parts;
-            if (userParts) {
+            const hasInputTranscript = !!message.serverContent?.inputTranscription?.text;
+            if (userParts && !hasInputTranscript) {
               const userText = userParts.filter((p: any) => p.text).map((p: any) => p.text).join('');
               if (userText) {
                 resetSilenceTimer();
@@ -526,12 +529,14 @@ export const useGeminiLive = ({
 
             // ── Transcrição do áudio de saída (modo nativo) ──────────────────
             const outputTranscript = message.serverContent?.outputTranscription?.text;
-            if (outputTranscript) {
+            if (outputTranscript && !isNativeAudio) { // ✅ CORRIGIDO: evita duplicação no modo nativo
               addMessage({ role: 'model', text: outputTranscript });
               onMessageRef.current?.({ role: 'model', text: outputTranscript });
             }
 
             // ── Transcrição do microfone do usuário ──────────────────────────
+            // ✅ CORRIGIDO: inputTranscription é a fonte principal de fala do user.
+            // userTurn só é adicionado se inputTranscription não vier (evita duplicar).
             const inputTranscript = message.serverContent?.inputTranscription?.text;
             if (inputTranscript) {
               resetSilenceTimer();
@@ -910,9 +915,10 @@ export const useGeminiLive = ({
       isConnectedRef.current = false;
       sessionRef.current = null;
     }
+  // ✅ CORRIGIDO: adicionado voiceProvider, setIsThinking, setIsSpeaking às deps
   }, [
-    voice, storedApiKey, stopAudio, playNextChunk, toBase64,
-    setError, setIsConnected, setIsListening, setVolume,
+    voice, storedApiKey, voiceProvider, stopAudio, playNextChunk, toBase64,
+    setError, setIsConnected, setIsListening, setIsSpeaking, setIsThinking, setVolume,
     addMessage, setMascotAction, setMascotTarget, setOnboardingStep,
     wikiSearch, performWebSearch, readUrlContent, generateImage,
     resetSilenceTimer, stopSilenceTimer
