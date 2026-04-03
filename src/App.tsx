@@ -8,6 +8,7 @@ import { Supernova } from './components/Supernova';
 import { Mascot } from './components/Mascot';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { useElevenLabs } from './hooks/useElevenLabs';
+import { useGeminiTTS } from './hooks/useGeminiTTS';
 import { usePiperTTS, PIPER_VOICES } from './hooks/usePiperTTS';
 import { useWakeWord } from './hooks/useWakeWord';
 import { useAppStore, VoiceName, MascotEyeStyle, Mood, PersonalityKey, CustomSkill, WorkspaceFile } from './store/useAppStore';
@@ -496,6 +497,12 @@ export default function App() {
     voiceId: elevenLabsVoiceId,
   });
 
+  // ── Gemini TTS (REST) — usa a chave Gemini já configurada, zero setup ─────
+  const { speak: geminiTtsSpeak, stop: geminiTtsStop, isSpeaking: geminiTtsSpeaking } = useGeminiTTS({
+    apiKey: apiKey,
+    voice: voice,  // reutiliza a voz Gemini selecionada
+  });
+
   // ── Piper TTS (local/offline) ─────────────────────────────────────────────
   const { speak: piperSpeak, stop: piperStop, isSpeaking: piperSpeaking } = usePiperTTS({
     serverUrl: piperServerUrl,
@@ -503,10 +510,12 @@ export default function App() {
   });
 
   // ── TTS unificado (despachante) ────────────────────────────────────────────
-  // 'gemini' → Gemini Live emite áudio nativamente, nenhum TTS externo necessário
-  const ttsSpeak    = voiceProvider === 'piper' ? piperSpeak    : elevenSpeak;
-  const ttsStop     = voiceProvider === 'piper' ? piperStop     : elevenStop;
-  const ttsSpeaking = voiceProvider === 'piper' ? piperSpeaking : elevenSpeaking;
+  // Prioridade: piper → elevenlabs (se configurado) → geminiTTS (usa chave Gemini)
+  // 'gemini' como voiceProvider → Gemini Live emite áudio nativamente (sem TTS externo)
+  const elevenLabsReady = !!(elevenLabsApiKey && elevenLabsVoiceId);
+  const ttsSpeak    = voiceProvider === 'piper' ? piperSpeak    : elevenLabsReady ? elevenSpeak    : geminiTtsSpeak;
+  const ttsStop     = voiceProvider === 'piper' ? piperStop     : elevenLabsReady ? elevenStop     : geminiTtsStop;
+  const ttsSpeaking = voiceProvider === 'piper' ? piperSpeaking : elevenLabsReady ? elevenSpeaking : geminiTtsSpeaking;
 
   // ── Wake Word ─────────────────────────────────────────────────────────────
   // Desabilitado quando já está conectado (evita loop de feedback)
