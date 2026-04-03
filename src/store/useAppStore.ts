@@ -167,15 +167,9 @@ interface AppState {
   chatModel: string;
   setChatModel: (model: string) => void;
 
-  // ✅ ElevenLabs
-  elevenLabsApiKey: string;
-  setElevenLabsApiKey: (key: string) => void;
-  elevenLabsVoiceId: string;
-  setElevenLabsVoiceId: (id: string) => void;
-
-  // Provedor de voz: 'elevenlabs' | 'gemini' | 'piper'
-  voiceProvider: 'elevenlabs' | 'gemini' | 'piper';
-  setVoiceProvider: (p: 'elevenlabs' | 'gemini' | 'piper') => void;
+  // Provedor de voz: 'gemini' (nativo) | 'gemini_tts' (REST) | 'piper' (local)
+  voiceProvider: 'gemini' | 'gemini_tts' | 'piper';
+  setVoiceProvider: (p: 'gemini' | 'gemini_tts' | 'piper') => void;
 
   // Piper TTS (local/offline)
   piperServerUrl: string;
@@ -342,13 +336,7 @@ export const useAppStore = create<AppState>()(
       chatModel: 'gpt-4.1-mini',
       setChatModel: (chatModel) => set({ chatModel }),
 
-      // ✅ ElevenLabs
-      elevenLabsApiKey: (import.meta as any).env?.VITE_ELEVENLABS_API_KEY || '',
-      setElevenLabsApiKey: (elevenLabsApiKey) => set({ elevenLabsApiKey }),
-      elevenLabsVoiceId: (import.meta as any).env?.VITE_ELEVENLABS_VOICE_ID || '',
-      setElevenLabsVoiceId: (elevenLabsVoiceId) => set({ elevenLabsVoiceId }),
-
-      voiceProvider: 'elevenlabs' as const,
+      voiceProvider: 'gemini_tts' as const,
       setVoiceProvider: (voiceProvider) => set({ voiceProvider }),
 
       piperServerUrl: 'http://localhost:5000',
@@ -504,10 +492,6 @@ export const useAppStore = create<AppState>()(
         customSkills: state.customSkills,
         workspaceProjectName: state.workspaceProjectName,
         workspaceFiles: state.workspaceFiles,
-        // ✅ ElevenLabs + provedor de voz persistem no localStorage
-        elevenLabsApiKey: state.elevenLabsApiKey,
-        elevenLabsVoiceId: state.elevenLabsVoiceId,
-        // voiceProvider NÃO persiste — sempre começa como 'elevenlabs' para evitar erro de áudio nativo
         piperServerUrl: state.piperServerUrl,
         piperVoice: state.piperVoice,
       }),

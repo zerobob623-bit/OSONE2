@@ -7,7 +7,6 @@ import { OrbSphere } from './components/OrbSphere';
 import { Supernova } from './components/Supernova';
 import { Mascot } from './components/Mascot';
 import { useGeminiLive } from './hooks/useGeminiLive';
-import { useElevenLabs } from './hooks/useElevenLabs';
 import { useGeminiTTS } from './hooks/useGeminiTTS';
 import { usePiperTTS, PIPER_VOICES } from './hooks/usePiperTTS';
 import { useWakeWord } from './hooks/useWakeWord';
@@ -403,9 +402,6 @@ export default function App() {
     chatProvider, setChatProvider,
     chatModel, setChatModel,
     assistantName, setAssistantName,
-    // ✅ ElevenLabs
-    elevenLabsApiKey, setElevenLabsApiKey,
-    elevenLabsVoiceId, setElevenLabsVoiceId,
     // Provedor de voz
     voiceProvider, setVoiceProvider,
     // Piper TTS (local)
@@ -491,12 +487,6 @@ export default function App() {
 
   const { messages: firebaseMessages, addMessage: saveMessage, deleteAll: deleteAllMessages } = useConversationHistory();
 
-  // ── ElevenLabs TTS ────────────────────────────────────────────────────────
-  const { speak: elevenSpeak, stop: elevenStop, isSpeaking: elevenSpeaking } = useElevenLabs({
-    apiKey: elevenLabsApiKey,
-    voiceId: elevenLabsVoiceId,
-  });
-
   // ── Gemini TTS (REST) — usa a chave Gemini já configurada, zero setup ─────
   const { speak: geminiTtsSpeak, stop: geminiTtsStop, isSpeaking: geminiTtsSpeaking } = useGeminiTTS({
     apiKey: apiKey,
@@ -510,12 +500,12 @@ export default function App() {
   });
 
   // ── TTS unificado (despachante) ────────────────────────────────────────────
-  // Prioridade: piper → elevenlabs (se configurado) → geminiTTS (usa chave Gemini)
-  // 'gemini' como voiceProvider → Gemini Live emite áudio nativamente (sem TTS externo)
-  const elevenLabsReady = !!(elevenLabsApiKey && elevenLabsVoiceId);
-  const ttsSpeak    = voiceProvider === 'piper' ? piperSpeak    : elevenLabsReady ? elevenSpeak    : geminiTtsSpeak;
-  const ttsStop     = voiceProvider === 'piper' ? piperStop     : elevenLabsReady ? elevenStop     : geminiTtsStop;
-  const ttsSpeaking = voiceProvider === 'piper' ? piperSpeaking : elevenLabsReady ? elevenSpeaking : geminiTtsSpeaking;
+  // 'gemini' → Gemini Live emite áudio nativamente (sem TTS externo)
+  // 'piper'  → Piper local TTS
+  // 'gemini_tts' → Gemini TTS REST (usa chave Gemini, zero setup)
+  const ttsSpeak    = voiceProvider === 'piper' ? piperSpeak    : geminiTtsSpeak;
+  const ttsStop     = voiceProvider === 'piper' ? piperStop     : geminiTtsStop;
+  const ttsSpeaking = voiceProvider === 'piper' ? piperSpeaking : geminiTtsSpeaking;
 
   // ── Wake Word ─────────────────────────────────────────────────────────────
   // Desabilitado quando já está conectado (evita loop de feedback)
@@ -2003,7 +1993,7 @@ Regras:
                         <label className="text-[10px] uppercase tracking-widest opacity-40 block">Provedor de Voz</label>
                         <div className="grid grid-cols-1 gap-2">
                           {([
-                            { id: 'elevenlabs', icon: '🔊', label: 'ElevenLabs', desc: 'Voz ultra-realista via nuvem — requer API Key' },
+                            { id: 'gemini_tts', icon: '✨', label: 'Gemini TTS', desc: 'Voz via API Gemini — usa sua chave, zero setup extra' },
                             { id: 'gemini',     icon: '🤖', label: 'Gemini Live', desc: 'Voz nativa bidirecional — usa sua chave Gemini' },
                             { id: 'piper',      icon: '🖥️', label: 'Piper (local)', desc: '100% offline — roda na sua máquina sem internet' },
                           ] as const).map(p => (
@@ -2022,46 +2012,6 @@ Regras:
                           ))}
                         </div>
                       </div>
-
-                      {/* ── ElevenLabs: vozes ── */}
-                      {voiceProvider === 'elevenlabs' && (
-                        <div className="space-y-3">
-                          <label className="text-[10px] uppercase tracking-widest opacity-40 block">Voz ElevenLabs</label>
-                          {!elevenLabsApiKey && (
-                            <p className="text-[10px] text-yellow-400/60 px-1">⚠ Configure sua API Key na aba APIs</p>
-                          )}
-                          <div className="grid grid-cols-1 gap-1.5">
-                            {[
-                              { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', desc: 'Feminina, calorosa e clara' },
-                              { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella',  desc: 'Feminina, suave e agradável' },
-                              { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi',   desc: 'Feminina, forte e confiante' },
-                              { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', desc: 'Masculina, equilibrada e natural' },
-                              { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', desc: 'Masculina, grave e autoritária' },
-                            ].map(v => (
-                              <button key={v.id} onClick={() => setElevenLabsVoiceId(v.id)}
-                                className="flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all border"
-                                style={elevenLabsVoiceId === v.id
-                                  ? { backgroundColor: `${moodColor}20`, borderColor: `${moodColor}40`, color: 'white' }
-                                  : { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
-                                <span className="text-xs font-semibold w-16">{v.name}</span>
-                                <span className="text-[10px] opacity-50 flex-1">{v.desc}</span>
-                                {elevenLabsVoiceId === v.id && <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: moodColor }} />}
-                              </button>
-                            ))}
-                          </div>
-                          <div className="space-y-1 pt-1">
-                            <label className="text-[10px] uppercase tracking-widest text-white/40">Voice ID personalizado</label>
-                            <input
-                              type="text"
-                              placeholder="21m00Tcm4TlvDq8ikWAM"
-                              value={elevenLabsVoiceId}
-                              onChange={e => setElevenLabsVoiceId(e.target.value.trim())}
-                              className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
-                            />
-                            <p className="text-[10px] text-white/20 pl-1">Mais vozes em elevenlabs.io/app/voice-library</p>
-                          </div>
-                        </div>
-                      )}
 
                       {/* ── Gemini Live: vozes nativas ── */}
                       {voiceProvider === 'gemini' && (
@@ -2527,37 +2477,6 @@ Regras:
                         </div>
                       </div>
 
-                      {/* ✅ ElevenLabs */}
-                      <div className="pt-4 border-t border-white/5 space-y-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ backgroundColor: `${moodColor}20` }}>🔊</div>
-                          <div>
-                            <p className="text-xs font-medium">ElevenLabs</p>
-                            <p className="text-[10px] text-white/30">Voz ultra-realista — configure e escolha a voz em Configurações &gt; Voz</p>
-                          </div>
-                          <div className={`ml-auto w-2 h-2 rounded-full ${elevenLabsApiKey && elevenLabsVoiceId ? 'bg-green-500 animate-pulse' : 'bg-zinc-600'}`} />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-[10px] uppercase tracking-widest text-white/40">ElevenLabs API Key</label>
-                          <input
-                            type="password"
-                            placeholder="sk_..."
-                            value={elevenLabsApiKey}
-                            onChange={e => setElevenLabsApiKey(e.target.value.trim())}
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 font-mono"
-                          />
-                          <p className="text-[10px] text-white/20 pl-1">Obtenha em elevenlabs.io → Profile → API Key</p>
-                        </div>
-
-                        {elevenLabsApiKey && elevenLabsVoiceId && (
-                          <div className="p-3 rounded-xl flex items-center gap-2 text-[10px] text-green-400"
-                            style={{ backgroundColor: '#22c55e10', border: '1px solid #22c55e20' }}>
-                            <span>✓</span>
-                            <span>Configurado.</span>
-                          </div>
-                        )}
-                      </div>
                     </motion.div>
                   )}
 
