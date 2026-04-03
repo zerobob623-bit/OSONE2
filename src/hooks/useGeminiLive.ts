@@ -423,14 +423,21 @@ export const useGeminiLive = ({
       const apiKey = storedApiKey || process.env.GEMINI_API_KEY;
       if (!apiKey) throw new Error("Chave de API não encontrada. Configure nas Configurações.");
 
-      const LIVE_MODEL = "gemini-live-2.5-flash-preview";
+      // Áudio nativo requer v1beta + modelo diferente
+      // Texto (ElevenLabs/Piper) usa v1alpha + gemini-live-2.5-flash-preview
+      const isNativeAudio = voiceProvider === 'gemini';
+      const LIVE_MODEL = isNativeAudio
+        ? 'gemini-2.0-flash-live-001'
+        : 'gemini-live-2.5-flash-preview';
+      const API_VERSION = isNativeAudio ? 'v1beta' : 'v1alpha';
+
       console.group("[GeminiLive] 🔌 Iniciando conexão...");
       console.log("[GeminiLive] API key prefix:", apiKey.substring(0, 8) + "...");
-      console.log("[GeminiLive] Modelo:", LIVE_MODEL);
+      console.log("[GeminiLive] Modelo:", LIVE_MODEL, "| API:", API_VERSION);
       console.log("[GeminiLive] Hora:", new Date().toISOString());
       console.groupEnd();
 
-      const ai = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: 'v1alpha' } });
+      const ai = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: API_VERSION } });
 
       // Contexto de saída (playback 24kHz)
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
