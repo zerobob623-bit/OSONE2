@@ -450,17 +450,39 @@ export const useGeminiLive = ({
       const sessionPromise = ai.live.connect({
         model: liveModel,
         config: {
-          // gemini = áudio nativo; elevenlabs/piper = Gemini envia texto, TTS externo fala
-          responseModalities: voiceProvider === 'gemini' ? [Modality.AUDIO] : [Modality.TEXT],
-          ...(voiceProvider === 'gemini' ? {
+          // 'gemini' = áudio nativo bidirecional; outros = Gemini envia texto, TTS externo fala
+          responseModalities: isNativeAudio ? [Modality.AUDIO] : [Modality.TEXT],
+
+          // ── Voz nativa (Gemini Live Audio) ─────────────────────────────────
+          ...(isNativeAudio ? {
             speechConfig: {
               voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAPPING[voice] || 'Kore' } },
             },
+            // Transcrição do que o modelo disse em áudio → aparece no chat
+            outputAudioTranscription: {},
           } : {}),
+
+          // ── Transcrição do áudio do microfone → aparece no chat ─────────────
+          inputAudioTranscription: {},
+
+          // ── VAD: Detecção automática de fala ────────────────────────────────
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              disabled: false,
+            },
+          } as any,
+
+          // ── Compressão de contexto: evita desconexão em sessões longas ───────
+          contextWindowCompression: {
+            triggerTokens: 25600,
+            slidingWindow: { targetTokens: 12800 },
+          } as any,
+
           ...(sysInstruction ? { systemInstruction: sysInstruction } : {}),
           tools: [
             { functionDeclarations: [...TOOL_DECLARATIONS, ...buildCustomToolDeclarations(useAppStore.getState().customSkills)] },
             { googleSearch: {} } as any,
+            { codeExecution: {} } as any,
           ]
         },
         callbacks: {
@@ -500,6 +522,21 @@ export const useGeminiLive = ({
                 addMessage({ role: 'user', text: userText });
                 onMessageRef.current?.({ role: 'user', text: userText });
               }
+            }
+
+            // ── Transcrição do áudio de saída (modo nativo) ──────────────────
+            const outputTranscript = message.serverContent?.outputTranscription?.text;
+            if (outputTranscript) {
+              addMessage({ role: 'model', text: outputTranscript });
+              onMessageRef.current?.({ role: 'model', text: outputTranscript });
+            }
+
+            // ── Transcrição do microfone do usuário ──────────────────────────
+            const inputTranscript = message.serverContent?.inputTranscription?.text;
+            if (inputTranscript) {
+              resetSilenceTimer();
+              addMessage({ role: 'user', text: inputTranscript });
+              onMessageRef.current?.({ role: 'user', text: inputTranscript });
             }
             if (message.toolCall) {
               setIsThinking(true);
