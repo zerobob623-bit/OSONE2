@@ -763,7 +763,6 @@ export const useGeminiLive = ({
             const reason = event?.reason ?? '(sem razão)';
             const wasClean = event?.wasClean ?? '?';
             console.error(`[GeminiLive] ❌ onclose — code=${code}, reason="${reason}", wasClean=${wasClean}`, new Date().toISOString());
-            const closeMsg = `WS fechou: code=${code}${reason ? ` reason="${reason}"` : ''}`;
             isConnectingRef.current = false;
             setIsConnected(false);
             isConnectedRef.current = false;
@@ -776,8 +775,20 @@ export const useGeminiLive = ({
               inputAudioContextRef.current = null;
             }
             setIsListening(false);
-            if (!wasClean || code !== 1000) {
-              setError(closeMsg);
+
+            // Auto-fallback: se falhou por áudio nativo não suportado, volta para ElevenLabs
+            const isNativeAudioError = code === 1008 && (
+              reason.includes('native-audio') ||
+              reason.includes('native_audio') ||
+              reason.includes('bidiGenerateContent') ||
+              reason.includes('not found') ||
+              reason.includes('not supported')
+            );
+            if (isNativeAudioError) {
+              useAppStore.setState({ voiceProvider: 'elevenlabs' });
+              setError('Gemini áudio nativo indisponível para sua chave. Mudando para ElevenLabs automaticamente. Toque novamente para conectar.');
+            } else if (!wasClean || code !== 1000) {
+              setError(`WS fechou: code=${code}${reason ? ` reason="${reason}"` : ''}`);
             }
           },
           onerror: (err: any) => {
