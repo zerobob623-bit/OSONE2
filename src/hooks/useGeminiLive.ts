@@ -427,7 +427,9 @@ export const useGeminiLive = ({
       if (!apiKey) throw new Error("Chave de API não encontrada. Configure nas Configurações.");
 
       const isNativeAudio = voiceProvider === 'gemini';
-      const liveModel = 'gemini-2.0-flash-live-001';
+      // ✅ CORRIGIDO: Gemini 3.1 Flash Live Preview (lançado março 2026)
+      // Único modelo — suporta áudio nativo E texto, dependendo de responseModalities
+      const liveModel = 'gemini-3.1-flash-live-preview';
 
       console.group("[GeminiLive] 🔌 Iniciando conexão...");
       console.log("[GeminiLive] API key prefix:", apiKey.substring(0, 8) + "...");
@@ -473,17 +475,13 @@ export const useGeminiLive = ({
             },
           } as any,
 
-          // ── Compressão de contexto: evita desconexão em sessões longas ───────
-          contextWindowCompression: {
-            triggerTokens: 25600,
-            slidingWindow: { targetTokens: 12800 },
-          } as any,
+          // ℹ️ contextWindowCompression não suportado no Gemini 3.1 Flash Live (removido)
 
           ...(sysInstruction ? { systemInstruction: sysInstruction } : {}),
           tools: [
             { functionDeclarations: [...TOOL_DECLARATIONS, ...buildCustomToolDeclarations(useAppStore.getState().customSkills)] },
             { googleSearch: {} } as any,
-            { codeExecution: {} } as any,
+            // ℹ️ codeExecution não suportado no Gemini 3.1 Flash Live (removido)
           ]
         },
         callbacks: {
@@ -496,15 +494,19 @@ export const useGeminiLive = ({
             resetSilenceTimer();
           },
           onmessage: async (message: any) => {
+            // ✅ CORRIGIDO para 3.1: um único evento pode conter áudio + transcript juntos
+            // Processamos TODOS os parts antes de sair para não perder conteúdo
             const modelParts = message.serverContent?.modelTurn?.parts;
             if (modelParts) {
               setIsThinking(false);
               resetSilenceTimer();
+              // Coleta todo o texto dos parts de uma vez
               const textContent = modelParts.filter((p: any) => p.text).map((p: any) => p.text).join('');
               if (textContent) {
                 addMessage({ role: 'model', text: textContent });
                 onMessageRef.current?.({ role: 'model', text: textContent });
               }
+              // Processa áudio inline (modo nativo)
               for (const part of modelParts) {
                 if (part.inlineData?.data) {
                   const bin = atob(part.inlineData.data);
@@ -513,6 +515,8 @@ export const useGeminiLive = ({
                   audioQueue.current.push(new Int16Array(bytes.buffer, 0, Math.floor(bin.length / 2)));
                   playNextChunk();
                 }
+                // 3.1: transcript pode vir dentro de modelTurn.parts como part.text
+                // já capturado acima no textContent — não duplicar
               }
             }
             // ✅ CORRIGIDO: userTurn só é adicionado se inputTranscription não vier (evita duplicar fala do user)
@@ -528,8 +532,10 @@ export const useGeminiLive = ({
             }
 
             // ── Transcrição do áudio de saída (modo nativo) ──────────────────
+            // ✅ 3.1: outputTranscription é a fonte do transcript de áudio nativo
+            // Sempre adicionar — o modelTurn.parts no 3.1 traz áudio raw, não texto duplicado
             const outputTranscript = message.serverContent?.outputTranscription?.text;
-            if (outputTranscript && !isNativeAudio) { // ✅ CORRIGIDO: evita duplicação no modo nativo
+            if (outputTranscript) {
               addMessage({ role: 'model', text: outputTranscript });
               onMessageRef.current?.({ role: 'model', text: outputTranscript });
             }
@@ -553,6 +559,9 @@ export const useGeminiLive = ({
                 try { session.sendToolResponse({ functionResponses: [response] }); }
                 catch (e) { console.warn('[tool] sendToolResponse ignorado:', e); }
               };
+              // ✅ 3.1: function calling é síncrono — o modelo aguarda sendToolResponse
+              // antes de continuar. Tools assíncronas (fetch) ainda funcionam, mas o modelo
+              // ficará em pausa até receber a resposta via safeSend.
               const finishAsync = () => {
                 asyncPending--;
                 if (asyncPending === 0) setIsThinking(false);
