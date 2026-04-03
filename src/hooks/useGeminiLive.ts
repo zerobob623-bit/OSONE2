@@ -782,9 +782,8 @@ export const useGeminiLive = ({
               reason.includes('not supported')
             );
             if (isNativeAudioError) {
-              useAppStore.setState({ voiceProvider: 'elevenlabs' });
-              setError('Voz nativa indisponível. Reconectando com ElevenLabs…');
-              // Reconecta automaticamente em 1.5s com ElevenLabs
+              useAppStore.setState({ voiceProvider: 'gemini_tts' });
+              setError('Voz nativa indisponível. Mudando para Gemini TTS…');
               setTimeout(() => {
                 if (!isConnectedRef.current && !isConnectingRef.current) {
                   connect(lastSysInstructionRef.current);
