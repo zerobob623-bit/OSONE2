@@ -423,13 +423,11 @@ export const useGeminiLive = ({
       const apiKey = storedApiKey || process.env.GEMINI_API_KEY;
       if (!apiKey) throw new Error("Chave de API não encontrada. Configure nas Configurações.");
 
-      // Áudio nativo requer v1beta + modelo diferente
-      // Texto (ElevenLabs/Piper) usa v1alpha + gemini-live-2.5-flash-preview
+      // Gemini 2.5 em v1beta para ambos os modos
+      // v1alpha com Modality.AUDIO causa erro "native-audio not found"
       const isNativeAudio = voiceProvider === 'gemini';
-      const LIVE_MODEL = isNativeAudio
-        ? 'gemini-2.0-flash-live-001'
-        : 'gemini-live-2.5-flash-preview';
-      const API_VERSION = isNativeAudio ? 'v1beta' : 'v1alpha';
+      const LIVE_MODEL = 'gemini-live-2.5-flash-preview';
+      const API_VERSION = 'v1beta';
 
       console.group("[GeminiLive] 🔌 Iniciando conexão...");
       console.log("[GeminiLive] API key prefix:", apiKey.substring(0, 8) + "...");

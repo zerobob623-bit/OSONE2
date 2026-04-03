@@ -507,7 +507,7 @@ export const useAppStore = create<AppState>()(
         // ✅ ElevenLabs + provedor de voz persistem no localStorage
         elevenLabsApiKey: state.elevenLabsApiKey,
         elevenLabsVoiceId: state.elevenLabsVoiceId,
-        voiceProvider: state.voiceProvider,
+        // voiceProvider NÃO persiste — sempre começa como 'elevenlabs' para evitar erro de áudio nativo
         piperServerUrl: state.piperServerUrl,
         piperVoice: state.piperVoice,
       }),
