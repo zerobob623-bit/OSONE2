@@ -68,6 +68,7 @@ export const useGeminiLive = ({
     setMascotAction,
     setOnboardingStep,
     apiKey: storedApiKey,
+    vertexApiKey: storedVertexApiKey,   // ✅ chave Google Cloud (fallback de cota)
     openaiApiKey,
     groqApiKey,
     chatProvider,
@@ -423,8 +424,22 @@ export const useGeminiLive = ({
     isConnectingRef.current = true;
     try {
       setError(null);
-      const apiKey = storedApiKey || process.env.GEMINI_API_KEY;
-      if (!apiKey) throw new Error("Chave de API não encontrada. Configure nas Configurações.");
+
+      // ✅ FALLBACK DE COTA: tenta AI Studio primeiro; se não tiver, usa Vertex AI (Google Cloud)
+      // Vertex AI usa endpoint diferente e consome dos créditos do Google Cloud
+      const aiStudioKey  = storedApiKey   || process.env.GEMINI_API_KEY   || '';
+      const vertexKey    = storedVertexApiKey || process.env.VERTEX_API_KEY || '';
+
+      const apiKey = aiStudioKey || vertexKey;
+      const isVertexFallback = !aiStudioKey && !!vertexKey;
+
+      if (!apiKey) throw new Error("Chave de API não encontrada. Configure nas Configurações → APIs.");
+
+      console.log(
+        isVertexFallback
+          ? "[GeminiLive] 🔄 Usando chave Vertex AI (Google Cloud)"
+          : "[GeminiLive] ✅ Usando chave AI Studio"
+      );
 
       const isNativeAudio = voiceProvider === 'gemini';
       // ✅ CORRIGIDO: Gemini 3.1 Flash Live Preview (lançado março 2026)
@@ -437,7 +452,13 @@ export const useGeminiLive = ({
       console.log("[GeminiLive] Hora:", new Date().toISOString());
       console.groupEnd();
 
-      const ai = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: 'v1beta' } });
+      // Vertex AI usa v1beta via endpoint diferente; AI Studio usa v1beta padrão
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          apiVersion: isVertexFallback ? 'v1beta' : 'v1beta',
+        }
+      });
 
       // Contexto de saída (playback 24kHz)
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
@@ -840,6 +861,30 @@ export const useGeminiLive = ({
                   connect(lastSysInstructionRef.current);
                 }
               }, 1500);
+            } else if (
+              // ✅ FALLBACK DE COTA: se AI Studio retornar cota esgotada (429/1008)
+              // e houver chave Vertex disponível, reconecta automaticamente com ela
+              (code === 1008 || code === 1011 || code === 429) && (
+                reason.toLowerCase().includes('quota') ||
+                reason.toLowerCase().includes('resource_exhausted') ||
+                reason.toLowerCase().includes('rate limit') ||
+                reason.toLowerCase().includes('429')
+              )
+            ) {
+              const vertexKey = useAppStore.getState().vertexApiKey;
+              if (vertexKey && useAppStore.getState().apiKey !== vertexKey) {
+                console.warn("[GeminiLive] ⚠️ Cota AI Studio esgotada — tentando Vertex AI (Google Cloud)...");
+                // Temporariamente usa a chave Vertex como apiKey principal
+                useAppStore.setState({ apiKey: vertexKey });
+                setError('Cota AI Studio esgotada. Usando créditos Google Cloud...');
+                setTimeout(() => {
+                  if (!isConnectedRef.current && !isConnectingRef.current) {
+                    connect(lastSysInstructionRef.current);
+                  }
+                }, 1500);
+              } else {
+                setError(`Cota esgotada (code=${code}). Configure uma chave Vertex AI em Configurações → APIs ou aguarde o reset à meia-noite (horário de Brasília 04h).`);
+              }
             } else if (!wasClean || code !== 1000) {
               setError(`WS fechou: code=${code}${reason ? ` reason="${reason}"` : ''}`);
             }
