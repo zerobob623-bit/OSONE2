@@ -426,7 +426,7 @@ export const useGeminiLive = ({
       if (!apiKey) throw new Error("Chave de API não encontrada. Configure nas Configurações.");
 
       const isNativeAudio = voiceProvider === 'gemini';
-      const liveModel = 'gemini-live-2.5-flash-preview';
+      const liveModel = 'gemini-3.1-flash-live';
 
       console.group("[GeminiLive] 🔌 Iniciando conexão...");
       console.log("[GeminiLive] API key prefix:", apiKey.substring(0, 8) + "...");
