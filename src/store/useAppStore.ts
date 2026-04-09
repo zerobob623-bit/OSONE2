@@ -31,7 +31,7 @@ export interface CustomSkillParam { name: string; description: string; required:
 export interface CustomSkill { id: string; displayName: string; icon: string; description: string; webhookUrl: string; method: 'GET' | 'POST'; active: boolean; parameters: CustomSkillParam[]; }
 export interface WorkspaceFile { id: string; name: string; type: 'file' | 'folder'; content?: string; language?: string; children?: WorkspaceFile[]; expanded?: boolean; }
 export interface SystemMetrics { cpu: number; mem: number; }
-export type PersonalityKey = 'osone' | 'ezer' | 'samuel' | 'jonas';
+export type PersonalityKey = 'osone' | 'ezer' | 'samuel' | 'jonas' | 'jarvis';
 export interface PersonalityMemory { facts: string[]; preferences: string[]; userName?: string; }
 
 interface AppState {
@@ -193,6 +193,7 @@ export const useAppStore = create<AppState>()(
       personalityMemories: {
         osone: defaultPersonalityMemory(), ezer: defaultPersonalityMemory(),
         samuel: defaultPersonalityMemory(), jonas: defaultPersonalityMemory(),
+        jarvis: defaultPersonalityMemory(),
       },
       addPersonalityFact: (personality, fact) => set((state) => ({
         personalityMemories: {
