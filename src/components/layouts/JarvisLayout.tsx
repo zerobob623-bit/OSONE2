@@ -172,7 +172,7 @@ function StatusTicker({ items, color }: { items: string[]; color: string }) {
 }
 
 // ─── Mensagem individual ──────────────────────────────────────────────────────
-function JarvisMessage({ msg, color }: { msg: { role: 'user' | 'model'; text: string; imageUrl?: string; id?: string; createdAt?: any }; color: string }) {
+function JarvisMessage({ msg, color, name }: { msg: { role: 'user' | 'model'; text: string; imageUrl?: string; id?: string; createdAt?: any }; color: string; name: string }) {
   const [copied, setCopied] = useState(false);
   const isModel = msg.role === 'model';
   return (
@@ -201,7 +201,7 @@ function JarvisMessage({ msg, color }: { msg: { role: 'user' | 'model'; text: st
             color: isModel ? color + 'aa' : 'rgba(255,255,255,0.3)',
           }}
         >
-          {isModel ? 'JARVIS' : 'VOCÊ'}
+          {isModel ? name.toUpperCase() : 'VOCÊ'}
         </div>
 
         {msg.imageUrl && (
@@ -255,7 +255,7 @@ export function JarvisLayout({
         : isListening
           ? ['ESCUTANDO', 'CAPTANDO VOZ', 'AGUARDANDO INPUT']
           : ['STANDBY', 'SISTEMA ATIVO', 'PRONTO']
-    : ['SISTEMA OFFLINE', 'TOQUE PARA ATIVAR', 'JARVIS v1.0'];
+    : ['SISTEMA OFFLINE', 'TOQUE PARA ATIVAR', `${assistantName} v1.0`];
 
   // ── Screen sharing ────────────────────────────────────────────────────────
   const handleScreenToggle = useCallback(async () => {
@@ -567,12 +567,12 @@ export function JarvisLayout({
                   <Zap size={16} style={{ color: jarvisColor }} />
                 </div>
                 <p className="text-[10px] font-mono uppercase tracking-widest text-center" style={{ color: jarvisColor }}>
-                  JARVIS ONLINE<br />AGUARDANDO COMANDO
+                  {assistantName} ONLINE<br />AGUARDANDO COMANDO
                 </p>
               </div>
             ) : (
               [...messages].reverse().map((msg, i) => (
-                <JarvisMessage key={i} msg={msg} color={jarvisColor} />
+                <JarvisMessage key={i} msg={msg} color={jarvisColor} name={assistantName} />
               ))
             )}
           </div>
@@ -606,7 +606,7 @@ export function JarvisLayout({
             value={inputText}
             onChange={e => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isConnected ? 'Digite um comando...' : 'Conecte para falar com Jarvis...'}
+            placeholder={isConnected ? 'Digite um comando...' : `Conecte para falar com ${assistantName}...`}
             className="flex-1 bg-transparent text-sm text-white/70 placeholder-white/20 outline-none font-mono"
             style={{ letterSpacing: '0.02em' }}
           />

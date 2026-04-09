@@ -862,8 +862,7 @@ export const useGeminiLive = ({
                 }
               }, 1500);
             } else if (
-              // ✅ FALLBACK DE COTA: se AI Studio retornar cota esgotada (429/1008)
-              // e houver chave Vertex disponível, reconecta automaticamente com ela
+              // FALLBACK DE COTA: se AI Studio retornar quota/resource_exhausted
               (code === 1008 || code === 1011 || code === 429) && (
                 reason.toLowerCase().includes('quota') ||
                 reason.toLowerCase().includes('resource_exhausted') ||
@@ -874,7 +873,6 @@ export const useGeminiLive = ({
               const vertexKey = useAppStore.getState().vertexApiKey;
               if (vertexKey && useAppStore.getState().apiKey !== vertexKey) {
                 console.warn("[GeminiLive] ⚠️ Cota AI Studio esgotada — tentando Vertex AI (Google Cloud)...");
-                // Temporariamente usa a chave Vertex como apiKey principal
                 useAppStore.setState({ apiKey: vertexKey });
                 setError('Cota AI Studio esgotada. Usando créditos Google Cloud...');
                 setTimeout(() => {
@@ -883,10 +881,18 @@ export const useGeminiLive = ({
                   }
                 }, 1500);
               } else {
-                setError(`Cota esgotada (code=${code}). Configure uma chave Vertex AI em Configurações → APIs ou aguarde o reset à meia-noite (horário de Brasília 04h).`);
+                // Mostra o motivo real para facilitar o diagnóstico
+                const rawReason = reason && reason !== '(sem razão)' ? `\nMotivo: "${reason}"` : '';
+                setError(
+                  `Cota ou acesso negado (code=${code}).${rawReason}\n\n` +
+                  `Possíveis causas:\n` +
+                  `• Chave de API inválida ou expirada — gere uma nova em aistudio.google.com\n` +
+                  `• Cota mensal atingida — configure uma chave Vertex AI nas Configurações → APIs\n` +
+                  `• API key sem acesso ao modelo Live — verifique as permissões do projeto`
+                );
               }
             } else if (!wasClean || code !== 1000) {
-              setError(`WS fechou: code=${code}${reason ? ` reason="${reason}"` : ''}`);
+              setError(`Erro de conexão (code=${code})${reason && reason !== '(sem razão)' ? `: "${reason}"` : ''}. Verifique a chave de API nas Configurações → APIs.`);
             }
           },
           onerror: (err: any) => {
