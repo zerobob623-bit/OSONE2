@@ -18,6 +18,7 @@ import { getEmbedding, cosineSimilarity } from './utils/embeddings';
 import { DefaultLayout } from './components/layouts/DefaultLayout';
 import { NeuralLayout } from './components/layouts/NeuralLayout';
 import { OrbLayout } from './components/layouts/OrbLayout';
+import { JarvisLayout } from './components/layouts/JarvisLayout';
 
 // ─── EVOLUTION API (WHATSAPP) ─────────────────────────────────────────────────
 const EVOLUTION_INSTANCE = 'OSONE2';
@@ -201,7 +202,7 @@ const VOICE_DESCRIPTIONS: Record<VoiceName, string> = {
 };
 
 // ─── PERSONALIDADES ──────────────────────────────────────────────────────────
-type Personality = 'osone' | 'ezer' | 'samuel' | 'jonas';
+type Personality = 'osone' | 'ezer' | 'samuel' | 'jonas' | 'jarvis';
 
 const PERSONALITY_CONFIG: Record<Personality, {
   label: string;
@@ -242,6 +243,14 @@ const PERSONALITY_CONFIG: Record<Personality, {
     color: '#2d3436',
     voice: 'Puck',
     greeting: 'Jonas aqui. O que está acontecendo com você?',
+  },
+  jarvis: {
+    label: 'JARVIS',
+    description: 'IA britânica, precisa, estilo Iron Man',
+    emoji: '🤖',
+    color: '#00bfff',
+    voice: 'Orus',
+    greeting: 'JARVIS online. Pronto para servir.',
   },
 };
 
@@ -369,6 +378,49 @@ DIRETRIZES:
 8. Cumprimente com: ${memory?.userName ? `"${memory.userName}, o que está acontecendo com você?"` : '"Jonas aqui. O que está acontecendo com você?"'}
 9. VISÃO: Quando receber uma imagem, descreva o que vê com precisão antes de qualquer conclusão. Se houver elemento desconhecido, use search_web antes de concluir. Nunca fabrique detalhes.
 10. MENTE PENSANTE: Jonas analisa como um advogado lê um processo — primeiro os fatos, depois a dificuldade, depois a tese. A dúvida honesta vale mais que a resposta fabricada.`;
+};
+
+const getJarvisInstruction = (memory: any, focusMode: boolean): string => {
+  const today = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const memoryCtx = memory?.userName ? `\nYou are speaking with ${memory.userName}.` : '';
+  const focusCtx = focusMode ? '\nFOCUS MODE: Be extremely concise. No small talk. Results only.' : '';
+  const memoryFacts = memory?.facts?.length
+    ? `\nWhat you know about this person:\n${memory.facts.slice(-10).map((f: string) => `- ${f}`).join('\n')}`
+    : '';
+
+  return `You are JARVIS — Just A Rather Very Intelligent System.
+
+IDENTITY:
+You are an advanced AI assistant modeled after the legendary JARVIS from Iron Man. You speak with a calm, precise, slightly British tone. You are efficient, analytical, and loyal. You process information rapidly and present results clearly. You are capable of controlling systems, analyzing screens, performing web searches, and assisting with any task.
+
+HOW YOU SPEAK:
+- Calm, measured, confident. Never flustered.
+- Precise language. No unnecessary words.
+- Use "Sir" or "Ma'am" occasionally, naturally — never excessively.
+- Dry wit when appropriate: brief, never distracting.
+- Report status clearly: "Done.", "Confirmed.", "Analyzing..."
+- In complex situations: methodical step-by-step reasoning.
+- When asked something you don't know: "I'll need to research that." — then use search_web.
+
+EXAMPLES:
+- Simple question: "Done. Here's what you need to know."
+- Emotional moment: "Understood. I'm here." [pause] Then address the need.
+- Task complete: "Task complete, Sir. Anything else?"
+- Error: "I've encountered an issue. Let me try a different approach."
+
+DIRECTIVES:
+1. Today is ${today}.${memoryCtx}${memoryFacts}${focusCtx}
+2. ALWAYS respond as JARVIS — never break character. Never say "as an AI I don't have opinions."
+3. SCREEN VISION: When receiving an image or screen capture, analyze it immediately and precisely. Describe what you see before acting. Use search_web if you encounter something unfamiliar.
+4. MEMORY: Proactively save anything important about the user using save_memory. Every new fact = immediate save_memory call.
+5. TOOLS: Use all available tools naturally — search_web, save_memory, send_whatsapp, control_device, control_pc, operator_step, etc.
+6. WEB SEARCH: Search first, then answer with the information — never just say "I found results."
+7. WORKSPACE: Use update_workspace for long texts, code, technical documents.
+8. SCREEN ANALYSIS: When screen sharing is active, proactively notice what's on screen and offer relevant help.
+9. SPEED: For simple tasks → immediate response. For complex tasks → use tools, divide into steps.
+10. Greet with: ${memory?.userName ? `"Good to see you, ${memory.userName}. How can I assist?"` : '"JARVIS online. Ready to assist."'}
+11. FOCUS: Analyze task difficulty first (easy → direct, difficult → research + steps). Never guess when you can verify.
+12. RESPONSE LANGUAGE: Respond in the same language the user speaks. If they speak Portuguese, respond in Portuguese. If English, respond in English.`;
 };
 
 export default function App() {
@@ -631,6 +683,7 @@ export default function App() {
     if (personality === 'ezer') base = getEzerInstruction(memory, focusMode);
     else if (personality === 'samuel') base = getSamuelInstruction(memory, focusMode);
     else if (personality === 'jonas') base = getJonasInstruction(memory, focusMode);
+    else if (personality === 'jarvis') base = getJarvisInstruction(memory, focusMode);
     else base = getSystemInstruction(assistantName, memoryWithoutWorkspace, mood, focusMode, upcomingDates, voice);
 
     const workspaceCtx = memory.workspace
@@ -860,6 +913,7 @@ export default function App() {
         newPersonality === 'ezer' ? getEzerInstruction(memory, focusMode) :
         newPersonality === 'samuel' ? getSamuelInstruction(memory, focusMode) :
         newPersonality === 'jonas' ? getJonasInstruction(memory, focusMode) :
+        newPersonality === 'jarvis' ? getJarvisInstruction(memory, focusMode) :
         getSystemInstruction(assistantName, memory, mood, focusMode, upcomingDates, voice)
       );
     }
@@ -1017,7 +1071,7 @@ Regras:
   };
 
   const switchInterface = useCallback((dir: 1 | -1) => {
-    const next = Math.max(0, Math.min(2, interfaceMode + dir));
+    const next = Math.max(0, Math.min(3, interfaceMode + dir));
     if (next !== interfaceMode) { setSwipeDir(dir); setInterfaceMode(next); }
   }, [interfaceMode]);
 
@@ -1055,11 +1109,12 @@ Regras:
           {interfaceMode === 0 && <DefaultLayout {...layoutProps} />}
           {interfaceMode === 1 && <OrbLayout {...layoutProps} />}
           {interfaceMode === 2 && <NeuralLayout {...layoutProps} />}
+          {interfaceMode === 3 && <JarvisLayout {...layoutProps} />}
         </motion.div>
       </AnimatePresence>
 
       <div className="interface-dots" onClick={(e) => e.stopPropagation()}>
-        {[0, 1, 2].map(i => (
+        {[0, 1, 2, 3].map(i => (
           <button
             key={i}
             onClick={() => { setSwipeDir(i > interfaceMode ? 1 : -1); setInterfaceMode(i); }}
