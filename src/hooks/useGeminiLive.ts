@@ -434,10 +434,6 @@ if (!apiKey) {
 
 console.log("[GeminiLive] ✅ Usando chave AI Studio");
 
-      if (!apiKey) throw new Error("Chave de API não encontrada. Configure nas Configurações → APIs.");
-
-      const apiKey = storedApiKey || process.env.GEMINI_API_KEY || '';
-
 if (!apiKey) {
   throw new Error("Chave de API não encontrada. Configure nas Configurações → APIs.");
 }
