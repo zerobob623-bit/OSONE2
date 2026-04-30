@@ -68,7 +68,6 @@ export const useGeminiLive = ({
     setMascotAction,
     setOnboardingStep,
     apiKey: storedApiKey,
-    vertexApiKey: storedVertexApiKey,   // ✅ chave Google Cloud (fallback de cota)
     openaiApiKey,
     groqApiKey,
     chatProvider,
@@ -437,11 +436,13 @@ console.log("[GeminiLive] ✅ Usando chave AI Studio");
 
       if (!apiKey) throw new Error("Chave de API não encontrada. Configure nas Configurações → APIs.");
 
-      console.log(
-        isVertexFallback
-          ? "[GeminiLive] 🔄 Usando chave Vertex AI (Google Cloud)"
-          : "[GeminiLive] ✅ Usando chave AI Studio"
-      );
+      const apiKey = storedApiKey || process.env.GEMINI_API_KEY || '';
+
+if (!apiKey) {
+  throw new Error("Chave de API não encontrada. Configure nas Configurações → APIs.");
+}
+
+console.log("[GeminiLive] ✅ Usando chave AI Studio");
 
       const isNativeAudio = voiceProvider === 'gemini';
       // ✅ CORRIGIDO: Gemini 3.1 Flash Live Preview (lançado março 2026)
