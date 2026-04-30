@@ -427,11 +427,13 @@ export const useGeminiLive = ({
 
       // ✅ FALLBACK DE COTA: tenta AI Studio primeiro; se não tiver, usa Vertex AI (Google Cloud)
       // Vertex AI usa endpoint diferente e consome dos créditos do Google Cloud
-      const aiStudioKey  = storedApiKey   || process.env.GEMINI_API_KEY   || '';
-      const vertexKey    = storedVertexApiKey || process.env.VERTEX_API_KEY || '';
+      const apiKey = storedApiKey || process.env.GEMINI_API_KEY || '';
 
-      const apiKey = aiStudioKey || vertexKey;
-      const isVertexFallback = !aiStudioKey && !!vertexKey;
+if (!apiKey) {
+  throw new Error("Chave de API não encontrada. Configure nas Configurações → APIs.");
+}
+
+console.log("[GeminiLive] ✅ Usando chave AI Studio");
 
       if (!apiKey) throw new Error("Chave de API não encontrada. Configure nas Configurações → APIs.");
 
@@ -456,8 +458,8 @@ export const useGeminiLive = ({
       const ai = new GoogleGenAI({
         apiKey,
         httpOptions: {
-          apiVersion: isVertexFallback ? 'v1beta' : 'v1beta',
-        }
+  apiVersion: 'v1beta',
+}
       });
 
       // Contexto de saída (playback 24kHz)
@@ -861,37 +863,9 @@ export const useGeminiLive = ({
                   connect(lastSysInstructionRef.current);
                 }
               }, 1500);
-            } else if (
-              // FALLBACK DE COTA: se AI Studio retornar quota/resource_exhausted
-              (code === 1008 || code === 1011 || code === 429) && (
-                reason.toLowerCase().includes('quota') ||
-                reason.toLowerCase().includes('resource_exhausted') ||
-                reason.toLowerCase().includes('rate limit') ||
-                reason.toLowerCase().includes('429')
-              )
-            ) {
-              const vertexKey = useAppStore.getState().vertexApiKey;
-              if (vertexKey && useAppStore.getState().apiKey !== vertexKey) {
-                console.warn("[GeminiLive] ⚠️ Cota AI Studio esgotada — tentando Vertex AI (Google Cloud)...");
-                useAppStore.setState({ apiKey: vertexKey });
-                setError('Cota AI Studio esgotada. Usando créditos Google Cloud...');
-                setTimeout(() => {
-                  if (!isConnectedRef.current && !isConnectingRef.current) {
-                    connect(lastSysInstructionRef.current);
-                  }
-                }, 1500);
-              } else {
-                // Mostra o motivo real para facilitar o diagnóstico
-                const rawReason = reason && reason !== '(sem razão)' ? `\nMotivo: "${reason}"` : '';
-                setError(
-                  `Cota ou acesso negado (code=${code}).${rawReason}\n\n` +
-                  `Possíveis causas:\n` +
-                  `• Chave de API inválida ou expirada — gere uma nova em aistudio.google.com\n` +
-                  `• Cota mensal atingida — configure uma chave Vertex AI nas Configurações → APIs\n` +
-                  `• API key sem acesso ao modelo Live — verifique as permissões do projeto`
-                );
-              }
-            } else if (!wasClean || code !== 1000) {
+            } else if (code === 429 || reason.toLowerCase().includes('quota')) {
+  setError("Cota da API atingida. Verifique seu plano ou aguarde.");
+} else if (!wasClean || code !== 1000) {
               setError(`Erro de conexão (code=${code})${reason && reason !== '(sem razão)' ? `: "${reason}"` : ''}. Verifique a chave de API nas Configurações → APIs.`);
             }
           },
